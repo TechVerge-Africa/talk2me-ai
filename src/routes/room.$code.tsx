@@ -118,7 +118,7 @@ function RoomPage() {
           onAi={() => setAiOpen(true)}
           onEmergency={() => setEmOpen(true)}
           onCaptionSize={() => setSizeIdx((i) => (i + 1) % SIZES.length)}
-          onLeave={() => navigate({ to: "/room/$code/summary", params: { code } })}
+          onLeave={() => setLeaveOpen(true)}
         />
       </div>
 
