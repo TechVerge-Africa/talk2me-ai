@@ -1,6 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CaptionStream } from "@/components/sb/CaptionStream";
 import { CameraPreview } from "@/components/sb/CameraPreview";
 import { ControlDock } from "@/components/sb/ControlDock";
@@ -29,6 +39,7 @@ function RoomPage() {
   const [sizeIdx, setSizeIdx] = useState(1);
   const [aiOpen, setAiOpen] = useState(false);
   const [emOpen, setEmOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   const lastSign = [...lines].reverse().find((l) => l.modality === "sign");
 
@@ -107,7 +118,7 @@ function RoomPage() {
           onAi={() => setAiOpen(true)}
           onEmergency={() => setEmOpen(true)}
           onCaptionSize={() => setSizeIdx((i) => (i + 1) % SIZES.length)}
-          onLeave={() => navigate({ to: "/room/$code/summary", params: { code } })}
+          onLeave={() => setLeaveOpen(true)}
         />
       </div>
 
@@ -150,6 +161,27 @@ function RoomPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Leave confirmation — Google Meet style */}
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent className="rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave call?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You'll be disconnected from this room. You can rejoin anytime with the same code.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay in call</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => navigate({ to: "/room/$code/summary", params: { code } })}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Leave call
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }
