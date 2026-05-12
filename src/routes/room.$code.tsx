@@ -39,6 +39,7 @@ function RoomPage() {
   const [sizeIdx, setSizeIdx] = useState(1);
   const [aiOpen, setAiOpen] = useState(false);
   const [emOpen, setEmOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   const lastSign = [...lines].reverse().find((l) => l.modality === "sign");
 
