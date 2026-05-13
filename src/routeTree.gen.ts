@@ -14,7 +14,9 @@ import { Route as JoinRouteImport } from './routes/join'
 import { Route as CreateRouteImport } from './routes/create'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomCodeRouteImport } from './routes/room.$code'
+import { Route as RoomCodeIndexRouteImport } from './routes/room.$code.index'
 import { Route as RoomCodeSummaryRouteImport } from './routes/room.$code.summary'
+import { Route as RoomCodeRejoinRouteImport } from './routes/room.$code.rejoin'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -41,9 +43,19 @@ const RoomCodeRoute = RoomCodeRouteImport.update({
   path: '/room/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoomCodeIndexRoute = RoomCodeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RoomCodeRoute,
+} as any)
 const RoomCodeSummaryRoute = RoomCodeSummaryRouteImport.update({
   id: '/summary',
   path: '/summary',
+  getParentRoute: () => RoomCodeRoute,
+} as any)
+const RoomCodeRejoinRoute = RoomCodeRejoinRouteImport.update({
+  id: '/rejoin',
+  path: '/rejoin',
   getParentRoute: () => RoomCodeRoute,
 } as any)
 
@@ -53,15 +65,18 @@ export interface FileRoutesByFullPath {
   '/join': typeof JoinRoute
   '/settings': typeof SettingsRoute
   '/room/$code': typeof RoomCodeRouteWithChildren
+  '/room/$code/rejoin': typeof RoomCodeRejoinRoute
   '/room/$code/summary': typeof RoomCodeSummaryRoute
+  '/room/$code/': typeof RoomCodeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/create': typeof CreateRoute
   '/join': typeof JoinRoute
   '/settings': typeof SettingsRoute
-  '/room/$code': typeof RoomCodeRouteWithChildren
+  '/room/$code/rejoin': typeof RoomCodeRejoinRoute
   '/room/$code/summary': typeof RoomCodeSummaryRoute
+  '/room/$code': typeof RoomCodeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -70,7 +85,9 @@ export interface FileRoutesById {
   '/join': typeof JoinRoute
   '/settings': typeof SettingsRoute
   '/room/$code': typeof RoomCodeRouteWithChildren
+  '/room/$code/rejoin': typeof RoomCodeRejoinRoute
   '/room/$code/summary': typeof RoomCodeSummaryRoute
+  '/room/$code/': typeof RoomCodeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -80,15 +97,18 @@ export interface FileRouteTypes {
     | '/join'
     | '/settings'
     | '/room/$code'
+    | '/room/$code/rejoin'
     | '/room/$code/summary'
+    | '/room/$code/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/create'
     | '/join'
     | '/settings'
-    | '/room/$code'
+    | '/room/$code/rejoin'
     | '/room/$code/summary'
+    | '/room/$code'
   id:
     | '__root__'
     | '/'
@@ -96,7 +116,9 @@ export interface FileRouteTypes {
     | '/join'
     | '/settings'
     | '/room/$code'
+    | '/room/$code/rejoin'
     | '/room/$code/summary'
+    | '/room/$code/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -144,6 +166,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RoomCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/room/$code/': {
+      id: '/room/$code/'
+      path: '/'
+      fullPath: '/room/$code/'
+      preLoaderRoute: typeof RoomCodeIndexRouteImport
+      parentRoute: typeof RoomCodeRoute
+    }
     '/room/$code/summary': {
       id: '/room/$code/summary'
       path: '/summary'
@@ -151,15 +180,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RoomCodeSummaryRouteImport
       parentRoute: typeof RoomCodeRoute
     }
+    '/room/$code/rejoin': {
+      id: '/room/$code/rejoin'
+      path: '/rejoin'
+      fullPath: '/room/$code/rejoin'
+      preLoaderRoute: typeof RoomCodeRejoinRouteImport
+      parentRoute: typeof RoomCodeRoute
+    }
   }
 }
 
 interface RoomCodeRouteChildren {
+  RoomCodeRejoinRoute: typeof RoomCodeRejoinRoute
   RoomCodeSummaryRoute: typeof RoomCodeSummaryRoute
+  RoomCodeIndexRoute: typeof RoomCodeIndexRoute
 }
 
 const RoomCodeRouteChildren: RoomCodeRouteChildren = {
+  RoomCodeRejoinRoute: RoomCodeRejoinRoute,
   RoomCodeSummaryRoute: RoomCodeSummaryRoute,
+  RoomCodeIndexRoute: RoomCodeIndexRoute,
 }
 
 const RoomCodeRouteWithChildren = RoomCodeRoute._addFileChildren(
@@ -176,3 +216,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
