@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@source "../../../../features";
+@source "../../../../packages";
+@source "../../../../services";
+@source "../../../../hooks";
+
+
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -38,7 +44,7 @@
   --color-ivory: var(--ivory);
   --color-ink: var(--ink);
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans, 'Inter', ui-sans-serif, system-ui, sans-serif);
 
   --shadow-bridge: 0 30px 60px -20px color-mix(in oklab, var(--bridge-indigo) 20%, transparent);
   --shadow-bridge-sm: 0 10px 30px -10px color-mix(in oklab, var(--bridge-indigo) 15%, transparent);
@@ -97,7 +103,8 @@
 }
 
 .glass-card {
-  @apply bg-white/70 backdrop-blur-[16px] border border-white/20 shadow-premium;
+  @apply bg-white/70 backdrop-blur-[16px] border border-white/20 shadow-lg;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.1), 0 10px 20px -10px rgba(0, 0, 0, 0.05);
 }
 
 .dark .glass-card {

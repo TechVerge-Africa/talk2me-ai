@@ -1,13 +1,15 @@
 import React from "react";
-import { Mic, MicOff, Video, VideoOff, Type, Sparkles, AlertOctagon, PhoneOff, Captions, Ear, EarOff, Share2 } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, Type, Sparkles, AlertOctagon, PhoneOff, Captions, Ear, EarOff, Share2, MonitorUp } from "lucide-react";
 
 interface ControlDockProps {
   micOn: boolean;
   camOn: boolean;
+  screenShareOn: boolean;
   transcriptOn: boolean;
   deafOn: boolean;
   onToggleMic: () => void;
   onToggleCam: () => void;
+  onToggleScreenShare: () => void;
   onToggleTranscript: () => void;
   onToggleDeaf: () => void;
   onAi: () => void;
@@ -20,10 +22,12 @@ interface ControlDockProps {
 export function ControlDock({ 
   micOn, 
   camOn, 
+  screenShareOn,
   transcriptOn, 
   deafOn, 
   onToggleMic, 
   onToggleCam, 
+  onToggleScreenShare,
   onToggleTranscript, 
   onToggleDeaf, 
   onAi, 
@@ -67,13 +71,17 @@ export function ControlDock({
 
   return (
     <div className="bg-card/90 backdrop-blur-xl rounded-3xl ring-1 ring-border shadow-bridge p-2 flex items-center gap-1.5">
-      <ControlButton onClick={onToggleMic} label={micOn ? "Mute" : "Unmute"}>
+      <ControlButton onClick={onToggleMic} label={micOn ? "Mute" : "Unmute"} active={!micOn} variant={!micOn ? "danger" : "default"}>
         {micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}
       </ControlButton>
-      <ControlButton onClick={onToggleCam} label={camOn ? "Stop video" : "Start video"}>
+      <ControlButton onClick={onToggleCam} label={camOn ? "Stop video" : "Start video"} active={!camOn} variant={!camOn ? "danger" : "default"}>
         {camOn ? <Video className="size-5" /> : <VideoOff className="size-5" />}
       </ControlButton>
-      <ControlButton onClick={onToggleTranscript} label={transcriptOn ? "Hide transcript" : "Show transcript"} active={transcriptOn}>
+      <ControlButton onClick={onToggleScreenShare} label={screenShareOn ? "Stop sharing" : "Share screen"} active={screenShareOn}>
+        <MonitorUp className="size-5" />
+      </ControlButton>
+      <div className="w-px h-8 bg-border mx-0.5" />
+      <ControlButton onClick={onToggleTranscript} label={transcriptOn ? "Hide captions" : "Show captions"} active={transcriptOn}>
         <Captions className="size-5" />
       </ControlButton>
       <ControlButton onClick={onToggleDeaf} label={deafOn ? "Deaf mode on" : "Deaf mode off"} active={deafOn}>

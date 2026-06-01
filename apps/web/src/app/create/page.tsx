@@ -1,18 +1,40 @@
-'use client';
-
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Copy, Share2, ArrowRight, Check } from "lucide-react";
+import { Copy, Share2, ArrowRight, Check, Loader2 } from "lucide-react";
 import { AiWaveBackground } from "@/packages/ui/ai-effects";
 import { QrBlock } from "@/packages/ui/qr-block";
 import { generateRoomCode, roomShareUrl } from "@/packages/shared/rooms";
+import { useAuth } from "@/features/auth/use-auth";
+import { MeetingService } from "@/services/supabase/meetings";
 
 export default function CreatePage() {
   const code = useMemo(() => generateRoomCode(), []);
   const url = roomShareUrl(code);
   const [copied, setCopied] = useState<"link" | "code" | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
+  const handleCreateAndEnter = async () => {
+    if (!user) {
+      alert("Please sign in to host a meeting");
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      const meeting = await MeetingService.createMeeting("New Meeting", user.id);
+      if (meeting) {
+        // Update the code if the service returned a different one (though unlikely here)
+        router.push(`/room/${meeting.room_code}`);
+      }
+    } catch (error) {
+      console.error("Failed to create meeting:", error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const copy = async (what: "link" | "code", text: string) => {
     try { await navigator.clipboard.writeText(text); } catch {}
@@ -27,6 +49,14 @@ export default function CreatePage() {
       copy("link", url);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen px-5 py-10 lg:py-16 bg-background">
@@ -88,20 +118,26 @@ export default function CreatePage() {
             </button>
 
             <button
-              onClick={() => router.push(`/room/${code}`)}
-              className="w-full inline-flex items-center justify-center gap-2 h-14 rounded-2xl bg-primary text-primary-foreground font-semibold shadow-bridge hover:opacity-95 transition"
+              onClick={handleCreateAndEnter}
+              disabled={isCreating}
+              className="w-full inline-flex items-center justify-center gap-2 h-14 rounded-2xl bg-primary text-primary-foreground font-semibold shadow-bridge hover:opacity-95 transition disabled:opacity-50"
             >
-              Enter room <ArrowRight className="size-4" />
+              {isCreating ? <Loader2 className="size-5 animate-spin" /> : "Enter room"}
+              {!isCreating && <ArrowRight className="size-4" />}
             </button>
           </div>
 
           <div className="mt-8 p-4 rounded-2xl bg-card ring-1 ring-border flex items-center gap-3">
-            <div className="size-10 rounded-full bg-gradient-to-tr from-bridge-cyan to-bridge-indigo grid place-items-center text-white text-xs font-semibold">YOU</div>
-            <div className="flex-1">
-              <div className="text-sm font-medium">You (host)</div>
-              <div className="text-xs text-muted-foreground">Connected · ready</div>
+            <div className="size-10 rounded-full bg-gradient-to-tr from-bridge-cyan to-bridge-indigo grid place-items-center text-white text-xs font-semibold uppercase">
+              {user?.email?.slice(0, 2) ?? "YOU"}
             </div>
-            <span className="size-2 rounded-full bg-emerald-500" />
+            <div className="flex-1">
+              <div className="text-sm font-medium">{user ? user.email : "Not signed in"}</div>
+              <div className="text-xs text-muted-foreground">
+                {user ? "Authenticated host" : "Sign in to start meeting"}
+              </div>
+            </div>
+            <span className={`size-2 rounded-full ${user ? "bg-emerald-500" : "bg-red-500"}`} />
           </div>
 
           <div className="mt-6 text-sm text-muted-foreground">

@@ -1,50 +1,227 @@
 'use client';
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { Menu, X, ArrowRight, ExternalLink } from "lucide-react";
+import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 
-export function Navbar() {
+const NAV_ITEMS = [
+  { label: "Features",   href: "#features"  },
+  { label: "Inclusive",  href: "#inclusive" },
+  { label: "Tech Stack", href: "#tech"      },
+  { label: "About",      href: "#about"     },
+];
+
+/* ─── Desktop Navbar ───────────────────────────────────────────── */
+function DesktopNav({ scrolled }: { scrolled: boolean }) {
+  const pathname = usePathname();
+  const isLanding = pathname === "/";
+
   return (
-    <motion.header 
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className="fixed top-0 inset-x-0 z-[100] px-6 py-4"
-    >
-      <div className="max-w-7xl mx-auto flex items-center justify-between glass-card px-6 py-3 rounded-full border-white/20 shadow-2xl backdrop-blur-xl">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="size-8 rounded-xl bg-primary text-primary-foreground grid place-items-center text-xs font-bold shadow-bridge-sm transition-transform group-hover:scale-110">
-            T2
-          </div>
-          <span className="font-bold tracking-tight text-foreground/90">Talk2Me <span className="text-bridge-cyan">AI</span></span>
-        </Link>
+    <div className="hidden lg:flex items-center justify-between h-[72px] w-full">
+      {/* Logo Section */}
+      <Link href="/" className="flex items-center gap-3 group flex-shrink-0">
+        <motion.div
+          whileHover={{ scale: 1.1, rotate: -5 }}
+          whileTap={{ scale: 0.95 }}
+          className="w-11 h-11 rounded-2xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-lg group-hover:shadow-bridge transition-all border border-white/20"
+        >
+          <span className="text-white font-black text-base tracking-tighter">T2</span>
+        </motion.div>
+        <div className="flex flex-col leading-none">
+          <span className="text-lg font-bold tracking-tight text-foreground">Talk2Me</span>
+        </div>
+      </Link>
 
-        <nav className="hidden md:flex items-center gap-8">
-          {["Features", "Inclusive Tech", "Pricing", "About"].map((item) => (
-            <Link 
-              key={item} 
-              href={`#${item.toLowerCase().replace(' ', '-')}`}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+      {/* Navigation Links — Fixed in the center */}
+      <div className="flex-1 flex justify-center">
+        <nav className="flex items-center p-1.5 rounded-2xl bg-foreground/[0.03] border border-border/50 backdrop-blur-sm">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="relative px-5 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-all duration-300 rounded-xl hover:bg-white dark:hover:bg-white/10 hover:shadow-sm group"
             >
-              {item}
+              {item.label}
+              <motion.span 
+                 className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-bridge-cyan rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                 layoutId="nav-glow"
+              />
             </Link>
           ))}
         </nav>
-
-        <div className="flex items-center gap-3">
-          <Link 
-            href="/join" 
-            className="hidden sm:block text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-muted transition-colors"
-          >
-            Join Room
-          </Link>
-          <Link 
-            href="/create" 
-            className="text-sm font-bold bg-primary text-primary-foreground px-6 py-2.5 rounded-full shadow-bridge-sm hover:opacity-90 transition-all active:scale-95"
-          >
-            Start Free
-          </Link>
-        </div>
       </div>
-    </motion.header>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-4">
+        <Link
+          href="https://github.com"
+          target="_blank"
+          className="p-2.5 rounded-xl hover:bg-foreground/5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ExternalLink className="size-5" />
+        </Link>
+        
+        <div className="h-6 w-px bg-border/50" />
+        
+        <Link
+          href="/join"
+          className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors hidden xl:block"
+        >
+          Join Session
+        </Link>
+        
+        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+          <Link
+            href="/create"
+            className="flex items-center gap-2 px-7 py-3 text-sm font-black uppercase tracking-widest text-white rounded-2xl shadow-bridge-sm hover:shadow-bridge transition-all border border-white/10"
+            style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
+          >
+            Start Bridge
+            <ArrowRight className="size-4" />
+          </Link>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Mobile Navbar ─────────────────────────────────────────────── */
+function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md lg:hidden"
+            onClick={onClose}
+          />
+
+          <motion.aside
+            key="drawer"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed right-0 top-0 bottom-0 z-50 w-[85vw] max-w-[400px] bg-background shadow-2xl flex flex-col lg:hidden border-l border-border/50"
+          >
+            <div className="flex items-center justify-between p-7 border-b border-border/50">
+              <Link href="/" onClick={onClose} className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-md">
+                  <span className="text-white font-black text-sm">T2</span>
+                </div>
+                <span className="font-bold text-lg">Talk2Me</span>
+              </Link>
+              <button onClick={onClose} className="p-2 rounded-xl hover:bg-foreground/5">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <nav className="flex-1 overflow-y-auto p-6 space-y-2">
+              {NAV_ITEMS.map((item, i) => (
+                <motion.div
+                  key={item.label}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <Link
+                    href={item.href}
+                    onClick={onClose}
+                    className="flex items-center justify-between p-5 text-lg font-bold rounded-2xl hover:bg-foreground/5 transition-all group"
+                  >
+                    {item.label}
+                    <ArrowRight className="size-5 opacity-40 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                  </Link>
+                </motion.div>
+              ))}
+            </nav>
+
+            <div className="p-8 border-t border-border/50 space-y-4">
+              <Link
+                href="/create"
+                onClick={onClose}
+                className="flex items-center justify-center gap-3 w-full py-5 text-lg font-black uppercase tracking-widest text-white rounded-3xl shadow-bridge"
+                style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
+              >
+                Start Session
+                <ArrowRight className="size-5" />
+              </Link>
+              <p className="text-center text-xs text-muted-foreground font-black uppercase tracking-widest opacity-60">
+                 Inclusive by Technology
+              </p>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ─── Root Navbar ────────────────────────────────────────────────── */
+export function Navbar() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
+
+  return (
+    <>
+      <motion.header
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        className={`fixed top-0 inset-x-0 z-50 w-full transition-all duration-500 px-4 sm:px-6 lg:px-8 py-3 lg:py-4 ${
+          scrolled
+            ? "bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-border/50 shadow-2xl"
+            : "bg-transparent border-b border-transparent"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto">
+          <DesktopNav scrolled={scrolled} />
+
+          <div className="flex lg:hidden items-center justify-between h-14">
+            <Link href="/" className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-md">
+                <span className="text-white font-black text-sm">T2</span>
+              </div>
+              <span className="font-bold text-lg">Talk2Me</span>
+            </Link>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href="/create"
+                className="px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white rounded-xl shadow-lg"
+                style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
+              >
+                Start
+              </Link>
+              <button
+                onClick={() => setMobileOpen(true)}
+                className="p-2.5 rounded-xl bg-foreground/5"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.header>
+
+      <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <div className="h-16 lg:h-[88px]" />
+    </>
   );
 }

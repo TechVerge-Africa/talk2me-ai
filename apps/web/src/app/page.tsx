@@ -3,12 +3,12 @@
 import React from 'react';
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Plus, Hash, Sparkles, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight, Plus, Hash, Sparkles, ShieldCheck, Zap, Check } from "lucide-react";
 import { AiWaveBackground } from "@/packages/ui/ai-effects";
 
 const fadeIn = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } }
 };
 
 const staggerContainer = {
@@ -24,7 +24,7 @@ const staggerContainer = {
 export default function LandingPage() {
   return (
     <main className="min-h-screen relative overflow-x-hidden">
-      <section className="relative px-5 pt-20 pb-16 lg:pt-32 lg:pb-28">
+      <section className="relative px-5 pt-12 pb-10 lg:pt-20 lg:pb-16 flex flex-col justify-center min-h-[70vh] lg:min-h-0">
         <AiWaveBackground className="opacity-50" />
         
         <motion.div 
@@ -33,61 +33,55 @@ export default function LandingPage() {
           variants={staggerContainer}
           className="relative max-w-5xl mx-auto flex flex-col items-center text-center"
         >
-          <motion.div variants={fadeIn} className="mb-8 flex items-center gap-2 px-3 py-1 rounded-full ring-1 ring-border bg-card/70 backdrop-blur text-[11px] font-medium tracking-wider uppercase">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-bridge-cyan opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-bridge-cyan" />
-            </span>
-            System Online
-          </motion.div>
 
-          <motion.h1 variants={fadeIn} className="text-4xl sm:text-6xl lg:text-8xl font-bold tracking-tight text-balance leading-[0.95] font-outfit">
+
+          <motion.h1 variants={fadeIn} className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-balance leading-[0.95]">
             Two voices meeting<br className="hidden sm:block" /> in <span className="text-bridge-indigo">mid-air</span>.
           </motion.h1>
 
-          <motion.p variants={fadeIn} className="mt-8 max-w-[54ch] text-base sm:text-xl text-muted-foreground text-pretty">
+          <motion.p variants={fadeIn} className="mt-6 max-w-[54ch] text-base sm:text-xl text-muted-foreground text-pretty">
             Talk2Me AI bridges sign and speech with zero-latency interpretation. 
             The inclusive standard for global collaboration starts here.
           </motion.p>
 
-          <motion.div variants={fadeIn} className="mt-14 grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl">
+          <motion.div variants={fadeIn} className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl">
             <Link
               href="/create"
-              className="group relative overflow-hidden bg-primary text-primary-foreground rounded-3xl p-8 text-left transition-all hover:scale-[1.02] active:scale-[0.98] shadow-bridge"
+              className="group relative overflow-hidden bg-primary text-primary-foreground rounded-3xl p-6 text-left transition-all hover:scale-[1.02] active:scale-[0.98] shadow-bridge"
             >
-              <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                 <Plus className="size-24 -mr-12 -mt-12" />
+              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+                 <Plus className="size-20 -mr-10 -mt-10" />
               </div>
-              <div className="mb-6 size-12 rounded-2xl bg-white/10 grid place-items-center">
-                <Plus className="size-6" />
+              <div className="mb-4 size-10 rounded-xl bg-white/10 grid place-items-center">
+                <Plus className="size-5" />
               </div>
               <div className="flex items-center justify-between relative z-10">
                 <div>
-                  <div className="text-2xl font-bold font-outfit">Create Session</div>
-                  <div className="text-sm text-white/70 mt-1">Start a new bridge instantly</div>
+                  <div className="text-xl font-bold">Create Session</div>
+                  <div className="text-xs text-white/70 mt-1">Start a new bridge instantly</div>
                 </div>
-                <ArrowRight className="size-6 opacity-60 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="size-5 opacity-60 group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>
 
             <Link
               href="/join"
-              className="group bg-card ring-1 ring-border rounded-3xl p-8 text-left shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] hover:bg-muted/50"
+              className="group bg-card ring-1 ring-border rounded-3xl p-6 text-left shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] hover:bg-muted/50"
             >
-              <div className="mb-6 size-12 rounded-2xl bg-primary/5 text-primary grid place-items-center">
-                <Hash className="size-6" />
+              <div className="mb-4 size-10 rounded-xl bg-primary/5 text-primary grid place-items-center">
+                <Hash className="size-5" />
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-bold font-outfit">Join Session</div>
-                  <div className="text-sm text-muted-foreground mt-1">Enter a code or scan a QR</div>
+                  <div className="text-xl font-bold">Join Session</div>
+                  <div className="text-xs text-muted-foreground mt-1">Enter a code or scan a QR</div>
                 </div>
-                <ArrowRight className="size-6 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="size-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="mt-24 grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-4xl text-left">
+          <motion.div variants={fadeIn} className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-4xl text-left">
             {[
               { icon: Zap, t: "Real-time captions", d: "Speech becomes readable line by line with absolute precision using custom STT models." },
               { icon: Sparkles, t: "Sign to speech", d: "Our vision transformer interprets sign language into human-natural audio instantly." },
@@ -97,7 +91,7 @@ export default function LandingPage() {
                 <div className="size-10 rounded-xl bg-bridge-cyan/10 grid place-items-center mb-4">
                   <Icon className="size-5 text-bridge-cyan" />
                 </div>
-                <div className="font-bold text-lg font-outfit">{t}</div>
+                <div className="font-bold text-lg">{t}</div>
                 <div className="text-sm text-muted-foreground mt-2 leading-relaxed">{d}</div>
               </div>
             ))}
@@ -114,7 +108,7 @@ export default function LandingPage() {
               viewport={{ once: true }}
               transition={{ duration: 0.8 }}
             >
-              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] font-outfit">
+              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1]">
                 Built for <span className="text-bridge-indigo">TechVerge Africa</span><br /> and beyond.
               </h2>
               <p className="mt-8 text-lg text-muted-foreground leading-relaxed">
@@ -128,7 +122,7 @@ export default function LandingPage() {
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-4 text-sm font-bold tracking-tight">
                     <div className="size-6 rounded-full bg-bridge-cyan/10 text-bridge-cyan grid place-items-center text-[10px]">
-                       ✓
+                       <Check className="size-4" />
                     </div>
                     {item}
                   </div>
@@ -165,7 +159,7 @@ export default function LandingPage() {
                  </div>
                  <div className="mt-6 p-6 rounded-2xl bg-primary/5 border border-primary/10 text-primary text-center">
                     <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Transcription Active</div>
-                    <div className="text-lg font-bold font-outfit">"Welcome to the session."</div>
+                    <div className="text-lg font-bold">"Welcome to the session."</div>
                  </div>
               </div>
             </motion.div>
@@ -177,7 +171,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-10">
             <div className="flex flex-col items-center md:items-start gap-4">
-              <div className="flex items-center gap-3 font-bold text-xl text-foreground font-outfit">
+              <div className="flex items-center gap-3 font-bold text-xl text-foreground">
                  <div className="size-10 rounded-xl bg-primary text-primary-foreground grid place-items-center text-xs">T2</div>
                  Talk2Me AI
               </div>
@@ -188,19 +182,19 @@ export default function LandingPage() {
             
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-12 text-sm font-medium">
                <div className="flex flex-col gap-4">
-                  <div className="text-foreground font-bold font-outfit uppercase tracking-wider text-[11px]">Product</div>
+                  <div className="text-foreground font-bold uppercase tracking-wider text-[11px]">Product</div>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Features</a>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Enterprise</a>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Security</a>
                </div>
                <div className="flex flex-col gap-4">
-                  <div className="text-foreground font-bold font-outfit uppercase tracking-wider text-[11px]">Resources</div>
+                  <div className="text-foreground font-bold uppercase tracking-wider text-[11px]">Resources</div>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Documentation</a>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">API Reference</a>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Community</a>
                </div>
                <div className="flex flex-col gap-4">
-                  <div className="text-foreground font-bold font-outfit uppercase tracking-wider text-[11px]">Company</div>
+                  <div className="text-foreground font-bold uppercase tracking-wider text-[11px]">Company</div>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">About</a>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">TechVerge</a>
                   <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Legal</a>
