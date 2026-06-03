@@ -3,6 +3,7 @@ export type MeetingStatus = 'active' | 'ended';
 export interface Meeting {
   id: string;
   title: string;
+  room_code: string;
   host_id: string;
   livekit_room_id: string;
   created_at: string;

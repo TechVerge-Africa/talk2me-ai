@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowRight, ExternalLink } from "lucide-react";
+import { Menu, X, ArrowRight, ExternalLink, LogIn } from "lucide-react";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "../../features/auth/use-auth";
+import { supabase } from "../../services/supabase/client";
 
 const NAV_ITEMS = [
   { label: "Features",   href: "#features"  },
@@ -16,15 +18,20 @@ const NAV_ITEMS = [
 /* ─── Desktop Navbar ───────────────────────────────────────────── */
 function DesktopNav({ scrolled }: { scrolled: boolean }) {
   const pathname = usePathname();
-  const isLanding = pathname === "/";
+  const { user, loading } = useAuth();
+  
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  };
 
   return (
     <div className="hidden lg:flex items-center justify-between h-[72px] w-full">
       {/* Logo Section */}
       <Link href="/" className="flex items-center gap-3 group flex-shrink-0">
         <motion.div
-          whileHover={{ scale: 1.1, rotate: -5 }}
-          whileTap={{ scale: 0.95 }}
+  whileHover={{ scale: 1.1, rotate: -5 }}
+  whileTap={{ scale: 0.95 }}
           className="w-11 h-11 rounded-2xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-lg group-hover:shadow-bridge transition-all border border-white/20"
         >
           <span className="text-white font-black text-base tracking-tighter">T2</span>
@@ -55,22 +62,30 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
 
       {/* Action Buttons */}
       <div className="flex items-center gap-4">
-        <Link
-          href="https://github.com"
-          target="_blank"
-          className="p-2.5 rounded-xl hover:bg-foreground/5 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ExternalLink className="size-5" />
-        </Link>
+        {!loading && (
+          <>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-end leading-none">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-bridge-cyan opacity-70">Authenticated</span>
+                  <button onClick={handleSignOut} className="text-[10px] font-bold text-muted-foreground hover:text-red-500 transition-colors uppercase mt-1">Sign Out</button>
+                </div>
+                <div className="size-10 rounded-xl bg-gradient-to-tr from-bridge-cyan to-bridge-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg">
+                   {user.email?.slice(0, 2).toUpperCase()}
+                </div>
+              </div>
+            ) : (
+              <Link
+                href="/auth"
+                className="px-6 py-2.5 text-xs font-black uppercase tracking-widest text-foreground hover:bg-foreground/10 rounded-xl transition-all border border-border"
+              >
+                Log In
+              </Link>
+            )}
+          </>
+        )}
         
         <div className="h-6 w-px bg-border/50" />
-        
-        <Link
-          href="/join"
-          className="text-sm font-bold text-muted-foreground hover:text-foreground transition-colors hidden xl:block"
-        >
-          Join Session
-        </Link>
         
         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
           <Link
@@ -89,6 +104,8 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
 
 /* ─── Mobile Navbar ─────────────────────────────────────────────── */
 function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user, loading } = useAuth();
+  
   return (
     <AnimatePresence>
       {open && (
@@ -143,6 +160,17 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
             </nav>
 
             <div className="p-8 border-t border-border/50 space-y-4">
+              {!loading && !user && (
+                <Link
+                  href="/auth"
+                  onClick={onClose}
+                  className="flex items-center justify-center gap-3 w-full py-5 text-lg font-bold rounded-3xl bg-card ring-1 ring-border shadow-sm"
+                >
+                  <LogIn className="size-5" />
+                  Request Access
+                </Link>
+              )}
+              
               <Link
                 href="/create"
                 onClick={onClose}
@@ -152,9 +180,6 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
                 Start Session
                 <ArrowRight className="size-5" />
               </Link>
-              <p className="text-center text-xs text-muted-foreground font-black uppercase tracking-widest opacity-60">
-                 Inclusive by Technology
-              </p>
             </div>
           </motion.aside>
         </>
@@ -167,7 +192,9 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
 
+  // All hooks must run before any conditional return (React rules of hooks)
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -178,6 +205,11 @@ export function Navbar() {
     document.body.style.overflow = mobileOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
+
+  // Hide completely inside meeting rooms — just like Google Meet / Zoom
+  // This return must come AFTER all hooks above
+  const isInRoom = pathname?.startsWith('/room/');
+  if (isInRoom) return null;
 
   return (
     <>

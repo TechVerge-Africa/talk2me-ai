@@ -16,7 +16,7 @@ export function MeetingLayout({
   isDeafMode 
 }: MeetingLayoutProps) {
   return (
-    <main className={`min-h-screen transition-colors duration-700 ${isDeafMode ? "bg-slate-950" : "bg-background"}`}>
+    <main className={`min-h-screen flex flex-col transition-colors duration-700 ${isDeafMode ? "bg-slate-950" : "bg-background"}`}>
       {topbar}
       
       <div className="px-4 sm:px-6 py-5 max-w-7xl mx-auto grid lg:grid-cols-12 gap-5 pb-32">

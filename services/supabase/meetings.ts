@@ -34,6 +34,7 @@ export const MeetingService = {
     return {
       id: data.id,
       title: data.room_name,
+      room_code: data.room_code,
       host_id: data.host_id,
       livekit_room_id: data.id, // Using internal ID as room name for LiveKit
       created_at: data.created_at,
@@ -60,6 +61,7 @@ export const MeetingService = {
     return {
       id: data.id,
       title: data.room_name,
+      room_code: data.room_code,
       host_id: data.host_id,
       livekit_room_id: data.id,
       created_at: data.created_at,

@@ -1,122 +1,135 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { Room, RoomEvent, createLocalVideoTrack, createLocalAudioTrack, TranscriptionSegment } from 'livekit-client';
+import { useState, useCallback, useEffect } from 'react';
+import { RoomEvent, RemoteParticipant, LocalParticipant, TranscriptionSegment } from 'livekit-client';
+import { useRoomContext } from '@livekit/components-react';
 import { Message } from '../../../types/message';
-import { generateToken, createLiveKitRoom } from '../../../services/livekit/room';
+import { TranscriptService } from '../../../services/supabase/transcripts';
 
 export function useMeeting(roomCode: string) {
+  const room = useRoomContext();
+
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [screenShareOn, setScreenShareOn] = useState(false);
   const [isDeafMode, setIsDeafMode] = useState(false);
-  const [participants, setParticipants] = useState<any[]>([]);
+  const [participants, setParticipants] = useState<(RemoteParticipant | LocalParticipant)[]>([]);
   const [captions, setCaptions] = useState<Message[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  
-  const roomRef = useRef<Room | null>(null);
 
   useEffect(() => {
-    const room = createLiveKitRoom();
-    roomRef.current = room;
+    if (!room) return;
 
-    const handleTranscription = (segments: TranscriptionSegment[], participant: any, publication: any) => {
+    const updateParticipants = () => {
+      const all = [room.localParticipant, ...Array.from(room.remoteParticipants.values())];
+      setParticipants(all);
+    };
+
+    const handleTranscription = (segments: TranscriptionSegment[], participant: any) => {
       const text = segments.map(s => s.text).join(' ');
       if (!text.trim()) return;
 
-      setCaptions(prev => {
-        const last = prev[prev.length - 1];
-        // If the same participant sent a segment recently, we could merge it or add new
-        return [...prev, {
-          id: Math.random().toString(36).substr(2, 9),
+      const newCaption: Message = {
+        id: `cap-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        meeting_id: roomCode,
+        sender_id: participant.identity,
+        content: text,
+        type: 'caption',
+        timestamp: new Date().toISOString(),
+      };
+
+      setCaptions(prev => [...prev.slice(-50), newCaption]);
+
+      if (segments.every(s => s.final)) {
+        TranscriptService.saveTranscript({
           meeting_id: roomCode,
-          sender_id: participant.identity,
+          user_id: participant.identity,
           content: text,
-          type: 'caption',
-          timestamp: new Date().toISOString()
-        }];
-      });
-    };
-
-    room.on(RoomEvent.TranscriptionReceived, handleTranscription);
-    room.on(RoomEvent.ParticipantConnected, () => setParticipants([...room.remoteParticipants.values()]));
-    room.on(RoomEvent.ParticipantDisconnected, () => setParticipants([...room.remoteParticipants.values()]));
-
-    const connect = async () => {
-      try {
-        const token = await generateToken(roomCode, `User_${Math.floor(Math.random() * 1000)}`);
-        await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL || 'wss://talk2me.livekit.cloud', token);
-        
-        // Initial tracks
-        const audioTrack = await createLocalAudioTrack();
-        const videoTrack = await createLocalVideoTrack();
-        await room.localParticipant.publishTrack(audioTrack);
-        await room.localParticipant.publishTrack(videoTrack);
-        
-        // Sync with state
-        await room.localParticipant.setMicrophoneEnabled(micOn);
-        await room.localParticipant.setCameraEnabled(camOn);
-        
-        setParticipants([...room.remoteParticipants.values()]);
-      } catch (e) {
-        console.error('Failed to connect to LiveKit:', e);
+          start_time: segments[0].startTime,
+          end_time: segments[segments.length - 1].endTime,
+        });
       }
     };
 
-    connect();
+    const handleData = (payload: Uint8Array) => {
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(payload)) as Message;
+        if (msg.type === 'chat') {
+          setMessages(prev => [...prev, msg]);
+        }
+      } catch {}
+    };
+
+    room.on(RoomEvent.TranscriptionReceived, handleTranscription);
+    room.on(RoomEvent.ParticipantConnected, updateParticipants);
+    room.on(RoomEvent.ParticipantDisconnected, updateParticipants);
+    room.on(RoomEvent.TrackSubscribed, updateParticipants);
+    room.on(RoomEvent.TrackUnsubscribed, updateParticipants);
+    room.on(RoomEvent.DataReceived, handleData);
+
+    // Sync initial state
+    updateParticipants();
 
     return () => {
-      room.disconnect();
+      room.off(RoomEvent.TranscriptionReceived, handleTranscription);
+      room.off(RoomEvent.ParticipantConnected, updateParticipants);
+      room.off(RoomEvent.ParticipantDisconnected, updateParticipants);
+      room.off(RoomEvent.TrackSubscribed, updateParticipants);
+      room.off(RoomEvent.TrackUnsubscribed, updateParticipants);
+      room.off(RoomEvent.DataReceived, handleData);
     };
-  }, [roomCode]);
+  }, [room, roomCode]);
 
   const toggleMic = useCallback(async () => {
-    if (!roomRef.current?.localParticipant) return;
+    if (!room?.localParticipant) return;
     try {
       const enabled = !micOn;
-      await roomRef.current.localParticipant.setMicrophoneEnabled(enabled);
+      await room.localParticipant.setMicrophoneEnabled(enabled);
       setMicOn(enabled);
     } catch (e) {
       console.error('Failed to toggle microphone:', e);
     }
-  }, [micOn]);
+  }, [room, micOn]);
 
   const toggleCam = useCallback(async () => {
-    if (!roomRef.current?.localParticipant) return;
+    if (!room?.localParticipant) return;
     try {
       const enabled = !camOn;
-      await roomRef.current.localParticipant.setCameraEnabled(enabled);
+      await room.localParticipant.setCameraEnabled(enabled);
       setCamOn(enabled);
     } catch (e) {
       console.error('Failed to toggle camera:', e);
     }
-  }, [camOn]);
+  }, [room, camOn]);
 
   const toggleScreenShare = useCallback(async () => {
-    if (!roomRef.current?.localParticipant) return;
+    if (!room?.localParticipant) return;
     try {
       const enabled = !screenShareOn;
-      await roomRef.current.localParticipant.setScreenShareEnabled(enabled);
+      await room.localParticipant.setScreenShareEnabled(enabled);
       setScreenShareOn(enabled);
     } catch (e) {
       console.error('Failed to toggle screen share:', e);
     }
-  }, [screenShareOn]);
+  }, [room, screenShareOn]);
 
   const toggleDeafMode = useCallback(() => setIsDeafMode(v => !v), []);
 
   const sendMessage = useCallback((content: string) => {
-    if (!roomRef.current) return;
-    // For now we just mock chat messages locally or via LiveKit Data Channel
+    if (!room?.localParticipant) return;
+
     const msg: Message = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: `chat-${Date.now()}`,
       meeting_id: roomCode,
-      sender_id: 'me',
+      sender_id: room.localParticipant.identity,
       content,
       type: 'chat',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
+
     setMessages(prev => [...prev, msg]);
-    // roomRef.current.localParticipant.publishData(...) would go here
-  }, [roomCode]);
+
+    const encoder = new TextEncoder();
+    room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), { reliable: true });
+  }, [room, roomCode]);
 
   return {
     roomCode,
