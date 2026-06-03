@@ -11,17 +11,20 @@ export function useLiveKitRoom(url: string, token: string) {
     const r = new Room();
     
     r.on(RoomEvent.ParticipantConnected, () => {
-      setParticipants(Array.from(r.participants.values()));
+      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
+      setParticipants(allParticipants);
     });
 
     r.on(RoomEvent.ParticipantDisconnected, () => {
-      setParticipants(Array.from(r.participants.values()));
+      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
+      setParticipants(allParticipants);
     });
 
     async function connect() {
       await r.connect(url, token);
       setRoom(r);
-      setParticipants(Array.from(r.participants.values()));
+      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
+      setParticipants(allParticipants);
     }
 
     connect();
