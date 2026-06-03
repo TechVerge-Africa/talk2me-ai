@@ -1,5 +1,5 @@
 import React from "react";
-import { Message } from "../../types/message";
+import { Message } from "@/types/message";
 
 
 interface CaptionListProps {

@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
-@source "../../../../features";
-@source "../../../../packages";
-@source "../../../../services";
-@source "../../../../hooks";
+@source "../features";
+@source "../packages";
+@source "../services";
+@source "../hooks";
 
 
 @import "tw-animate-css";

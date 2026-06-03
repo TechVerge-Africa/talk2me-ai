@@ -1,6 +1,6 @@
 import { supabase } from './client';
-import { generateRoomCode } from '../../packages/shared/rooms';
-import { Meeting } from '../../types/meeting';
+import { generateRoomCode } from '@/packages/shared/rooms';
+import { Meeting } from '@/types/meeting';
 
 export const MeetingService = {
   /**

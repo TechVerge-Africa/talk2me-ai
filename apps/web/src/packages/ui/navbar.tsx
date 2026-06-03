@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, ArrowRight, ExternalLink, LogIn } from "lucide-react";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { useAuth } from "../../features/auth/use-auth";
-import { supabase } from "../../services/supabase/client";
+import { useAuth } from "@/features/auth/use-auth";
+import { supabase } from "@/services/supabase/client";
 
 const NAV_ITEMS = [
   { label: "Features",   href: "#features"  },

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Message } from '../../../types/message';
+import { Message } from '@/types/message';
 
 interface Props {
   captions: Message[];

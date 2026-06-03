@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { RoomEvent, RemoteParticipant, LocalParticipant, TranscriptionSegment } from 'livekit-client';
 import { useRoomContext } from '@livekit/components-react';
-import { Message } from '../../../types/message';
-import { TranscriptService } from '../../../services/supabase/transcripts';
+import { Message } from '@/types/message';
+import { TranscriptService } from '@/services/supabase/transcripts';
 
 export function useMeeting(roomCode: string) {
   const room = useRoomContext();

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Message } from "../../types/message";
+import { Message } from "@/types/message";
 import { Send } from "lucide-react";
 
 interface ChatPanelProps {
