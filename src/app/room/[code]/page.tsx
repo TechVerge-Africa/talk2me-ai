@@ -19,7 +19,7 @@ import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
 import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 
-const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL!;
+const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
 
 // ─── Post-leave screen ──────────────────────────────────────────────
 function LeftMeetingScreen({
