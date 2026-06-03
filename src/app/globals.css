@@ -156,6 +156,9 @@
 .animate-orb-pulse { animation: orb-pulse 2.4s ease-out infinite; }
 .animate-signal-pulse { animation: signal-pulse 2s ease-in-out infinite; }
 
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
 @media (prefers-reduced-motion: reduce) {
   .animate-wave-pulse, .animate-float-soft, .animate-orb-pulse { animation: none !important; }
 }
