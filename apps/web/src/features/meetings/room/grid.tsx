@@ -1,7 +1,7 @@
 import React from "react";
 import { Plus } from "lucide-react";
 import { RemoteParticipant, LocalParticipant, Track } from 'livekit-client';
-import { VideoTrack } from "./video-track";
+import { ParticipantVideo } from "./video-track";
 
 interface ParticipantGridProps {
   participants: (RemoteParticipant | LocalParticipant)[];
@@ -46,7 +46,7 @@ export function ParticipantGrid({ participants, onInvite }: ParticipantGridProps
 
           {/* Tiny Video Overlay for Grid Tiles */}
           <div className="absolute inset-0 opacity-10 pointer-events-none">
-             <VideoTrack participantIdentity={p.identity} source={Track.Source.Camera} />
+             <ParticipantVideo participant={p} source={Track.Source.Camera} />
           </div>
         </div>
       ))}
