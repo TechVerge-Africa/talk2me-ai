@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { RemoteParticipant, Track } from 'livekit-client';
-import { VideoTrack } from './video-track';
+import { ParticipantVideo } from './video-track';
 import { Maximize2, Minimize2, UserRound } from 'lucide-react';
 
 interface Props {
@@ -16,8 +16,8 @@ export function SignLanguagePiP({ interpreter, isVisible }: Props) {
   return (
     <div className="absolute bottom-24 right-8 z-50 group">
       <div className="relative w-48 sm:w-64 aspect-[3/4] rounded-[32px] overflow-hidden shadow-2xl ring-1 ring-white/20 bg-slate-900 group-hover:scale-105 transition-all duration-500">
-        <VideoTrack 
-          participantIdentity={interpreter.identity} 
+        <ParticipantVideo 
+          participant={interpreter} 
           source={Track.Source.Camera} 
           className="w-full h-full object-cover"
         />
