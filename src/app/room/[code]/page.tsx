@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { LiveKitRoom, useTracks } from '@livekit/components-react';
+import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant } from 'livekit-client';
 import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -400,6 +400,7 @@ export default function RoomPage() {
 
   return (
     <LiveKitRoom token={token} serverUrl={LIVEKIT_URL} connect={true} audio={true} video={true}>
+      <RoomAudioRenderer />
       <RoomContent code={code} isHost={isHost} onLeave={handleLeave} />
     </LiveKitRoom>
   );
