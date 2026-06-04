@@ -12,6 +12,7 @@ interface ParticipantsPanelProps {
   hostId?: string;
   isOpen: boolean;
   onClose: () => void;
+  onMuteRequest?: (participantId: string, track: 'mic' | 'cam') => void;
 }
 
 function getRoleBadge(p: LocalParticipant | RemoteParticipant, hostId?: string) {
@@ -21,8 +22,9 @@ function getRoleBadge(p: LocalParticipant | RemoteParticipant, hostId?: string) 
   return { label: 'Participant', color: 'bg-muted text-muted-foreground' };
 }
 
-function ParticipantRow({ p, hostId }: { p: LocalParticipant | RemoteParticipant; hostId?: string }) {
+function ParticipantRow({ p, hostId, onMuteRequest }: { p: LocalParticipant | RemoteParticipant; hostId?: string; onMuteRequest?: (id: string, track: 'mic' | 'cam') => void }) {
   const role = getRoleBadge(p, hostId);
+  const isLocal = p instanceof LocalParticipant;
   const initials = p.identity.slice(0, 2).toUpperCase();
 
   return (
@@ -47,17 +49,31 @@ function ParticipantRow({ p, hostId }: { p: LocalParticipant | RemoteParticipant
       </div>
 
       {/* Mic / Cam status icons */}
-      <div className="flex items-center gap-1.5">
-        {p.isMicrophoneEnabled ? (
-          <Mic className="size-3.5 text-muted-foreground" />
-        ) : (
-          <MicOff className="size-3.5 text-destructive" />
-        )}
-        {p.isCameraEnabled ? (
-          <Video className="size-3.5 text-muted-foreground" />
-        ) : (
-          <VideoOff className="size-3.5 text-destructive" />
-        )}
+      <div className="flex items-center gap-1">
+        <button 
+          onClick={() => !isLocal && onMuteRequest && p.isMicrophoneEnabled && onMuteRequest(p.identity, 'mic')}
+          disabled={isLocal || !onMuteRequest || !p.isMicrophoneEnabled}
+          className={`p-1.5 rounded-lg transition-colors ${!isLocal && onMuteRequest && p.isMicrophoneEnabled ? 'hover:bg-muted/80 cursor-pointer text-foreground' : 'cursor-default'}`}
+          title={!isLocal && onMuteRequest && p.isMicrophoneEnabled ? "Mute participant" : undefined}
+        >
+          {p.isMicrophoneEnabled ? (
+            <Mic className="size-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+          ) : (
+            <MicOff className="size-3.5 text-destructive" />
+          )}
+        </button>
+        <button 
+          onClick={() => !isLocal && onMuteRequest && p.isCameraEnabled && onMuteRequest(p.identity, 'cam')}
+          disabled={isLocal || !onMuteRequest || !p.isCameraEnabled}
+          className={`p-1.5 rounded-lg transition-colors ${!isLocal && onMuteRequest && p.isCameraEnabled ? 'hover:bg-muted/80 cursor-pointer text-foreground' : 'cursor-default'}`}
+          title={!isLocal && onMuteRequest && p.isCameraEnabled ? "Stop video" : undefined}
+        >
+          {p.isCameraEnabled ? (
+            <Video className="size-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+          ) : (
+            <VideoOff className="size-3.5 text-destructive" />
+          )}
+        </button>
         {p.isSpeaking && (
           <div className="flex items-end gap-px h-4">
             {[3, 6, 4, 7, 3].map((h, i) => (
@@ -74,7 +90,7 @@ function ParticipantRow({ p, hostId }: { p: LocalParticipant | RemoteParticipant
   );
 }
 
-export function ParticipantsPanel({ participants, hostId, isOpen, onClose }: ParticipantsPanelProps) {
+export function ParticipantsPanel({ participants, hostId, isOpen, onClose, onMuteRequest }: ParticipantsPanelProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -126,7 +142,7 @@ export function ParticipantsPanel({ participants, hostId, isOpen, onClose }: Par
                 </div>
               ) : (
                 participants.map(p => (
-                  <ParticipantRow key={p.sid || p.identity} p={p} hostId={hostId} />
+                  <ParticipantRow key={p.sid || p.identity} p={p} hostId={hostId} onMuteRequest={onMuteRequest} />
                 ))
               )}
             </div>

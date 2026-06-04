@@ -51,9 +51,19 @@ export function useMeeting(roomCode: string) {
 
     const handleData = (payload: Uint8Array) => {
       try {
-        const msg = JSON.parse(new TextDecoder().decode(payload)) as Message;
+        const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg.type === 'chat') {
           setMessages(prev => [...prev, msg]);
+        } else if (msg.type === 'mute_request') {
+          if (room.localParticipant.identity === msg.target_id) {
+            if (msg.source === 'mic') {
+              room.localParticipant.setMicrophoneEnabled(false);
+              setMicOn(false);
+            } else if (msg.source === 'cam') {
+              room.localParticipant.setCameraEnabled(false);
+              setCamOn(false);
+            }
+          }
         }
       } catch {}
     };
@@ -131,6 +141,13 @@ export function useMeeting(roomCode: string) {
     room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), { reliable: true });
   }, [room, roomCode]);
 
+  const requestMute = useCallback((targetId: string, source: 'mic' | 'cam') => {
+    if (!room?.localParticipant) return;
+    const msg = { type: 'mute_request', target_id: targetId, source };
+    const encoder = new TextEncoder();
+    room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), { reliable: true });
+  }, [room]);
+
   return {
     roomCode,
     micOn,
@@ -145,5 +162,6 @@ export function useMeeting(roomCode: string) {
     toggleScreenShare,
     toggleDeafMode,
     sendMessage,
+    requestMute,
   };
 }

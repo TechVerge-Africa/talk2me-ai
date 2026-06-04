@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
-import { Track, LocalParticipant, RemoteParticipant } from 'livekit-client';
+import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
 import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -20,6 +20,45 @@ import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
+
+// ─── Guest Prompt Screen ────────────────────────────────────────────
+function GuestPromptScreen({ onJoin }: { onJoin: (name: string) => void }) {
+  const [name, setName] = useState('');
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-sm p-8 rounded-[32px] glass-card border border-border text-center relative overflow-hidden shadow-2xl"
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-bridge-indigo/5 to-bridge-cyan/5 pointer-events-none" />
+        <div className="relative size-16 rounded-2xl bg-gradient-to-br from-bridge-indigo/10 to-bridge-cyan/10 ring-1 ring-bridge-cyan/20 grid place-items-center mx-auto mb-6">
+          <User className="size-6 text-bridge-indigo" />
+        </div>
+        <h2 className="relative text-2xl font-bold tracking-tight mb-2">Join Meeting</h2>
+        <p className="relative text-muted-foreground text-sm mb-6">Please enter your name to join as a guest.</p>
+        <form onSubmit={e => { e.preventDefault(); if (name.trim()) onJoin(name.trim()); }} className="flex flex-col gap-4 relative z-10">
+          <input
+            autoFocus
+            type="text"
+            placeholder="Your name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            className="w-full h-14 px-4 text-center rounded-2xl bg-muted/50 border border-border focus:ring-2 focus:ring-bridge-cyan outline-none transition-all placeholder:text-muted-foreground/50 font-medium"
+            maxLength={30}
+          />
+          <button
+            disabled={!name.trim()}
+            type="submit"
+            className="w-full h-14 rounded-2xl font-bold text-white shadow-bridge-sm transition-all hover:scale-[0.98] disabled:hover:scale-100 disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)' }}
+          >
+            Join Now
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
 
 // ─── Post-leave screen ──────────────────────────────────────────────
 function LeftMeetingScreen({
@@ -129,7 +168,7 @@ function RoomContent({
   const {
     micOn, camOn, screenShareOn, isDeafMode,
     captions, messages, participants,
-    toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage,
+    toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
   } = useMeeting(code);
 
   const [transcriptOpen, setTranscriptOpen] = useState(true);
@@ -245,17 +284,17 @@ function RoomContent({
   const mainStage = isDeafMode ? (
     <AiSignerView currentCaption={captions[captions.length - 1]?.content} />
   ) : hasScreenShare ? (
-    <div className="relative w-full h-full">
-      <ScreenShareView className="w-full h-full rounded-[32px]" />
+    <div className="relative flex-1 w-full h-full min-h-0">
+      <ScreenShareView className="w-full h-full rounded-2xl sm:rounded-[32px]" />
       {localParticipant && (
-        <div className="absolute bottom-4 right-4 w-40 h-28 rounded-2xl overflow-hidden shadow-2xl ring-2 ring-border z-10">
-          <ParticipantVideo participant={localParticipant} source={Track.Source.Camera} className="w-full h-full rounded-2xl" mirrored />
+        <div className="absolute bottom-4 right-4 w-28 h-40 sm:w-44 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl ring-2 ring-border z-10 transition-all">
+          <ParticipantVideo participant={localParticipant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored />
         </div>
       )}
     </div>
   ) : (
-    <div className="relative w-full h-full">
-      <div className="w-full h-full rounded-[32px] overflow-hidden bg-slate-950 ring-1 ring-white/10">
+    <div className="relative flex-1 w-full h-full min-h-0">
+      <div className="w-full h-full rounded-2xl sm:rounded-[32px] overflow-hidden bg-slate-950 sm:ring-1 sm:ring-white/10">
         {activeSpeaker ? (
           <ParticipantVideo participant={activeSpeaker} source={Track.Source.Camera} className="w-full h-full" />
         ) : (
@@ -276,8 +315,8 @@ function RoomContent({
       </div>
       {/* Self-view PiP */}
       {localParticipant && (
-        <div className="absolute bottom-4 right-4 w-44 h-28 rounded-2xl overflow-hidden shadow-2xl ring-2 ring-border/60 z-10 bg-slate-900">
-          <ParticipantVideo participant={localParticipant} source={Track.Source.Camera} className="w-full h-full rounded-2xl" mirrored />
+        <div className="absolute bottom-4 right-4 w-24 h-36 sm:w-44 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl ring-1 sm:ring-2 ring-border/60 z-10 bg-slate-900 transition-all">
+          <ParticipantVideo participant={localParticipant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored />
         </div>
       )}
     </div>
@@ -322,7 +361,7 @@ function RoomContent({
         )}
       </MeetingLayout>
 
-      <ParticipantsPanel participants={participants} hostId={isHost ? localParticipant?.identity : undefined} isOpen={participantsOpen} onClose={() => setParticipantsOpen(false)} />
+      <ParticipantsPanel participants={participants} hostId={isHost ? localParticipant?.identity : undefined} isOpen={participantsOpen} onClose={() => setParticipantsOpen(false)} onMuteRequest={isHost ? requestMute : undefined} />
     </>
   );
 }
@@ -336,18 +375,36 @@ export default function RoomPage() {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasLeft, setHasLeft] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const hasFetchedToken = useRef(false);
 
   // A user is a host if they're signed in
   const isHost = !!user;
 
-  const fetchToken = useCallback(async () => {
+  const roomOptions = useMemo<RoomOptions>(() => ({
+    adaptiveStream: true,
+    dynacast: true,
+    publishDefaults: {
+      videoSimulcastLayers: [
+        VideoPresets.h360,
+        VideoPresets.h180,
+      ],
+      videoEncode: {
+        maxBitrate: 400_000,
+        maxFramerate: 24,
+      },
+    },
+  }), []);
+
+  const fetchToken = useCallback(async (customName?: string) => {
     if (!code) return;
-    const username = user?.email?.split('@')[0] || `Guest_${Math.floor(Math.random() * 9999)}`;
+    const username = customName || user?.email?.split('@')[0];
+    if (!username) return; // Prevent token fetch without a name
     try {
       const t = await generateToken(code, username);
       setToken(t);
       setHasLeft(false);
+      setShowGuestPrompt(false);
     } catch (e) {
       console.error('Failed to generate LiveKit token:', e);
       setError('Could not connect to the room. Please check your connection.');
@@ -357,9 +414,14 @@ export default function RoomPage() {
   useEffect(() => {
     if (authLoading) return; // wait until auth is resolved
     if (hasFetchedToken.current) return;
-    hasFetchedToken.current = true;
-    fetchToken();
-  }, [authLoading, fetchToken]);
+    
+    if (user) {
+      hasFetchedToken.current = true;
+      fetchToken();
+    } else {
+      setShowGuestPrompt(true);
+    }
+  }, [authLoading, user, fetchToken]);
 
   const handleLeave = useCallback(() => {
     setToken(null);
@@ -368,8 +430,18 @@ export default function RoomPage() {
 
   const handleRejoin = useCallback(() => {
     hasFetchedToken.current = false;
-    fetchToken();
-  }, [fetchToken]);
+    if (user) {
+      fetchToken();
+    } else {
+      setShowGuestPrompt(true);
+      setHasLeft(false);
+    }
+  }, [fetchToken, user]);
+
+  // Guest Name Prompt Screen
+  if (showGuestPrompt) {
+    return <GuestPromptScreen onJoin={(name) => { hasFetchedToken.current = true; fetchToken(name); }} />;
+  }
 
   // Left screen
   if (hasLeft) {
@@ -398,8 +470,16 @@ export default function RoomPage() {
     );
   }
 
+
   return (
-    <LiveKitRoom token={token} serverUrl={LIVEKIT_URL} connect={true} audio={true} video={true}>
+    <LiveKitRoom 
+      token={token} 
+      serverUrl={LIVEKIT_URL} 
+      connect={true} 
+      audio={true} 
+      video={{ resolution: VideoPresets.h360.resolution }}
+      options={roomOptions}
+    >
       <RoomAudioRenderer />
       <RoomContent code={code} isHost={isHost} onLeave={handleLeave} />
     </LiveKitRoom>

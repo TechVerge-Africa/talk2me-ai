@@ -16,23 +16,25 @@ export function MeetingLayout({
   isDeafMode 
 }: MeetingLayoutProps) {
   return (
-    <main className={`min-h-screen flex flex-col transition-colors duration-700 ${isDeafMode ? "bg-slate-950" : "bg-background"}`}>
-      {topbar}
+    <main className={`fixed inset-0 flex flex-col transition-colors duration-700 ${isDeafMode ? "bg-slate-950" : "bg-slate-950 sm:bg-background"}`}>
+      <div className="flex-shrink-0 z-40">
+        {topbar}
+      </div>
       
-      <div className="px-3 sm:px-6 py-4 sm:py-5 max-w-7xl mx-auto w-full grid lg:grid-cols-12 gap-4 sm:gap-5 pb-32 sm:pb-32">
-        <div className={`${sidebar ? "lg:col-span-8" : "lg:col-span-12"} w-full transition-all duration-500 ease-in-out`}>
+      <div className="flex-1 flex flex-col lg:flex-row relative overflow-hidden pb-[80px] sm:pb-0">
+        <div className={`flex-1 transition-all duration-500 ease-in-out relative p-2 sm:p-4 lg:p-6 ${sidebar ? "lg:flex-[2]" : ""}`}>
           {children}
         </div>
         
         {sidebar && (
-          <aside className="lg:col-span-4 h-[50vh] lg:h-[calc(100vh-9rem)] lg:sticky lg:top-20 animate-in slide-in-from-right duration-500">
+          <aside className="h-[45dvh] lg:h-full lg:w-[400px] flex-shrink-0 bg-background lg:bg-transparent z-20 animate-in slide-in-from-bottom lg:slide-in-from-right duration-300 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] lg:shadow-none lg:py-6 lg:pr-6 rounded-t-3xl lg:rounded-none">
             {sidebar}
           </aside>
         )}
       </div>
 
       {dock && (
-        <div className="fixed bottom-4 sm:bottom-8 left-0 right-0 px-4 flex justify-center z-30 pointer-events-none">
+        <div className="absolute bottom-5 sm:bottom-8 left-0 right-0 px-2 flex justify-center z-30 pointer-events-none">
           <div className="pointer-events-auto max-w-full">
             {dock}
           </div>
