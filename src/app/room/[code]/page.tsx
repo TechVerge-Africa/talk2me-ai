@@ -21,9 +21,17 @@ import { generateToken } from '@/services/livekit/room';
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
 
-// ─── Guest Prompt Screen ────────────────────────────────────────────
-function GuestPromptScreen({ onJoin }: { onJoin: (name: string) => void }) {
-  const [name, setName] = useState('');
+// ─── Pre-Join Lobby ──────────────────────────────────────────────────
+function PreJoinLobby({ 
+  onJoin, 
+  defaultName = '', 
+  isHost = false 
+}: { 
+  onJoin: (name: string) => void, 
+  defaultName?: string, 
+  isHost?: boolean 
+}) {
+  const [name, setName] = useState(defaultName);
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6">
       <motion.div 
@@ -35,24 +43,32 @@ function GuestPromptScreen({ onJoin }: { onJoin: (name: string) => void }) {
           <User className="size-6 text-bridge-indigo" />
         </div>
         <h2 className="relative text-2xl font-bold tracking-tight mb-2">Join Meeting</h2>
-        <p className="relative text-muted-foreground text-sm mb-6">Please enter your name to join as a guest.</p>
+        <p className="relative text-muted-foreground text-sm mb-6">
+          {isHost ? "You're joining as the Host." : "Please enter your name to join."}
+        </p>
         <form onSubmit={e => { e.preventDefault(); if (name.trim()) onJoin(name.trim()); }} className="flex flex-col gap-4 relative z-10">
-          <input
-            autoFocus
-            type="text"
-            placeholder="Your name"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            className="w-full h-14 px-4 text-center rounded-2xl bg-muted/50 border border-border focus:ring-2 focus:ring-bridge-cyan outline-none transition-all placeholder:text-muted-foreground/50 font-medium"
-            maxLength={30}
-          />
+          {!isHost ? (
+            <input
+              autoFocus
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full h-14 px-4 text-center rounded-2xl bg-muted/50 border border-border focus:ring-2 focus:ring-bridge-cyan outline-none transition-all placeholder:text-muted-foreground/50 font-medium"
+              maxLength={30}
+            />
+          ) : (
+            <div className="w-full h-14 px-4 flex items-center justify-center rounded-2xl bg-muted/50 border border-border font-bold text-foreground truncate">
+              {name || "Host"}
+            </div>
+          )}
           <button
-            disabled={!name.trim()}
+            disabled={!name.trim() && !isHost}
             type="submit"
             className="w-full h-14 rounded-2xl font-bold text-white shadow-bridge-sm transition-all hover:scale-[0.98] disabled:hover:scale-100 disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)' }}
           >
-            Join Now
+            Ready to Join
           </button>
         </form>
       </motion.div>
@@ -375,7 +391,7 @@ export default function RoomPage() {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasLeft, setHasLeft] = useState(false);
-  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [showPreJoin, setShowPreJoin] = useState(false);
   const hasFetchedToken = useRef(false);
 
   // A user is a host if they're signed in
@@ -404,7 +420,7 @@ export default function RoomPage() {
       const t = await generateToken(code, username);
       setToken(t);
       setHasLeft(false);
-      setShowGuestPrompt(false);
+      setShowPreJoin(false);
     } catch (e) {
       console.error('Failed to generate LiveKit token:', e);
       setError('Could not connect to the room. Please check your connection.');
@@ -415,13 +431,9 @@ export default function RoomPage() {
     if (authLoading) return; // wait until auth is resolved
     if (hasFetchedToken.current) return;
     
-    if (user) {
-      hasFetchedToken.current = true;
-      fetchToken();
-    } else {
-      setShowGuestPrompt(true);
-    }
-  }, [authLoading, user, fetchToken]);
+    // EVERYONE sees the Pre-Join lobby to satisfy Safari's User Gesture requirement for mic/cam
+    setShowPreJoin(true);
+  }, [authLoading]);
 
   const handleLeave = useCallback(() => {
     setToken(null);
@@ -430,17 +442,17 @@ export default function RoomPage() {
 
   const handleRejoin = useCallback(() => {
     hasFetchedToken.current = false;
-    if (user) {
-      fetchToken();
-    } else {
-      setShowGuestPrompt(true);
-      setHasLeft(false);
-    }
-  }, [fetchToken, user]);
+    setShowPreJoin(true);
+    setHasLeft(false);
+  }, []);
 
-  // Guest Name Prompt Screen
-  if (showGuestPrompt) {
-    return <GuestPromptScreen onJoin={(name) => { hasFetchedToken.current = true; fetchToken(name); }} />;
+  // Pre-Join Lobby Screen
+  if (showPreJoin) {
+    return <PreJoinLobby 
+      isHost={isHost} 
+      defaultName={user?.email?.split('@')[0]} 
+      onJoin={(name) => { hasFetchedToken.current = true; fetchToken(name || 'Host'); }} 
+    />;
   }
 
   // Left screen
