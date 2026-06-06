@@ -47,84 +47,110 @@ export function HeroSection() {
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="flex flex-col gap-12 lg:gap-16"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center"
         >
-          {/* Main heading and description */}
-          <div className="flex flex-col gap-6 max-w-5xl">
-            <motion.h1 
-              variants={fadeInUp} 
-              className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-balance leading-[0.95] lg:leading-[1.0]"
-            >
-              <span className="block text-foreground">Communication</span>
-              <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
-            </motion.h1>
+          {/* Left Column - Text Content */}
+          <div className="flex flex-col gap-8">
+            {/* Main heading and description */}
+            <div className="flex flex-col gap-6">
+              <motion.h1 
+                variants={fadeInUp} 
+                className="text-6xl sm:text-7xl lg:text-7xl font-black tracking-tighter text-balance leading-[0.95]"
+              >
+                <span className="block text-foreground">Communication</span>
+                <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
+              </motion.h1>
 
-            <motion.p 
+              <motion.p 
+                variants={fadeInUp} 
+                className="text-lg sm:text-xl text-muted-foreground text-pretty leading-relaxed font-medium"
+              >
+                AI-powered interpretation, real-time captions, and seamless streaming make communication truly accessible for everyone.
+              </motion.p>
+            </div>
+
+            {/* CTA Buttons */}
+            <motion.div 
               variants={fadeInUp} 
-              className="text-lg sm:text-xl lg:text-2xl text-muted-foreground text-pretty leading-relaxed max-w-3xl font-medium"
+              className="flex flex-col sm:flex-row gap-4 w-full max-w-2xl"
             >
-              AI-powered interpretation, real-time captions, and seamless streaming make communication truly accessible for everyone.
-            </motion.p>
+              <Link
+                href="/create"
+                className="group flex items-center justify-center gap-2 px-8 py-5 bg-indigo text-white font-bold text-lg rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
+              >
+                Get Started
+                <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+
+              <Link
+                href="/join"
+                className="group flex items-center justify-center gap-2 px-8 py-5 border-2 border-foreground/20 text-foreground font-bold text-lg rounded-2xl hover:border-indigo/50 hover:bg-indigo/8 transition-all"
+              >
+                Join a Session
+                <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </motion.div>
+
+            {/* Feature cards grid */}
+            <motion.div 
+              variants={fadeInUp}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full pt-4"
+            >
+              {[
+                { 
+                  icon: Phone, 
+                  label: "1:1 Calls", 
+                  desc: "Direct sign language interpretation and real-time transcription" 
+                },
+                { 
+                  icon: Users, 
+                  label: "Team Meetings", 
+                  desc: "Collaborate with automatic captions and visual descriptions" 
+                },
+                { 
+                  icon: Radio, 
+                  label: "Live Broadcasting", 
+                  desc: "Stream to audiences globally with full accessibility features" 
+                }
+              ].map(({ icon: Icon, label, desc }) => (
+                <motion.div 
+                  key={label}
+                  variants={fadeInUp}
+                  className="group flex flex-col gap-3 p-5 rounded-xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md hover:border-cyan/40 hover:bg-white/60 dark:hover:bg-white/12 transition-all duration-300"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-indigo/20 grid place-items-center group-hover:bg-indigo/30 transition-colors">
+                    <Icon className="size-5 text-indigo" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm lg:text-base text-foreground mb-1">{label}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </motion.div>
           </div>
 
-          {/* CTA Buttons */}
-          <motion.div 
-            variants={fadeInUp} 
-            className="flex flex-col sm:flex-row gap-4 w-full max-w-2xl pt-6"
-          >
-            <Link
-              href="/create"
-              className="group flex items-center justify-center gap-2 px-8 py-5 bg-indigo text-white font-bold text-lg rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
-            >
-              Get Started
-              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
-            </Link>
-
-            <Link
-              href="/join"
-              className="group flex items-center justify-center gap-2 px-8 py-5 border-2 border-foreground/20 text-foreground font-bold text-lg rounded-2xl hover:border-indigo/50 hover:bg-indigo/8 transition-all"
-            >
-              Join a Session
-              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </motion.div>
-
-          {/* Feature cards grid */}
+          {/* Right Column - Hero Image */}
           <motion.div 
             variants={fadeInUp}
-            className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full pt-12 lg:pt-16"
+            className="flex-1 w-full hidden lg:block"
           >
-            {[
-              { 
-                icon: Phone, 
-                label: "1:1 Calls", 
-                desc: "Direct sign language interpretation and real-time transcription" 
-              },
-              { 
-                icon: Users, 
-                label: "Team Meetings", 
-                desc: "Collaborate with automatic captions and visual descriptions" 
-              },
-              { 
-                icon: Radio, 
-                label: "Live Broadcasting", 
-                desc: "Stream to audiences globally with full accessibility features" 
-              }
-            ].map(({ icon: Icon, label, desc }) => (
-              <motion.div 
-                key={label}
-                variants={fadeInUp}
-                className="group flex flex-col gap-4 p-7 rounded-2xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md hover:border-cyan/40 hover:bg-white/60 dark:hover:bg-white/12 transition-all duration-300"
-              >
-                <div className="w-12 h-12 rounded-xl bg-indigo/20 grid place-items-center group-hover:bg-indigo/30 transition-colors">
-                  <Icon className="size-6 text-indigo" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base lg:text-lg text-foreground mb-2">{label}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
-                </div>
-              </motion.div>
-            ))}
+            <div className="relative">
+              {/* Glow effect behind image */}
+              <div className="absolute -inset-4 bg-gradient-to-r from-indigo/20 to-cyan/20 rounded-3xl blur-2xl opacity-60" />
+              
+              {/* Image container */}
+              <div className="relative rounded-3xl overflow-hidden border border-border/50 bg-white/50 dark:bg-white/5 backdrop-blur-md shadow-2xl">
+                <img
+                  src="/hero-interface.png"
+                  alt="Talk2Me Communication Interface"
+                  className="w-full h-auto object-cover"
+                />
+                
+                {/* Optional gradient overlay for visual enhancement */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       </div>
@@ -314,7 +340,7 @@ export function AILayerSection() {
               desc: "Recognizes 12,000+ ASL, BSL, and LSF signs with sub-frame latency and spatial awareness."
             },
             {
-              icon: "📢",
+              icon: "���",
               title: "Natural Language Engine",
               desc: "Converts sign sequences into contextually accurate speech with tone, emphasis, and personality."
             },
