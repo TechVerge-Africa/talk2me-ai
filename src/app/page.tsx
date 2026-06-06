@@ -47,44 +47,34 @@ export function HeroSection() {
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="flex flex-col items-start gap-8 lg:gap-12"
+          className="flex flex-col gap-12 lg:gap-16"
         >
-          {/* Status badge */}
-          <motion.div 
-            variants={fadeInUp} 
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan/8 border border-cyan/30 backdrop-blur-sm"
-          >
-            <div className="w-2 h-2 rounded-full bg-cyan animate-pulse" />
-            <span className="text-sm font-semibold text-foreground">AI-Powered Inclusive Communication</span>
-          </motion.div>
-
-          {/* Main heading */}
-          <div className="flex flex-col gap-6 max-w-4xl">
+          {/* Main heading and description */}
+          <div className="flex flex-col gap-6 max-w-5xl">
             <motion.h1 
               variants={fadeInUp} 
-              className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight text-balance leading-[1.0] lg:leading-[1.05]"
+              className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-balance leading-[0.95] lg:leading-[1.0]"
             >
-              Communication
-              <br className="hidden sm:block" />
+              <span className="block text-foreground">Communication</span>
               <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
             </motion.h1>
 
             <motion.p 
               variants={fadeInUp} 
-              className="text-xl sm:text-2xl text-muted-foreground text-pretty leading-relaxed max-w-3xl"
+              className="text-lg sm:text-xl lg:text-2xl text-muted-foreground text-pretty leading-relaxed max-w-3xl font-medium"
             >
-              AI-powered interpretation, real-time captions, and seamless streaming. Talk2Me makes communication truly accessible for everyone.
+              AI-powered interpretation, real-time captions, and seamless streaming make communication truly accessible for everyone.
             </motion.p>
           </div>
 
           {/* CTA Buttons */}
           <motion.div 
             variants={fadeInUp} 
-            className="flex flex-col sm:flex-row gap-4 w-full max-w-lg pt-4"
+            className="flex flex-col sm:flex-row gap-4 w-full max-w-2xl pt-6"
           >
             <Link
               href="/create"
-              className="group flex items-center justify-center gap-3 px-8 py-4 bg-indigo text-white font-bold text-lg rounded-xl hover:shadow-lg transition-all active:scale-95 sm:flex-1"
+              className="group flex items-center justify-center gap-2 px-8 py-5 bg-indigo text-white font-bold text-lg rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
             >
               Get Started
               <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
@@ -92,7 +82,7 @@ export function HeroSection() {
 
             <Link
               href="/join"
-              className="group flex items-center justify-center gap-3 px-8 py-4 border-2 border-indigo/30 text-foreground font-bold text-lg rounded-xl hover:border-indigo/60 hover:bg-indigo/5 transition-all sm:flex-1"
+              className="group flex items-center justify-center gap-2 px-8 py-5 border-2 border-foreground/20 text-foreground font-bold text-lg rounded-2xl hover:border-indigo/50 hover:bg-indigo/8 transition-all"
             >
               Join a Session
               <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
@@ -102,7 +92,7 @@ export function HeroSection() {
           {/* Feature cards grid */}
           <motion.div 
             variants={fadeInUp}
-            className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-8 lg:pt-12"
+            className="grid grid-cols-1 sm:grid-cols-3 gap-5 w-full pt-12 lg:pt-16"
           >
             {[
               { 
@@ -124,13 +114,13 @@ export function HeroSection() {
               <motion.div 
                 key={label}
                 variants={fadeInUp}
-                className="group flex flex-col gap-4 p-6 rounded-2xl border border-border/50 bg-white/50 dark:bg-white/5 backdrop-blur-sm hover:border-cyan/50 hover:bg-white/70 dark:hover:bg-white/10 transition-all"
+                className="group flex flex-col gap-4 p-7 rounded-2xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md hover:border-cyan/40 hover:bg-white/60 dark:hover:bg-white/12 transition-all duration-300"
               >
-                <div className="w-12 h-12 rounded-xl bg-indigo/15 grid place-items-center group-hover:bg-indigo/25 transition-colors">
+                <div className="w-12 h-12 rounded-xl bg-indigo/20 grid place-items-center group-hover:bg-indigo/30 transition-colors">
                   <Icon className="size-6 text-indigo" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-foreground mb-1">{label}</h3>
+                  <h3 className="font-bold text-base lg:text-lg text-foreground mb-2">{label}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
                 </div>
               </motion.div>
