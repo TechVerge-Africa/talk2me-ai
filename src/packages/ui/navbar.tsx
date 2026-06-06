@@ -72,7 +72,7 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
                   <span className="text-[9px] font-black uppercase tracking-widest text-cyan opacity-70">Authenticated</span>
                   <button onClick={handleSignOut} className="text-[10px] font-bold text-muted-foreground hover:text-red-500 transition-colors uppercase mt-1">Sign Out</button>
                 </div>
-                <div className="size-10 rounded-xl bg-gradient-to-tr from-bridge-cyan to-bridge-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg">
+                <div className="size-10 rounded-xl bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg">
                    {user.email?.slice(0, 2).toUpperCase()}
                 </div>
               </div>
@@ -86,19 +86,6 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
             )}
           </>
         )}
-        
-        <div className="h-6 w-px bg-border/50" />
-        
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-          <Link
-            href="/create"
-            className="flex items-center gap-2 px-7 py-3 text-sm font-black uppercase tracking-widest text-white rounded-2xl shadow-premium-sm hover:shadow-premium transition-all border border-white/10"
-            style={{ background: "linear-gradient(135deg, var(--color-indigo) 0%, var(--color-cyan) 100%)" }}
-          >
-            Start Bridge
-            <ArrowRight className="size-4" />
-          </Link>
-        </motion.div>
       </div>
     </div>
   );
@@ -169,19 +156,9 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
                   className="flex items-center justify-center gap-3 w-full py-5 text-lg font-bold rounded-3xl bg-card ring-1 ring-border shadow-sm"
                 >
                   <LogIn className="size-5" />
-                  Request Access
+                  Log In
                 </Link>
               )}
-              
-              <Link
-                  href="/create"
-                  onClick={onClose}
-                  className="flex items-center justify-center gap-3 w-full py-5 text-lg font-black uppercase tracking-widest text-white rounded-3xl shadow-premium"
-                  style={{ background: "linear-gradient(135deg, var(--color-indigo) 0%, var(--color-cyan) 100%)" }}
-                >
-                  Start Session
-                  <ArrowRight className="size-5" />
-                </Link>
             </div>
           </motion.aside>
         </>
@@ -235,21 +212,12 @@ export function Navbar() {
               <span className="font-bold text-lg">Talk2Me</span>
             </Link>
 
-            <div className="flex items-center gap-2">
-              <Link
-                href="/create"
-                className="px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white rounded-xl shadow-lg"
-                style={{ background: "linear-gradient(135deg, var(--color-indigo) 0%, var(--color-cyan) 100%)" }}
-              >
-                Start
-              </Link>
-              <button
-                onClick={() => setMobileOpen(true)}
-                className="p-2.5 rounded-xl bg-foreground/5"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-            </div>
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2.5 rounded-xl bg-foreground/5"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </motion.header>

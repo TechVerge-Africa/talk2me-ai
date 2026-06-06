@@ -35,70 +35,109 @@ const containerVariants: Variants = {
 // ━━━ SECTION 1: Hero ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function HeroSection() {
   return (
-    <section className="relative px-5 pt-20 pb-20 lg:pt-32 lg:pb-40 flex flex-col justify-center min-h-screen">
+    <section className="relative w-full overflow-hidden pt-24 pb-16 lg:pt-40 lg:pb-32">
+      {/* Animated background elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-40 left-1/4 w-96 h-96 bg-cyan/5 rounded-full blur-3xl opacity-40" />
-        <div className="absolute bottom-40 right-1/3 w-96 h-96 bg-indigo/5 rounded-full blur-3xl opacity-40" />
+        <div className="absolute top-1/4 right-0 w-[600px] h-[600px] bg-cyan/8 rounded-full blur-3xl -mr-64" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo/8 rounded-full blur-3xl -ml-48" />
       </div>
 
-      <motion.div 
-        initial="hidden"
-        animate="visible"
-        variants={staggerContainer}
-        className="relative max-w-6xl mx-auto flex flex-col items-center text-center"
-      >
-        <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-cyan/5 border border-cyan/20 mb-8">
-          <div className="w-2 h-2 rounded-full bg-cyan animate-pulse" />
-          <span className="text-sm font-semibold text-charcoal">Global Communication Without Barriers</span>
-        </motion.div>
-
-        <motion.h1 variants={fadeInUp} className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-balance leading-[1.1] mb-8">
-          Communication
-          <br className="hidden sm:block" />
-          <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
-        </motion.h1>
-
-        <motion.p variants={fadeInUp} className="text-lg sm:text-xl text-muted-foreground text-pretty max-w-2xl mb-12">
-          Talk2Me combines AI-powered sign language interpretation, real-time transcription, and multi-platform streaming to create genuinely inclusive communication.
-        </motion.p>
-
-        <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl mb-20">
-          <Link
-            href="/create"
-            className="group relative overflow-hidden bg-indigo text-white rounded-2xl px-8 py-5 font-semibold text-lg transition-all hover:scale-105 active:scale-95 shadow-lg"
+      <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+        <motion.div 
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+          className="flex flex-col items-start gap-8 lg:gap-12"
+        >
+          {/* Status badge */}
+          <motion.div 
+            variants={fadeInUp} 
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan/8 border border-cyan/30 backdrop-blur-sm"
           >
-            <div className="absolute -inset-full bg-gradient-to-r from-indigo to-cyan opacity-0 group-hover:opacity-100 transition-opacity" />
-            <span className="relative flex items-center justify-center gap-3">
-              Start Now
-              <ArrowRight className="size-5" />
-            </span>
-          </Link>
+            <div className="w-2 h-2 rounded-full bg-cyan animate-pulse" />
+            <span className="text-sm font-semibold text-foreground">AI-Powered Inclusive Communication</span>
+          </motion.div>
 
-          <Link
-            href="/join"
-            className="group flex items-center justify-center gap-3 px-8 py-5 rounded-2xl border-2 border-indigo/20 hover:border-indigo/40 text-charcoal font-semibold transition-all hover:bg-indigo/5"
+          {/* Main heading */}
+          <div className="flex flex-col gap-6 max-w-4xl">
+            <motion.h1 
+              variants={fadeInUp} 
+              className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight text-balance leading-[1.0] lg:leading-[1.05]"
+            >
+              Communication
+              <br className="hidden sm:block" />
+              <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
+            </motion.h1>
+
+            <motion.p 
+              variants={fadeInUp} 
+              className="text-xl sm:text-2xl text-muted-foreground text-pretty leading-relaxed max-w-3xl"
+            >
+              AI-powered interpretation, real-time captions, and seamless streaming. Talk2Me makes communication truly accessible for everyone.
+            </motion.p>
+          </div>
+
+          {/* CTA Buttons */}
+          <motion.div 
+            variants={fadeInUp} 
+            className="flex flex-col sm:flex-row gap-4 w-full max-w-lg pt-4"
           >
-            Join Session
-            <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
-          </Link>
-        </motion.div>
+            <Link
+              href="/create"
+              className="group flex items-center justify-center gap-3 px-8 py-4 bg-indigo text-white font-bold text-lg rounded-xl hover:shadow-lg transition-all active:scale-95 sm:flex-1"
+            >
+              Get Started
+              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
 
-        <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-5xl">
-          {[
-            { icon: Phone, label: "Calls", desc: "Real-time sign & speech bridging" },
-            { icon: Users, label: "Meetings", desc: "Teams with automatic captions" },
-            { icon: Radio, label: "Broadcasting", desc: "Stream to unlimited viewers" }
-          ].map(({ icon: Icon, label, desc }) => (
-            <div key={label} className="glass-card rounded-2xl p-6 text-center group hover:border-cyan/50 transition-colors">
-              <div className="size-12 rounded-xl bg-cyan/10 grid place-items-center mx-auto mb-4 group-hover:bg-cyan/15 transition-colors">
-                <Icon className="size-6 text-cyan" />
-              </div>
-              <h3 className="font-bold text-lg mb-2">{label}</h3>
-              <p className="text-sm text-muted-foreground">{desc}</p>
-            </div>
-          ))}
+            <Link
+              href="/join"
+              className="group flex items-center justify-center gap-3 px-8 py-4 border-2 border-indigo/30 text-foreground font-bold text-lg rounded-xl hover:border-indigo/60 hover:bg-indigo/5 transition-all sm:flex-1"
+            >
+              Join a Session
+              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </motion.div>
+
+          {/* Feature cards grid */}
+          <motion.div 
+            variants={fadeInUp}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full pt-8 lg:pt-12"
+          >
+            {[
+              { 
+                icon: Phone, 
+                label: "1:1 Calls", 
+                desc: "Direct sign language interpretation and real-time transcription" 
+              },
+              { 
+                icon: Users, 
+                label: "Team Meetings", 
+                desc: "Collaborate with automatic captions and visual descriptions" 
+              },
+              { 
+                icon: Radio, 
+                label: "Live Broadcasting", 
+                desc: "Stream to audiences globally with full accessibility features" 
+              }
+            ].map(({ icon: Icon, label, desc }) => (
+              <motion.div 
+                key={label}
+                variants={fadeInUp}
+                className="group flex flex-col gap-4 p-6 rounded-2xl border border-border/50 bg-white/50 dark:bg-white/5 backdrop-blur-sm hover:border-cyan/50 hover:bg-white/70 dark:hover:bg-white/10 transition-all"
+              >
+                <div className="w-12 h-12 rounded-xl bg-indigo/15 grid place-items-center group-hover:bg-indigo/25 transition-colors">
+                  <Icon className="size-6 text-indigo" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-foreground mb-1">{label}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </div>
     </section>
   );
 }
