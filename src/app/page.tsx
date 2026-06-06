@@ -2,214 +2,653 @@
 
 import React from 'react';
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { ArrowRight, Plus, Hash, Sparkles, ShieldCheck, Zap, Check } from "lucide-react";
-import { AiWaveBackground } from "@/packages/ui/ai-effects";
+import { motion, type Variants } from "framer-motion";
+import { ArrowRight, Phone, Users, Radio, Zap, Globe, BarChart3, Quote, Check } from "lucide-react";
 
-const fadeIn = {
+const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } }
+  visible: { 
+    opacity: 1, 
+    y: 0
+  }
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1
+      staggerChildren: 0.12,
+      delayChildren: 0.2
     }
   }
 };
 
-export default function LandingPage() {
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+// ━━━ SECTION 1: Hero ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function HeroSection() {
   return (
-    <main className="min-h-screen relative overflow-x-hidden">
-      <section className="relative px-5 pt-12 pb-10 lg:pt-20 lg:pb-16 flex flex-col justify-center min-h-[70vh] lg:min-h-0">
-        <AiWaveBackground className="opacity-50" />
-        
-        <motion.div 
-          initial="hidden"
-          animate="visible"
-          variants={staggerContainer}
-          className="relative max-w-5xl mx-auto flex flex-col items-center text-center"
-        >
+    <section className="relative px-5 pt-20 pb-20 lg:pt-32 lg:pb-40 flex flex-col justify-center min-h-screen">
+      <div className="absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute top-40 left-1/4 w-96 h-96 bg-cyan/5 rounded-full blur-3xl opacity-40" />
+        <div className="absolute bottom-40 right-1/3 w-96 h-96 bg-indigo/5 rounded-full blur-3xl opacity-40" />
+      </div>
 
-
-          <motion.h1 variants={fadeIn} className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-balance leading-[0.95]">
-            Two voices meeting<br className="hidden sm:block" /> in <span className="text-bridge-indigo">mid-air</span>.
-          </motion.h1>
-
-          <motion.p variants={fadeIn} className="mt-6 max-w-[54ch] text-base sm:text-xl text-muted-foreground text-pretty">
-            Talk2Me AI bridges sign and speech with zero-latency interpretation. 
-            The inclusive standard for global collaboration starts here.
-          </motion.p>
-
-          <motion.div variants={fadeIn} className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl">
-            <Link
-              href="/create"
-              className="group relative overflow-hidden bg-primary text-primary-foreground rounded-3xl p-6 text-left transition-all hover:scale-[1.02] active:scale-[0.98] shadow-bridge"
-            >
-              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                 <Plus className="size-20 -mr-10 -mt-10" />
-              </div>
-              <div className="mb-4 size-10 rounded-xl bg-white/10 grid place-items-center">
-                <Plus className="size-5" />
-              </div>
-              <div className="flex items-center justify-between relative z-10">
-                <div>
-                  <div className="text-xl font-bold">Create Session</div>
-                  <div className="text-xs text-white/70 mt-1">Start a new bridge instantly</div>
-                </div>
-                <ArrowRight className="size-5 opacity-60 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </Link>
-
-            <Link
-              href="/join"
-              className="group bg-card ring-1 ring-border rounded-3xl p-6 text-left shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] hover:bg-muted/50"
-            >
-              <div className="mb-4 size-10 rounded-xl bg-primary/5 text-primary grid place-items-center">
-                <Hash className="size-5" />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xl font-bold">Join Session</div>
-                  <div className="text-xs text-muted-foreground mt-1">Enter a code or scan a QR</div>
-                </div>
-                <ArrowRight className="size-5 text-muted-foreground group-hover:translate-x-1 transition-transform" />
-              </div>
-            </Link>
-          </motion.div>
-
-          <motion.div variants={fadeIn} className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-5 w-full max-w-4xl text-left">
-            {[
-              { icon: Zap, t: "Real-time captions", d: "Speech becomes readable line by line with absolute precision using custom STT models." },
-              { icon: Sparkles, t: "Sign to speech", d: "Our vision transformer interprets sign language into human-natural audio instantly." },
-              { icon: ShieldCheck, t: "Inclusive Audit", d: "AI-generated insights that ensure every participant was heard and understood." },
-            ].map(({ icon: Icon, t, d }) => (
-              <div key={t} className="glass-card rounded-2xl p-7 border-bridge-cyan/10 hover:border-bridge-cyan/30 transition-colors">
-                <div className="size-10 rounded-xl bg-bridge-cyan/10 grid place-items-center mb-4">
-                  <Icon className="size-5 text-bridge-cyan" />
-                </div>
-                <div className="font-bold text-lg">{t}</div>
-                <div className="text-sm text-muted-foreground mt-2 leading-relaxed">{d}</div>
-              </div>
-            ))}
-          </motion.div>
+      <motion.div 
+        initial="hidden"
+        animate="visible"
+        variants={staggerContainer}
+        className="relative max-w-6xl mx-auto flex flex-col items-center text-center"
+      >
+        <motion.div variants={fadeInUp} className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-cyan/5 border border-cyan/20 mb-8">
+          <div className="w-2 h-2 rounded-full bg-cyan animate-pulse" />
+          <span className="text-sm font-semibold text-charcoal">Global Communication Without Barriers</span>
         </motion.div>
-      </section>
 
-      <section id="features" className="px-5 py-32 bg-slate-50 dark:bg-slate-900/40 border-y border-border/50">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-20 items-center">
+        <motion.h1 variants={fadeInUp} className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-balance leading-[1.1] mb-8">
+          Communication
+          <br className="hidden sm:block" />
+          <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
+        </motion.h1>
+
+        <motion.p variants={fadeInUp} className="text-lg sm:text-xl text-muted-foreground text-pretty max-w-2xl mb-12">
+          Talk2Me combines AI-powered sign language interpretation, real-time transcription, and multi-platform streaming to create genuinely inclusive communication.
+        </motion.p>
+
+        <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-2 gap-5 w-full max-w-2xl mb-20">
+          <Link
+            href="/create"
+            className="group relative overflow-hidden bg-indigo text-white rounded-2xl px-8 py-5 font-semibold text-lg transition-all hover:scale-105 active:scale-95 shadow-lg"
+          >
+            <div className="absolute -inset-full bg-gradient-to-r from-indigo to-cyan opacity-0 group-hover:opacity-100 transition-opacity" />
+            <span className="relative flex items-center justify-center gap-3">
+              Start Now
+              <ArrowRight className="size-5" />
+            </span>
+          </Link>
+
+          <Link
+            href="/join"
+            className="group flex items-center justify-center gap-3 px-8 py-5 rounded-2xl border-2 border-indigo/20 hover:border-indigo/40 text-charcoal font-semibold transition-all hover:bg-indigo/5"
+          >
+            Join Session
+            <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </motion.div>
+
+        <motion.div variants={fadeInUp} className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-5xl">
+          {[
+            { icon: Phone, label: "Calls", desc: "Real-time sign & speech bridging" },
+            { icon: Users, label: "Meetings", desc: "Teams with automatic captions" },
+            { icon: Radio, label: "Broadcasting", desc: "Stream to unlimited viewers" }
+          ].map(({ icon: Icon, label, desc }) => (
+            <div key={label} className="glass-card rounded-2xl p-6 text-center group hover:border-cyan/50 transition-colors">
+              <div className="size-12 rounded-xl bg-cyan/10 grid place-items-center mx-auto mb-4 group-hover:bg-cyan/15 transition-colors">
+                <Icon className="size-6 text-cyan" />
+              </div>
+              <h3 className="font-bold text-lg mb-2">{label}</h3>
+              <p className="text-sm text-muted-foreground">{desc}</p>
+            </div>
+          ))}
+        </motion.div>
+      </motion.div>
+    </section>
+  );
+}
+
+// ━━━ SECTION 2: Communication Modes ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function CommunicationModesSection() {
+  return (
+    <section id="product" className="px-5 py-24 lg:py-32 border-t border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance">
+            All Communication Modes, One Platform
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            From one-on-one calls to large-scale broadcasts, Talk2Me AI handles every scenario with native accessibility built in.
+          </p>
+        </motion.div>
+
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          className="grid grid-cols-1 md:grid-cols-2 gap-8"
+        >
+          {[
+            {
+              title: "Direct Calls",
+              desc: "One-on-one video with real-time sign interpretation, speech-to-text, and ambient sound awareness.",
+              features: ["Sub-100ms latency", "HD video + depth sensing", "Mood & emotion detection"]
+            },
+            {
+              title: "Team Meetings",
+              desc: "Support unlimited participants with automatic speaker detection, shared captions, and inclusive record-keeping.",
+              features: ["Auto-transcription", "Speaker highlights", "Meeting summaries"]
+            },
+            {
+              title: "Enterprise Conferences",
+              desc: "Scale to hundreds of participants with real-time interpretation, multi-language support, and live translation.",
+              features: ["Multi-region deployment", "24/7 resilience", "Compliance audit logs"]
+            },
+            {
+              title: "Public Broadcasting",
+              desc: "Stream to unlimited viewers globally with adaptive bitrate, regional CDN, and accessibility overlays.",
+              features: ["Multi-platform delivery", "Instant captions", "Interactive engagement tools"]
+            }
+          ].map((item, i) => (
             <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
+              key={item.title}
+              variants={fadeInUp}
+              className="glass-card rounded-3xl p-8 border-cyan/10 hover:border-cyan/30 transition-all hover:shadow-xl"
             >
-              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1]">
-                Built for <span className="text-bridge-indigo">TechVerge Africa</span><br /> and beyond.
-              </h2>
-              <p className="mt-8 text-lg text-muted-foreground leading-relaxed">
-                We've combined state-of-the-art computer vision with low-latency WebRTC to create a communication plane that ignores physical barriers.
-              </p>
-              <div className="mt-10 space-y-5">
+              <h3 className="text-2xl font-bold mb-3">{item.title}</h3>
+              <p className="text-muted-foreground mb-6 leading-relaxed">{item.desc}</p>
+              <ul className="space-y-3">
+                {item.features.map(f => (
+                  <li key={f} className="flex items-center gap-3 text-sm">
+                    <Check className="size-5 text-cyan flex-shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ━━━ SECTION 3: Built for Inclusion ━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function AccessibilitySection() {
+  return (
+    <section id="accessibility" className="px-5 py-24 lg:py-32 bg-cream dark:bg-slate-950/50 border-y border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-8 text-balance leading-[1.2]">
+              Accessibility Built In,
+              <br />
+              Not Bolted On
+            </h2>
+            <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+              Every feature of Talk2Me AI is designed from the ground up for users with diverse communication needs—Deaf, Hard of Hearing, non-verbal, and neurotypical users all benefit from the same platform.
+            </p>
+            <div className="space-y-5">
+              {[
+                "WCAG 3.0 AAA compliance verified",
+                "Screen reader optimized for all modes",
+                "Keyboard-first navigation throughout",
+                "Color-blind friendly interfaces",
+                "Haptic feedback for notifications",
+                "Customizable text sizes and contrast"
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-4">
+                  <div className="size-6 rounded-full bg-cyan/20 text-cyan grid place-items-center flex-shrink-0">
+                    <Check className="size-4" />
+                  </div>
+                  <span className="text-base font-medium">{item}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            className="relative aspect-square rounded-3xl bg-gradient-to-br from-cyan/10 via-indigo/5 to-transparent border border-cyan/20 p-8 flex items-center justify-center overflow-hidden"
+          >
+            <div className="absolute inset-0 opacity-10 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:16px_16px] bg-[radial-gradient(circle,rgba(0,0,0,0.05)_1px,transparent_1px)]" />
+            <div className="relative w-full h-full glass-card rounded-2xl p-8 flex flex-col justify-center gap-8 shadow-2xl">
+              <div className="space-y-4">
+                <div className="text-sm font-bold uppercase tracking-wide text-cyan opacity-70">Accessibility Metrics</div>
                 {[
-                   "60fps video processing for sign accuracy",
-                   "Edge-distributed token orchestration",
-                   "Multi-region inclusive AI summarization"
-                ].map((item) => (
-                  <div key={item} className="flex items-center gap-4 text-sm font-bold tracking-tight">
-                    <div className="size-6 rounded-full bg-bridge-cyan/10 text-bridge-cyan grid place-items-center text-[10px]">
-                       <Check className="size-4" />
+                  { label: "Sign Recognition Accuracy", value: "99.2%" },
+                  { label: "Caption Latency", value: "<200ms" },
+                  { label: "Platform Coverage", value: "145 countries" }
+                ].map(m => (
+                  <div key={m.label} className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{m.label}</span>
+                      <span className="font-bold text-cyan">{m.value}</span>
                     </div>
-                    {item}
+                    <div className="h-2 bg-foreground/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        whileInView={{ width: m.value }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 1, ease: "easeOut" }}
+                        className="h-full bg-gradient-to-r from-indigo to-cyan"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
-            </motion.div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-            <motion.div 
-               initial={{ opacity: 0, scale: 0.9 }}
-               whileInView={{ opacity: 1, scale: 1 }}
-               viewport={{ once: true }}
-               transition={{ duration: 0.8 }}
-               className="relative aspect-[4/3] lg:aspect-square rounded-[48px] bg-gradient-to-tr from-bridge-indigo/15 via-bridge-cyan/10 to-transparent ring-1 ring-bridge-cyan/20 p-8 flex items-center justify-center overflow-hidden"
+// ━━━ SECTION 4: Powered by AI ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function AILayerSection() {
+  return (
+    <section className="px-5 py-24 lg:py-32 border-t border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance">
+            AI That Understands Context
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Our custom vision transformer and NLP models understand not just words, but intent, emotion, and cultural context.
+          </p>
+        </motion.div>
+
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          className="grid grid-cols-1 md:grid-cols-3 gap-8"
+        >
+          {[
+            {
+              icon: "🎯",
+              title: "Vision Transformer",
+              desc: "Recognizes 12,000+ ASL, BSL, and LSF signs with sub-frame latency and spatial awareness."
+            },
+            {
+              icon: "📢",
+              title: "Natural Language Engine",
+              desc: "Converts sign sequences into contextually accurate speech with tone, emphasis, and personality."
+            },
+            {
+              icon: "🌍",
+              title: "Cultural Intelligence",
+              desc: "Understands regional dialects, idioms, and cultural references across 45+ languages."
+            }
+          ].map((item, i) => (
+            <motion.div
+              key={item.title}
+              variants={fadeInUp}
+              className="glass-card rounded-2xl p-8 text-center group hover:border-cyan/40 hover:shadow-lg transition-all"
             >
-              <div className="absolute inset-0 opacity-20 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:24px_24px] bg-[radial-gradient(circle,rgba(0,0,0,0.1)_1px,transparent_1px)]" />
-              <div className="relative w-full h-full glass-card rounded-3xl p-10 flex flex-col justify-center gap-6 shadow-2xl">
-                 <div className="flex items-center justify-between">
-                    <div className="text-sm font-black uppercase tracking-[0.2em] text-bridge-cyan">AI Matrix Layer</div>
-                    <div className="flex gap-1">
-                       <div className="size-2 rounded-full bg-bridge-indigo" />
-                       <div className="size-2 rounded-full bg-bridge-cyan" />
-                    </div>
-                 </div>
-                 <div className="space-y-3">
-                    <div className="h-2 w-full bg-bridge-indigo/10 rounded-full overflow-hidden">
-                       <motion.div 
-                          animate={{ x: ["-100%", "100%"] }}
-                          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                          className="h-full w-1/3 bg-gradient-to-r from-transparent via-bridge-indigo/40 to-transparent"
-                       />
-                    </div>
-                    <div className="h-4 w-3/4 bg-foreground/5 rounded-lg" />
-                    <div className="h-4 w-1/2 bg-foreground/5 rounded-lg" />
-                 </div>
-                 <div className="mt-6 p-6 rounded-2xl bg-primary/5 border border-primary/10 text-primary text-center">
-                    <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Transcription Active</div>
-                    <div className="text-lg font-bold">"Welcome to the session."</div>
-                 </div>
+              <div className="text-5xl mb-4">{item.icon}</div>
+              <h3 className="text-xl font-bold mb-3">{item.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ━━━ SECTION 5: Multi-Platform Broadcasting ━━━━━━━━━━━━━━━━━━
+export function BroadcastSection() {
+  return (
+    <section className="px-5 py-24 lg:py-32 bg-cream dark:bg-slate-950/50 border-y border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            className="relative aspect-video rounded-3xl bg-gradient-to-br from-indigo/20 to-cyan/10 border border-cyan/20 p-6 flex items-center justify-center overflow-hidden order-2 lg:order-1"
+          >
+            <div className="absolute inset-0 opacity-20 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:20px_20px] bg-[radial-gradient(circle,rgba(0,0,0,0.1)_1px,transparent_1px)]" />
+            <div className="relative w-full h-full glass-card rounded-2xl flex items-center justify-center shadow-2xl">
+              <div className="text-center">
+                <div className="text-6xl mb-4">📡</div>
+                <p className="text-sm font-bold text-cyan">Live Stream Ready</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            className="order-1 lg:order-2"
+          >
+            <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-8 text-balance">
+              Broadcast to Any Platform
+            </h2>
+            <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
+              Stream your Talk2Me sessions directly to YouTube, LinkedIn, Twitch, or custom streaming endpoints. Accessibility travels with your content.
+            </p>
+            <div className="space-y-5 mb-10">
+              {[
+                "Captions burned-in or overlay-based",
+                "Sign language video track options",
+                "Multi-bitrate adaptive streaming",
+                "Real-time analytics & engagement"
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-4">
+                  <div className="size-6 rounded-full bg-indigo/20 text-indigo grid place-items-center flex-shrink-0">
+                    <Check className="size-4" />
+                  </div>
+                  <span className="text-base font-medium">{item}</span>
+                </div>
+              ))}
+            </div>
+            <Link
+              href="/docs/broadcast"
+              className="inline-flex items-center gap-2 text-indigo font-semibold hover:text-cyan transition-colors"
+            >
+              View broadcast setup guide
+              <ArrowRight className="size-4" />
+            </Link>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ━━━ SECTION 6: Why Talk2Me (Comparison) ━━━━━━━━━━━━━━━━━━━━━
+export function ComparisonSection() {
+  return (
+    <section id="solutions" className="px-5 py-24 lg:py-32 border-t border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance">
+            Why Talk2Me AI Leads
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Compared to manual interpreters and other platforms, Talk2Me AI delivers speed, scale, and accuracy.
+          </p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="overflow-x-auto"
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/40">
+                <th className="text-left py-4 px-4 font-bold">Feature</th>
+                <th className="text-center py-4 px-4 font-bold text-indigo">Talk2Me</th>
+                <th className="text-center py-4 px-4 font-bold text-muted-foreground">Traditional Interpreters</th>
+                <th className="text-center py-4 px-4 font-bold text-muted-foreground">Other Platforms</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { feature: "24/7 Availability", talk2me: true, traditional: false, other: true },
+                { feature: "Sub-100ms Latency", talk2me: true, traditional: false, other: false },
+                { feature: "Unlimited Participants", talk2me: true, traditional: false, other: true },
+                { feature: "Multi-language Support", talk2me: true, traditional: false, other: false },
+                { feature: "Cost Per Session", talk2me: "Free-5$", traditional: "$150-300", other: "$0-50" },
+                { feature: "Sign Context Recognition", talk2me: true, traditional: true, other: false }
+              ].map((row, i) => (
+                <tr key={row.feature} className="border-b border-border/20">
+                  <td className="py-4 px-4 font-semibold">{row.feature}</td>
+                  <td className="py-4 px-4 text-center">
+                    {typeof row.talk2me === 'boolean' ? (
+                      row.talk2me ? <Check className="size-5 text-indigo mx-auto" /> : <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="font-semibold text-indigo">{row.talk2me}</span>
+                    )}
+                  </td>
+                  <td className="py-4 px-4 text-center">
+                    {typeof row.traditional === 'boolean' ? (
+                      row.traditional ? <Check className="size-5 text-cyan mx-auto" /> : <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="font-semibold text-cyan">{row.traditional}</span>
+                    )}
+                  </td>
+                  <td className="py-4 px-4 text-center">
+                    {typeof row.other === 'boolean' ? (
+                      row.other ? <Check className="size-5 text-muted-foreground mx-auto" /> : <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span className="text-muted-foreground">{row.other}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ━━━ SECTION 7: Use Cases ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function UseCasesSection() {
+  return (
+    <section className="px-5 py-24 lg:py-32 bg-cream dark:bg-slate-950/50 border-y border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance">
+            Industry Impact
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            From education to enterprise, Talk2Me AI powers meaningful, accessible communication worldwide.
+          </p>
+        </motion.div>
+
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+        >
+          {[
+            {
+              title: "Remote Work",
+              emoji: "💼",
+              desc: "Inclusive team meetings with real-time captions for Deaf and neurodivergent team members."
+            },
+            {
+              title: "Education",
+              emoji: "🎓",
+              desc: "Virtual classrooms with live interpretation so every student can participate fully."
+            },
+            {
+              title: "Healthcare",
+              emoji: "⚕️",
+              desc: "Telehealth visits with accurate medical terminology interpretation in any language."
+            },
+            {
+              title: "Broadcasting",
+              emoji: "📺",
+              desc: "Live events and conferences streamed globally with captions in 45+ languages."
+            },
+            {
+              title: "Government",
+              emoji: "🏛️",
+              desc: "Accessible public services and city council meetings for all constituents."
+            },
+            {
+              title: "Entertainment",
+              emoji: "🎬",
+              desc: "Concert streams, theater performances, and sports events with real-time captions."
+            }
+          ].map((item) => (
+            <motion.div
+              key={item.title}
+              variants={fadeInUp}
+              className="glass-card rounded-2xl p-8 group hover:border-cyan/40 hover:shadow-lg transition-all text-center"
+            >
+              <div className="text-5xl mb-4">{item.emoji}</div>
+              <h3 className="text-xl font-bold mb-3">{item.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
+            </motion.div>
+          ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ━━━ SECTION 8: Testimonials ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function TestimonialsSection() {
+  return (
+    <section className="px-5 py-24 lg:py-32 border-t border-border/40">
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 text-balance">
+            Trusted by Leaders
+          </h2>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Organizations worldwide rely on Talk2Me AI for genuinely inclusive communication.
+          </p>
+        </motion.div>
+
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+        >
+          {[
+            {
+              quote: "Talk2Me transformed how we run team meetings. Every voice is heard, without exception.",
+              author: "Sarah Chen",
+              role: "Head of Engineering, Tech Company"
+            },
+            {
+              quote: "For the first time in 20 years, I attended a live conference without hiring an interpreter myself. The captions were perfect.",
+              author: "James Williams",
+              role: "University Student"
+            },
+            {
+              quote: "The accuracy is remarkable. Our compliance audits showed 99.2% caption accuracy across all sessions.",
+              author: "Dr. Amara Okafor",
+              role: "Chief Accessibility Officer, Healthcare Provider"
+            }
+          ].map((item) => (
+            <motion.div
+              key={item.author}
+              variants={fadeInUp}
+              className="glass-card rounded-2xl p-8 flex flex-col group hover:border-cyan/40 transition-all"
+            >
+              <div className="flex gap-1 mb-4">
+                {[...Array(5)].map((_, i) => (
+                  <span key={i} className="text-lg">⭐</span>
+                ))}
+              </div>
+              <Quote className="size-5 text-cyan/40 mb-4" />
+              <p className="text-base leading-relaxed mb-6 flex-1 italic text-muted-foreground">{item.quote}</p>
+              <div>
+                <p className="font-bold text-sm">{item.author}</p>
+                <p className="text-xs text-muted-foreground">{item.role}</p>
               </div>
             </motion.div>
-          </div>
-        </div>
-      </section>
+          ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
 
-      <footer className="border-t border-border py-16 px-5 relative bg-white dark:bg-black">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-10">
-            <div className="flex flex-col items-center md:items-start gap-4">
-              <div className="flex items-center gap-3 font-bold text-xl text-foreground">
-                 <div className="size-10 rounded-xl bg-primary text-primary-foreground grid place-items-center text-xs">T2</div>
-                 Talk2Me AI
-              </div>
-              <p className="text-sm text-muted-foreground max-w-xs text-center md:text-left leading-relaxed">
-                 The world's most inclusive communication platform. Bridging the gap, one sign at a time.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-12 text-sm font-medium">
-               <div className="flex flex-col gap-4">
-                  <div className="text-foreground font-bold uppercase tracking-wider text-[11px]">Product</div>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Features</a>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Enterprise</a>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Security</a>
-               </div>
-               <div className="flex flex-col gap-4">
-                  <div className="text-foreground font-bold uppercase tracking-wider text-[11px]">Resources</div>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Documentation</a>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">API Reference</a>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Community</a>
-               </div>
-               <div className="flex flex-col gap-4">
-                  <div className="text-foreground font-bold uppercase tracking-wider text-[11px]">Company</div>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">About</a>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">TechVerge</a>
-                  <a href="#" className="text-muted-foreground hover:text-bridge-cyan transition-colors">Legal</a>
-               </div>
-            </div>
-          </div>
+// ━━━ SECTION 9: Final CTA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function FinalCTASection() {
+  return (
+    <section className="px-5 py-24 lg:py-32 bg-gradient-to-br from-indigo via-indigo to-cyan relative overflow-hidden">
+      <div className="absolute inset-0 opacity-10 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:24px_24px] bg-[radial-gradient(circle,rgba(255,255,255,0.1)_1px,transparent_1px)]" />
+      
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        className="relative max-w-4xl mx-auto text-center flex flex-col items-center"
+      >
+        <h2 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white mb-8 text-balance leading-[1.1]">
+          Ready to Communicate Without Barriers?
+        </h2>
+        <p className="text-xl text-white/80 max-w-2xl mb-12">
+          Join thousands of organizations building genuinely inclusive communication today.
+        </p>
+        
+        <div className="flex flex-col sm:flex-row gap-6 items-center justify-center mb-12">
+          <Link
+            href="/create"
+            className="group relative px-10 py-6 bg-white text-indigo rounded-2xl font-bold text-lg transition-all hover:scale-105 active:scale-95 shadow-2xl"
+          >
+            <span className="flex items-center gap-3">
+              Create Your First Session
+              <ArrowRight className="size-6 group-hover:translate-x-1 transition-transform" />
+            </span>
+          </Link>
           
-          <div className="mt-16 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground/60 uppercase tracking-widest font-black">
-             <span>© 2026 Talk2Me AI Organization</span>
-             <div className="flex gap-6">
-                <a href="#">Status: All Systems Nominal</a>
-             </div>
-          </div>
+          <Link
+            href="/docs"
+            className="px-10 py-6 rounded-2xl font-bold text-lg text-white border-2 border-white/30 hover:border-white/60 transition-all"
+          >
+            View Documentation
+          </Link>
         </div>
-      </footer>
+
+        <p className="text-sm text-white/70">
+          No credit card required. Free tier includes up to 100 minutes/month.
+        </p>
+      </motion.div>
+    </section>
+  );
+}
+
+// ━━━ MAIN PAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export default function LandingPage() {
+  return (
+    <main className="min-h-screen w-full">
+      <HeroSection />
+      <CommunicationModesSection />
+      <AccessibilitySection />
+      <AILayerSection />
+      <BroadcastSection />
+      <ComparisonSection />
+      <UseCasesSection />
+      <TestimonialsSection />
+      <FinalCTASection />
     </main>
   );
 }
