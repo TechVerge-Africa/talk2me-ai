@@ -9,10 +9,12 @@ import { useAuth } from "@/features/auth/use-auth";
 import { supabase } from "@/services/supabase/client";
 
 const NAV_ITEMS = [
-  { label: "Features",   href: "#features"  },
-  { label: "Inclusive",  href: "#inclusive" },
-  { label: "Tech Stack", href: "#tech"      },
-  { label: "About",      href: "#about"     },
+  { label: "Product",     href: "#product"     },
+  { label: "Solutions",   href: "#solutions"   },
+  { label: "Accessibility", href: "#accessibility" },
+  { label: "Pricing",     href: "#pricing"     },
+  { label: "Developers",  href: "#developers"  },
+  { label: "Resources",   href: "#resources"   },
 ];
 
 /* ─── Desktop Navbar ───────────────────────────────────────────── */
@@ -32,7 +34,7 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
         <motion.div
   whileHover={{ scale: 1.1, rotate: -5 }}
   whileTap={{ scale: 0.95 }}
-          className="w-11 h-11 rounded-2xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-lg group-hover:shadow-bridge transition-all border border-white/20"
+          className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-lg group-hover:shadow-premium transition-all border border-white/20"
         >
           <span className="text-white font-black text-base tracking-tighter">T2</span>
         </motion.div>
@@ -52,7 +54,7 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
             >
               {item.label}
               <motion.span 
-                 className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-bridge-cyan rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                 className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                  layoutId="nav-glow"
               />
             </Link>
@@ -67,10 +69,10 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
             {user ? (
               <div className="flex items-center gap-4">
                 <div className="flex flex-col items-end leading-none">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-bridge-cyan opacity-70">Authenticated</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-cyan opacity-70">Authenticated</span>
                   <button onClick={handleSignOut} className="text-[10px] font-bold text-muted-foreground hover:text-red-500 transition-colors uppercase mt-1">Sign Out</button>
                 </div>
-                <div className="size-10 rounded-xl bg-gradient-to-tr from-bridge-cyan to-bridge-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg">
+                <div className="size-10 rounded-xl bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg">
                    {user.email?.slice(0, 2).toUpperCase()}
                 </div>
               </div>
@@ -84,19 +86,6 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
             )}
           </>
         )}
-        
-        <div className="h-6 w-px bg-border/50" />
-        
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-          <Link
-            href="/create"
-            className="flex items-center gap-2 px-7 py-3 text-sm font-black uppercase tracking-widest text-white rounded-2xl shadow-bridge-sm hover:shadow-bridge transition-all border border-white/10"
-            style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
-          >
-            Start Bridge
-            <ArrowRight className="size-4" />
-          </Link>
-        </motion.div>
       </div>
     </div>
   );
@@ -128,8 +117,8 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
             className="fixed right-0 top-0 bottom-0 z-50 w-[85vw] max-w-[400px] bg-background shadow-2xl flex flex-col lg:hidden border-l border-border/50"
           >
             <div className="flex items-center justify-between p-7 border-b border-border/50">
-              <Link href="/" onClick={onClose} className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-md">
+            <Link href="/" onClick={onClose} className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-md">
                   <span className="text-white font-black text-sm">T2</span>
                 </div>
                 <span className="font-bold text-lg">Talk2Me</span>
@@ -167,19 +156,9 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
                   className="flex items-center justify-center gap-3 w-full py-5 text-lg font-bold rounded-3xl bg-card ring-1 ring-border shadow-sm"
                 >
                   <LogIn className="size-5" />
-                  Request Access
+                  Log In
                 </Link>
               )}
-              
-              <Link
-                href="/create"
-                onClick={onClose}
-                className="flex items-center justify-center gap-3 w-full py-5 text-lg font-black uppercase tracking-widest text-white rounded-3xl shadow-bridge"
-                style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
-              >
-                Start Session
-                <ArrowRight className="size-5" />
-              </Link>
             </div>
           </motion.aside>
         </>
@@ -227,27 +206,18 @@ export function Navbar() {
 
           <div className="flex lg:hidden items-center justify-between h-14">
             <Link href="/" className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-md">
                 <span className="text-white font-black text-sm">T2</span>
               </div>
               <span className="font-bold text-lg">Talk2Me</span>
             </Link>
 
-            <div className="flex items-center gap-2">
-              <Link
-                href="/create"
-                className="px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white rounded-xl shadow-lg"
-                style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
-              >
-                Start
-              </Link>
-              <button
-                onClick={() => setMobileOpen(true)}
-                className="p-2.5 rounded-xl bg-foreground/5"
-              >
-                <Menu className="w-5 h-5" />
-              </button>
-            </div>
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2.5 rounded-xl bg-foreground/5"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </motion.header>
