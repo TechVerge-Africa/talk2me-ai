@@ -1,8 +1,8 @@
 import React from "react";
 import {
   Mic, MicOff, Video, VideoOff, Type, Sparkles,
-  AlertOctagon, PhoneOff, Captions, Ear, EarOff,
-  Share2, MonitorUp, Users, Crown
+  Smile, PhoneOff, Hand, Ear, EarOff,
+  Share2, MonitorUp, Users, Crown, MessageSquare
 } from "lucide-react";
 
 interface ControlDockProps {
@@ -17,6 +17,7 @@ interface ControlDockProps {
   onToggleScreenShare: () => void;
   onToggleTranscript: () => void;
   onToggleDeaf: () => void;
+  onToggleChat?: () => void;
   onToggleParticipants: () => void;
   onAi: () => void;
   onEmergency: () => void;
@@ -34,6 +35,7 @@ export function ControlDock({
   onToggleTranscript, onToggleDeaf, onToggleParticipants,
   participantCount, participantsOpen,
   onAi, onEmergency, onCaptionSize, onShare, onLeave,
+  onToggleChat,
 }: ControlDockProps) {
   const ControlButton = ({
     children, onClick, label,
@@ -92,8 +94,8 @@ export function ControlDock({
       <div className="flex-shrink-0 w-px h-10 md:h-8 bg-border/80 mx-1 md:mx-0.5" />
 
       {/* Accessibility controls */}
-      <ControlButton onClick={onToggleTranscript} label={transcriptOn ? "Hide captions" : "Show captions"} active={transcriptOn}>
-        <Captions className="size-7 md:size-5" />
+      <ControlButton onClick={onToggleTranscript} label={transcriptOn ? "Lower hand" : "Raise hand"} active={transcriptOn}>
+        <Hand className="size-7 md:size-5" />
       </ControlButton>
       <ControlButton onClick={onToggleDeaf} label={deafOn ? "Deaf mode on" : "Exit deaf mode"} active={deafOn}>
         {deafOn ? <EarOff className="size-7 md:size-5" /> : <Ear className="size-7 md:size-5" />}
@@ -108,6 +110,11 @@ export function ControlDock({
       <ControlButton onClick={onShare} label="Share room code">
         <Share2 className="size-7 md:size-5" />
       </ControlButton>
+      {onToggleChat && (
+        <ControlButton onClick={onToggleChat} label="Chat">
+          <MessageSquare className="size-7 md:size-5" />
+        </ControlButton>
+      )}
       <ControlButton onClick={onToggleParticipants} label="Participants" active={participantsOpen}>
         <div className="relative">
           <Users className="size-7 md:size-5" />
@@ -121,8 +128,8 @@ export function ControlDock({
       <ControlButton onClick={onAi} label="AI Assistant" variant="primary">
         <Sparkles className="size-7 md:size-5" />
       </ControlButton>
-      <ControlButton onClick={onEmergency} label="Emergency alert" variant="danger">
-        <AlertOctagon className="size-7 md:size-5" />
+      <ControlButton onClick={onEmergency} label="Reactions" variant="primary">
+        <Smile className="size-7 md:size-5" />
       </ControlButton>
 
       <div className="flex-shrink-0 w-px h-10 md:h-8 bg-border/80 mx-1 md:mx-0.5" />

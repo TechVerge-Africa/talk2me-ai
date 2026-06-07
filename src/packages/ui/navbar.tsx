@@ -223,7 +223,7 @@ export function Navbar() {
       </motion.header>
 
       <MobileNav open={mobileOpen} onClose={() => setMobileOpen(false)} />
-      <div className="h-16 lg:h-[88px]" />
+      <div className="h-12 lg:h-[72px]" />
     </>
   );
 }

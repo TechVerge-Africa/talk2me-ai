@@ -4,8 +4,8 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { MeetingLayout } from '@/features/meetings/room/layout';
 import { ControlDock } from '@/features/meetings/room/controls';
@@ -16,6 +16,7 @@ import { useMeeting } from '@/features/meetings/hooks/useMeeting';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
+import { CameraPreview } from '@/features/meetings/room/camera-preview';
 import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 
@@ -32,45 +33,160 @@ function PreJoinLobby({
   isHost?: boolean 
 }) {
   const [name, setName] = useState(defaultName);
+  const [camOn, setCamOn] = useState(true);
+  const [micOn, setMicOn] = useState(true);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function setupAudio() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!mounted) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        audioStreamRef.current = stream;
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        src.connect(analyser);
+        analyserRef.current = analyser;
+
+        const bufferLength = analyser.fftSize;
+        const data = new Uint8Array(bufferLength);
+        let smooth = 0;
+        const tick = () => {
+          if (!analyserRef.current) return;
+          // use time-domain data for amplitude (RMS) — more sensitive for voice
+          analyserRef.current.getByteTimeDomainData(data);
+          let sumSq = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128; // normalize to [-1,1]
+            sumSq += v * v;
+          }
+          const rms = Math.sqrt(sumSq / data.length); // 0..1
+          // exponential smoothing to avoid jitter — make more responsive
+          smooth = smooth * 0.6 + rms * 0.4;
+          // apply higher gain so speaking drives the meter into mid/high range
+          const GAIN = 8;
+          setAudioLevel(Math.min(1, smooth * GAIN));
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (err) {
+        // ignore audio permission errors here — user can still join
+      }
+    }
+
+    if (micOn) setupAudio();
+
+    return () => {
+      mounted = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      analyserRef.current = null;
+    };
+  }, [micOn]);
+
+  // make speaking detection sensitive — lower threshold
+  const isSpeaking = audioLevel > 0.03;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6">
       <motion.div 
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm p-8 rounded-[32px] glass-card border border-border text-center relative overflow-hidden shadow-2xl"
+        className="w-full max-w-3xl p-6 rounded-[24px] glass-card border border-border relative overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-6"
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-bridge-indigo/5 to-bridge-cyan/5 pointer-events-none" />
-        <div className="relative size-16 rounded-2xl bg-gradient-to-br from-bridge-indigo/10 to-bridge-cyan/10 ring-1 ring-bridge-cyan/20 grid place-items-center mx-auto mb-6">
-          <User className="size-6 text-bridge-indigo" />
-        </div>
-        <h2 className="relative text-2xl font-bold tracking-tight mb-2">Join Meeting</h2>
-        <p className="relative text-muted-foreground text-sm mb-6">
-          {isHost ? "You're joining as the Host." : "Please enter your name to join."}
-        </p>
-        <form onSubmit={e => { e.preventDefault(); if (name.trim()) onJoin(name.trim()); }} className="flex flex-col gap-4 relative z-10">
-          {!isHost ? (
-            <input
-              autoFocus
-              type="text"
-              placeholder="Your name"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="w-full h-14 px-4 text-center rounded-2xl bg-muted/50 border border-border focus:ring-2 focus:ring-bridge-cyan outline-none transition-all placeholder:text-muted-foreground/50 font-medium"
-              maxLength={30}
-            />
-          ) : (
-            <div className="w-full h-14 px-4 flex items-center justify-center rounded-2xl bg-muted/50 border border-border font-bold text-foreground truncate">
-              {name || "Host"}
+        <div className={`relative rounded-lg overflow-hidden h-64 sm:h-80 md:h-auto ${isSpeaking ? 'ring-4 ring-emerald-400/20 shadow-[0_0_40px_rgba(16,185,129,0.12)]' : ''}`}>
+          <CameraPreview camOn={camOn} />
+          {isSpeaking && (
+            <div className="absolute inset-0 pointer-events-none z-20 flex items-start justify-end p-4">
+              <div className="relative">
+                <span className="absolute -inset-2 rounded-full bg-emerald-400/10 animate-orb-pulse" />
+                <div className="relative px-3 py-1.5 rounded-full bg-black/50 backdrop-blur text-emerald-400 text-[11px] font-bold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  Live • Speaking
+                </div>
+              </div>
             </div>
           )}
-          <button
-            disabled={!name.trim() && !isHost}
-            type="submit"
-            className="w-full h-14 rounded-2xl font-bold text-white shadow-bridge-sm transition-all hover:scale-[0.98] disabled:hover:scale-100 disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)' }}
-          >
-            Ready to Join
-          </button>
-        </form>
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 md:left-4 md:-translate-x-0 flex items-center gap-3 z-30">
+            <button onClick={() => setCamOn(v => !v)} aria-label="Toggle camera" className="px-4 py-3 md:px-3 md:py-2 rounded-full bg-black/50 backdrop-blur text-white flex items-center gap-2 touch-manipulation">
+              {camOn ? <Video className="size-5" /> : <VideoOff className="size-5" />}
+              <span className="text-sm md:text-xs font-bold">{camOn ? 'Video' : 'Video Off'}</span>
+            </button>
+            <button onClick={() => setMicOn(v => !v)} aria-label="Toggle microphone" className="px-4 py-3 md:px-3 md:py-2 rounded-full bg-black/50 backdrop-blur text-white flex items-center gap-2 touch-manipulation">
+              {micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+              <span className="text-sm md:text-xs font-bold">{micOn ? 'Mic' : 'Mic Off'}</span>
+            </button>
+          </div>
+          <div className="absolute top-4 left-4 z-30">
+            <div className="px-3 py-1.5 rounded-full bg-black/40 text-white text-[10px] font-bold">Preview</div>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-center p-4">
+          <h2 className="text-2xl font-bold tracking-tight mb-2">Join Meeting</h2>
+          <p className="text-muted-foreground text-sm mb-4">{isHost ? "You're joining as the Host." : "Please enter your name to join."}</p>
+
+          {!micOn && !camOn && (
+            <div className="mb-3 text-sm text-muted-foreground text-center">Tap the controls below to enable your camera and microphone.</div>
+          )}
+
+          <div className="mb-4">
+            <div className="w-full h-3 bg-muted/40 rounded-full overflow-hidden mb-2">
+              <div
+                style={{ width: `${Math.min(100, Math.round(audioLevel * 100))}%` }}
+                className={`h-full transition-all ${isSpeaking ? 'bg-gradient-to-r from-emerald-400 via-bridge-cyan to-bridge-indigo' : 'bg-bridge-cyan'}`}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] text-muted-foreground">Microphone level</div>
+              {isSpeaking ? (
+                <div className="text-[11px] font-bold text-emerald-500 flex items-center gap-2">
+                  <span className="relative w-3 h-3">
+                    <span className="absolute inset-0 rounded-full bg-emerald-400/40 animate-orb-pulse" />
+                    <span className="relative inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-2xl" />
+                  </span>
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-bridge-cyan">Speaking</span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <form onSubmit={e => { e.preventDefault(); if (name.trim() || isHost) onJoin(name.trim() || 'Host'); }} className="flex flex-col gap-4 relative z-40">
+            {!isHost ? (
+              <input
+                autoFocus
+                type="text"
+                placeholder="Your name"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full h-14 px-4 text-center rounded-2xl bg-muted/50 border border-border focus:ring-2 focus:ring-bridge-cyan outline-none transition-all placeholder:text-muted-foreground/50 font-medium"
+                maxLength={30}
+              />
+            ) : (
+              <div className="w-full h-14 px-4 flex items-center justify-center rounded-2xl bg-muted/50 border border-border font-bold text-foreground truncate">
+                {name || "Host"}
+              </div>
+            )}
+            <button
+              disabled={!name.trim() && !isHost}
+              type="submit"
+              className="w-full h-14 rounded-2xl font-bold text-white shadow-bridge-sm transition-all hover:scale-[0.98] disabled:hover:scale-100 disabled:opacity-50 z-50 bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
+              style={{ backgroundColor: '#4f46e5' }}
+            >
+              Ready to Join
+            </button>
+          </form>
+        </div>
       </motion.div>
     </div>
   );
@@ -133,8 +249,8 @@ function LeftMeetingScreen({
           {/* Rejoin button — always possible */}
           <button
             onClick={onRejoin}
-            className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition"
-            style={{ background: 'linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)' }}
+            className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
+            style={{ backgroundColor: '#4f46e5' }}
           >
             <RotateCcw className="size-5" />
             Rejoin Meeting
@@ -171,6 +287,73 @@ function useActiveSpeaker(participants: (LocalParticipant | RemoteParticipant)[]
   }, [participants]);
 }
 
+// Draggable self-view component (simple pointer-based dragging)
+function HidableSelfView({ participant, absolute = false }: { participant: LocalParticipant; absolute?: boolean }) {
+  const [hidden, setHidden] = useState(false);
+  const width = 160;
+  const height = 220;
+  const containerStyle: React.CSSProperties = absolute
+    ? { right: 16, bottom: 16, width, height, position: 'absolute', zIndex: 40 }
+    : { right: 20, bottom: 100, width, height, position: 'fixed', zIndex: 60 };
+  const miniStyle: React.CSSProperties = absolute
+    ? { right: 14, bottom: 14, position: 'absolute', zIndex: 40 }
+    : { right: 18, bottom: 28, position: 'fixed', zIndex: 60 };
+
+  const containerVariants = {
+    hidden: { opacity: 0, y: 30, x: 20, scale: 0.97 },
+    visible: { opacity: 1, y: 0, x: 0, scale: 1 },
+    exit: { opacity: 0, y: 30, x: 20, scale: 0.97 },
+  };
+  const miniVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: 20 },
+  };
+
+  return (
+    <AnimatePresence>
+      {!hidden ? (
+        <motion.div
+          key="selfview"
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={containerVariants}
+          transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+          style={containerStyle}
+          className="rounded-xl overflow-hidden shadow-2xl ring-1 ring-border bg-slate-900"
+        >
+          <div className="relative w-full h-full">
+            <ParticipantVideo participant={participant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored />
+            <button onClick={() => setHidden(true)} aria-label="Hide self view" className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2">
+              ✕
+            </button>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          key="selfview-mini"
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={miniVariants}
+          transition={{ duration: 0.18 }}
+          style={miniStyle}
+        >
+          <button
+            onClick={() => setHidden(false)}
+            aria-label="Show self view"
+            title="Show your camera"
+            className="w-14 h-14 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-bridge-indigo to-bridge-cyan text-white shadow-2xl flex items-center justify-center ring-2 ring-white/20 animate-pulse"
+          >
+            <Video className="size-5" />
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // ─── Inner component — inside LiveKitRoom context ────────────────────
 function RoomContent({
   code,
@@ -188,6 +371,7 @@ function RoomContent({
   } = useMeeting(code);
 
   const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'captions' | 'chat'>('captions');
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
@@ -197,7 +381,7 @@ function RoomContent({
   const hasScreenShare = screenTracks.length > 0;
   const activeSpeaker = useActiveSpeaker(participants);
   const localParticipant = participants.find(p => p instanceof LocalParticipant) as LocalParticipant | undefined;
-  const stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
+  const stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity && p.identity !== localParticipant?.identity);
 
   const shareRoom = useCallback(async () => {
     const url = `${window.location.origin}/room/${code}`;
@@ -303,9 +487,7 @@ function RoomContent({
     <div className="relative flex-1 w-full h-full min-h-0">
       <ScreenShareView className="w-full h-full rounded-2xl sm:rounded-[32px]" />
       {localParticipant && (
-        <div className="absolute bottom-4 right-4 w-28 h-40 sm:w-44 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl ring-2 ring-border z-10 transition-all">
-          <ParticipantVideo participant={localParticipant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored />
-        </div>
+        <HidableSelfView participant={localParticipant} absolute />
       )}
     </div>
   ) : (
@@ -331,9 +513,7 @@ function RoomContent({
       </div>
       {/* Self-view PiP */}
       {localParticipant && (
-        <div className="absolute bottom-4 right-4 w-24 h-36 sm:w-44 sm:h-28 rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl ring-1 sm:ring-2 ring-border/60 z-10 bg-slate-900 transition-all">
-          <ParticipantVideo participant={localParticipant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored />
-        </div>
+        <HidableSelfView participant={localParticipant} absolute />
       )}
     </div>
   );
@@ -352,6 +532,7 @@ function RoomContent({
             onToggleDeaf={toggleDeafMode}
             onToggleParticipants={() => setParticipantsOpen(v => !v)}
             onAi={() => { setActiveTab('chat'); setTranscriptOpen(true); }}
+            onToggleChat={() => { setActiveTab('chat'); setChatModalOpen(v => !v); setTranscriptOpen(true); }}
             onEmergency={() => alert('Emergency alert sent!')}
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
             onShare={shareRoom}
@@ -378,6 +559,24 @@ function RoomContent({
       </MeetingLayout>
 
       <ParticipantsPanel participants={participants} hostId={isHost ? localParticipant?.identity : undefined} isOpen={participantsOpen} onClose={() => setParticipantsOpen(false)} onMuteRequest={isHost ? requestMute : undefined} />
+
+      {/* Mobile Chat Modal */}
+      {chatModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setChatModalOpen(false)} />
+          <div className="relative w-full sm:w-[560px] h-[60vh] sm:h-[70vh] rounded-2xl bg-background shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-3 border-b border-border">
+              <div className="text-sm font-bold">Chat</div>
+              <button onClick={() => setChatModalOpen(false)} className="size-8 rounded-md bg-muted/30 grid place-items-center">
+                ✕
+              </button>
+            </div>
+            <div className="p-4 h-[calc(100%-56px)]">
+              <ChatPanel messages={messages} onSendMessage={sendMessage} />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -35,7 +35,7 @@ const containerVariants: Variants = {
 // ━━━ SECTION 1: Hero ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function HeroSection() {
   return (
-    <section className="relative w-full overflow-hidden pt-24 pb-16 lg:pt-40 lg:pb-32">
+    <section className="relative w-full overflow-hidden pt-12 pb-10 sm:pt-16 sm:pb-14 lg:pt-32 lg:pb-28">
       {/* Animated background elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute top-1/4 right-0 w-[600px] h-[600px] bg-cyan/8 rounded-full blur-3xl -mr-64" />
@@ -47,15 +47,15 @@ export function HeroSection() {
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center"
+          className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center"
         >
           {/* Left Column - Text Content */}
-          <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-6">
             {/* Main heading and description */}
             <div className="flex flex-col gap-6">
               <motion.h1 
                 variants={fadeInUp} 
-                className="text-6xl sm:text-7xl lg:text-7xl font-black tracking-tighter text-balance leading-[0.95]"
+                className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black tracking-tighter text-balance leading-[1.02]"
               >
                 <span className="block text-foreground">Communication</span>
                 <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
@@ -63,7 +63,7 @@ export function HeroSection() {
 
               <motion.p 
                 variants={fadeInUp} 
-                className="text-lg sm:text-xl text-muted-foreground text-pretty leading-relaxed font-medium"
+                className="text-base sm:text-lg text-muted-foreground text-pretty leading-relaxed font-medium max-w-3xl"
               >
                 AI-powered interpretation, real-time captions, and seamless streaming make communication truly accessible for everyone.
               </motion.p>
@@ -72,11 +72,11 @@ export function HeroSection() {
             {/* CTA Buttons */}
             <motion.div 
               variants={fadeInUp} 
-              className="flex flex-col sm:flex-row gap-4 w-full max-w-2xl"
+              className="flex flex-col sm:flex-row gap-3 w-full max-w-2xl"
             >
               <Link
                 href="/create"
-                className="group flex items-center justify-center gap-2 px-8 py-5 bg-indigo text-white font-bold text-lg rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
+                className="group flex items-center justify-center gap-2 px-6 py-4 bg-indigo text-white font-bold text-base rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
               >
                 Get Started
                 <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
@@ -84,7 +84,7 @@ export function HeroSection() {
 
               <Link
                 href="/join"
-                className="group flex items-center justify-center gap-2 px-8 py-5 border-2 border-foreground/20 text-foreground font-bold text-lg rounded-2xl hover:border-indigo/50 hover:bg-indigo/8 transition-all"
+                className="group flex items-center justify-center gap-2 px-6 py-4 border-2 border-foreground/20 text-foreground font-bold text-base rounded-2xl hover:border-indigo/50 hover:bg-indigo/8 transition-all sm:flex-1"
               >
                 Join a Session
                 <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
@@ -133,18 +133,18 @@ export function HeroSection() {
           {/* Right Column - Hero Image */}
           <motion.div 
             variants={fadeInUp}
-            className="flex-1 w-full hidden lg:block"
+            className="flex-1 w-full hidden md:block md:-mt-6 lg:-mt-12"
           >
             <div className="relative">
               {/* Glow effect behind image */}
               <div className="absolute -inset-4 bg-gradient-to-r from-indigo/20 to-cyan/20 rounded-3xl blur-2xl opacity-60" />
               
               {/* Image container */}
-              <div className="relative rounded-3xl overflow-hidden border border-border/50 bg-white/50 dark:bg-white/5 backdrop-blur-md shadow-2xl">
+              <div className="relative rounded-3xl overflow-hidden border border-border/50 bg-white/50 dark:bg-white/5 backdrop-blur-md shadow-2xl md:h-96 lg:h-auto">
                 <img
                   src="/hero-interface.png"
                   alt="Talk2Me Communication Interface"
-                  className="w-full h-auto object-cover"
+                  className="w-full h-full object-cover"
                 />
                 
                 {/* Optional gradient overlay for visual enhancement */}
