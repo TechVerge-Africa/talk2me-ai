@@ -14,6 +14,8 @@ export function useMeeting(roomCode: string) {
   const [participants, setParticipants] = useState<(RemoteParticipant | LocalParticipant)[]>([]);
   const [captions, setCaptions] = useState<Message[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
+  const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
 
   useEffect(() => {
     if (!room) return;
@@ -54,6 +56,15 @@ export function useMeeting(roomCode: string) {
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg.type === 'chat') {
           setMessages(prev => [...prev, msg]);
+        } else if (msg.type === 'raise_hand') {
+          // msg: { type: 'raise_hand', sender_id, raised }
+          setRaisedHands(prev => ({ ...prev, [msg.sender_id]: !!msg.raised }));
+        } else if (msg.type === 'reaction') {
+          // msg: { type: 'reaction', sender_id, emoji }
+          const reaction = { id: `r-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, sender_id: msg.sender_id, emoji: msg.emoji, timestamp: new Date().toISOString() };
+          setReactions(prev => [...prev.slice(-50), reaction]);
+          // auto-remove after 6s
+          setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
         } else if (msg.type === 'mute_request') {
           if (room.localParticipant.identity === msg.target_id) {
             if (msg.source === 'mic') {
@@ -75,6 +86,24 @@ export function useMeeting(roomCode: string) {
     room.on(RoomEvent.TrackUnsubscribed, updateParticipants);
     room.on(RoomEvent.DataReceived, handleData);
 
+    // Connection lifecycle handlers — update network indicator and surface logs
+    const handleDisconnected = (reason?: any) => {
+      console.warn('LiveKit room disconnected', reason);
+    };
+    const handleReconnecting = () => {
+      console.warn('LiveKit reconnecting');
+    };
+    const handleConnected = () => {
+      console.info('LiveKit connected');
+    };
+    try {
+      room.on(RoomEvent.Disconnected, handleDisconnected);
+      room.on(RoomEvent.Reconnecting, handleReconnecting);
+      room.on(RoomEvent.Connected, handleConnected);
+    } catch (e) {
+      // Some runtimes / versions may not expose all events — ignore if unavailable
+    }
+
     // Sync initial state
     updateParticipants();
 
@@ -85,8 +114,43 @@ export function useMeeting(roomCode: string) {
       room.off(RoomEvent.TrackSubscribed, updateParticipants);
       room.off(RoomEvent.TrackUnsubscribed, updateParticipants);
       room.off(RoomEvent.DataReceived, handleData);
+      try {
+        room.off(RoomEvent.Disconnected, handleDisconnected);
+        room.off(RoomEvent.Reconnecting, handleReconnecting);
+        room.off(RoomEvent.Connected, handleConnected);
+      } catch (e) {}
     };
   }, [room, roomCode]);
+
+  const toggleRaiseHand = useCallback((senderId?: string) => {
+    if (!room?.localParticipant) return;
+    const id = senderId || room.localParticipant.identity;
+    const currentlyRaised = !!raisedHands[id];
+    const payload = { type: 'raise_hand', sender_id: id, raised: !currentlyRaised };
+    const encoder = new TextEncoder();
+    try {
+      room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), { reliable: true });
+      // optimistic update
+      setRaisedHands(prev => ({ ...prev, [id]: !currentlyRaised }));
+    } catch (e) {
+      console.error('Failed to publish raise_hand:', e);
+    }
+  }, [room, raisedHands]);
+
+  const sendReaction = useCallback((emoji: string) => {
+    if (!room?.localParticipant) return;
+    const payload = { type: 'reaction', sender_id: room.localParticipant.identity, emoji };
+    const encoder = new TextEncoder();
+    try {
+      room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), { reliable: false });
+      // also locally show it
+      const reaction = { id: `r-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, sender_id: room.localParticipant.identity, emoji, timestamp: new Date().toISOString() };
+      setReactions(prev => [...prev.slice(-50), reaction]);
+      setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
+    } catch (e) {
+      console.error('Failed to publish reaction:', e);
+    }
+  }, [room]);
 
   const toggleMic = useCallback(async () => {
     if (!room?.localParticipant) return;
@@ -157,10 +221,14 @@ export function useMeeting(roomCode: string) {
     participants,
     captions,
     messages,
+    raisedHands,
+    reactions,
     toggleMic,
     toggleCam,
     toggleScreenShare,
     toggleDeafMode,
+    toggleRaiseHand,
+    sendReaction,
     sendMessage,
     requestMute,
   };

@@ -13,6 +13,7 @@ interface ParticipantsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onMuteRequest?: (participantId: string, track: 'mic' | 'cam') => void;
+  raisedHands?: Record<string, boolean>;
 }
 
 function getRoleBadge(p: LocalParticipant | RemoteParticipant, hostId?: string) {
@@ -22,7 +23,7 @@ function getRoleBadge(p: LocalParticipant | RemoteParticipant, hostId?: string) 
   return { label: 'Participant', color: 'bg-muted text-muted-foreground' };
 }
 
-function ParticipantRow({ p, hostId, onMuteRequest }: { p: LocalParticipant | RemoteParticipant; hostId?: string; onMuteRequest?: (id: string, track: 'mic' | 'cam') => void }) {
+function ParticipantRow({ p, hostId, onMuteRequest, raisedHands }: { p: LocalParticipant | RemoteParticipant; hostId?: string; onMuteRequest?: (id: string, track: 'mic' | 'cam') => void; raisedHands?: Record<string, boolean> }) {
   const role = getRoleBadge(p, hostId);
   const isLocal = p instanceof LocalParticipant;
   const initials = p.identity.slice(0, 2).toUpperCase();
@@ -35,12 +36,18 @@ function ParticipantRow({ p, hostId, onMuteRequest }: { p: LocalParticipant | Re
           participant={p}
           source={Track.Source.Camera}
           className="w-full h-full rounded-xl"
+          raised={!!raisedHands && !!raisedHands[p.identity]}
+          reactions={/* show small reactions in panel if any */ raisedHands ? undefined : undefined}
         />
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-semibold truncate">{p.identity}</span>
+          {/* raised hand indicator (simple) */}
+          {raisedHands && raisedHands[p.identity] && (
+            <span className="text-xs ml-2 px-2 py-0.5 rounded-full bg-amber-200 text-amber-700">✋</span>
+          )}
           {p instanceof LocalParticipant && <span className="text-[9px] text-muted-foreground">(You)</span>}
         </div>
         <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${role.color}`}>
@@ -90,7 +97,7 @@ function ParticipantRow({ p, hostId, onMuteRequest }: { p: LocalParticipant | Re
   );
 }
 
-export function ParticipantsPanel({ participants, hostId, isOpen, onClose, onMuteRequest }: ParticipantsPanelProps) {
+export function ParticipantsPanel({ participants, hostId, isOpen, onClose, onMuteRequest, raisedHands }: ParticipantsPanelProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -140,9 +147,9 @@ export function ParticipantsPanel({ participants, hostId, isOpen, onClose, onMut
                   <Users className="size-8 opacity-30" />
                   <p className="text-sm">No participants yet</p>
                 </div>
-              ) : (
+                ) : (
                 participants.map(p => (
-                  <ParticipantRow key={p.sid || p.identity} p={p} hostId={hostId} onMuteRequest={onMuteRequest} />
+                  <ParticipantRow key={p.sid || p.identity} p={p} hostId={hostId} onMuteRequest={onMuteRequest} raisedHands={raisedHands} />
                 ))
               )}
             </div>

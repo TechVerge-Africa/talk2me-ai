@@ -6,6 +6,7 @@ interface MeetingLayoutProps {
   topbar?: React.ReactNode;
   dock?: React.ReactNode;
   isDeafMode?: boolean;
+  fullBleed?: boolean;
 }
 
 export function MeetingLayout({ 
@@ -14,15 +15,18 @@ export function MeetingLayout({
   topbar, 
   dock, 
   isDeafMode 
+  , fullBleed = false
 }: MeetingLayoutProps) {
   return (
     <main className={`fixed inset-0 flex flex-col transition-colors duration-700 ${isDeafMode ? "bg-slate-950" : "bg-slate-950 sm:bg-background"}`}>
-      <div className="flex-shrink-0 z-40">
-        {topbar}
-      </div>
+      {topbar && (
+        <div className="absolute top-0 left-0 right-0 z-40 pointer-events-auto">
+          {topbar}
+        </div>
+      )}
       
-      <div className="flex-1 flex flex-col lg:flex-row relative overflow-hidden pb-[80px] sm:pb-0">
-        <div className={`flex-1 transition-all duration-500 ease-in-out relative p-2 sm:p-4 lg:p-6 ${sidebar ? "lg:flex-[2]" : ""}`}>
+      <div className={`flex-1 flex flex-col lg:flex-row relative overflow-hidden min-h-0 ${fullBleed ? '' : 'pb-[80px] sm:pb-0'}`}>
+        <div className={`flex-1 transition-all duration-500 ease-in-out relative min-h-0 ${fullBleed ? 'p-0 w-full h-full' : 'p-2 sm:p-4 lg:p-6'} ${sidebar ? "lg:flex-[2]" : ""}`}>
           {children}
         </div>
         
@@ -34,8 +38,8 @@ export function MeetingLayout({
       </div>
 
       {dock && (
-        <div className="absolute bottom-5 sm:bottom-8 left-0 right-0 px-2 flex justify-center z-30 pointer-events-none">
-          <div className="pointer-events-auto max-w-full">
+        <div className="absolute bottom-0 left-0 right-0 px-2 flex justify-center z-30 pointer-events-none">
+          <div className="pointer-events-auto max-w-full pb-6">
             {dock}
           </div>
         </div>

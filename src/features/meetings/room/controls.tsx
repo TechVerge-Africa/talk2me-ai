@@ -22,6 +22,8 @@ interface ControlDockProps {
   onAi: () => void;
   onEmergency: () => void;
   onCaptionSize: () => void;
+  captionsOn?: boolean;
+  onToggleCaptions?: () => void;
   onShare: () => void;
   onLeave: () => void;
   participantCount?: number;
@@ -36,6 +38,7 @@ export function ControlDock({
   participantCount, participantsOpen,
   onAi, onEmergency, onCaptionSize, onShare, onLeave,
   onToggleChat,
+  captionsOn, onToggleCaptions,
 }: ControlDockProps) {
   const ControlButton = ({
     children, onClick, label,
@@ -50,16 +53,16 @@ export function ControlDock({
     <button
       onClick={onClick}
       aria-label={label}
-      className={`group relative flex justify-center items-center w-[4.5rem] h-16 md:size-12 rounded-[24px] md:rounded-2xl flex-shrink-0 transition-all active:scale-95 ${
+      className={`group relative flex justify-center items-center w-[4.3rem] h-14 md:size-12 rounded-[18px] md:rounded-2xl flex-shrink-0 transition-all active:scale-95 ${
         active
-          ? "bg-primary/20 text-primary ring-1 ring-primary/30 shadow-inner"
+          ? "bg-white/10 text-white ring-1 ring-white/10"
           : variant === "danger"
-            ? "bg-destructive/15 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            ? "bg-red-600/12 text-red-400 hover:bg-red-600/20"
             : variant === "primary"
-              ? "bg-primary text-primary-foreground shadow-bridge-sm"
+              ? "bg-primary/20 text-primary-foreground"
               : variant === "amber"
-                ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500 hover:text-white"
-                : "bg-muted text-foreground hover:bg-muted/70"
+                ? "bg-amber-500/12 text-amber-500 hover:bg-amber-500/20"
+                : "bg-transparent text-white/90 hover:bg-white/5"
       }`}
     >
       {children}
@@ -79,7 +82,7 @@ export function ControlDock({
   };
 
   return (
-    <div className="bg-card/90 backdrop-blur-3xl rounded-[32px] md:rounded-3xl ring-1 ring-border/50 shadow-bridge p-2 md:p-2 flex items-center gap-2 md:gap-1.5 max-w-[95vw] overflow-x-auto no-scrollbar scroll-smooth">
+    <div className="bg-black/30 backdrop-blur-md rounded-3xl ring-1 ring-white/8 border border-white/6 shadow-sm px-2 py-2 md:px-3 md:py-2 flex items-center gap-2 md:gap-1.5 max-w-[95vw] overflow-x-auto no-scrollbar scroll-smooth pointer-events-auto">
       {/* Media controls */}
       <ControlButton onClick={onToggleMic} label={micOn ? "Mute" : "Unmute"} active={!micOn} variant={!micOn ? "danger" : "default"}>
         {micOn ? <Mic className="size-7 md:size-5" /> : <MicOff className="size-7 md:size-5" />}
@@ -100,7 +103,7 @@ export function ControlDock({
       <ControlButton onClick={onToggleDeaf} label={deafOn ? "Deaf mode on" : "Exit deaf mode"} active={deafOn}>
         {deafOn ? <EarOff className="size-7 md:size-5" /> : <Ear className="size-7 md:size-5" />}
       </ControlButton>
-      <ControlButton onClick={onCaptionSize} label="Caption size">
+      <ControlButton onClick={onToggleCaptions ?? onCaptionSize} label={captionsOn ? "Hide captions" : "Show captions"} active={!!captionsOn}>
         <Type className="size-7 md:size-5" />
       </ControlButton>
 
@@ -140,7 +143,7 @@ export function ControlDock({
           <button
             onClick={handleLeave}
             aria-label="End meeting for all"
-            className="group relative flex items-center justify-center gap-2 px-6 md:px-4 h-16 md:h-12 rounded-[24px] md:rounded-2xl bg-red-500 text-white hover:bg-red-600 active:scale-95 transition-all shadow-lg"
+            className="group relative flex items-center justify-center gap-2 px-5 md:px-4 h-14 md:h-12 rounded-[20px] md:rounded-2xl bg-red-600/12 text-red-500 border border-red-500/20 hover:bg-red-600/20 active:scale-95 transition-all"
           >
             <Crown className="size-5 md:size-4" />
             <span className="text-xs md:text-[11px] font-black uppercase tracking-widest hidden md:inline">End</span>

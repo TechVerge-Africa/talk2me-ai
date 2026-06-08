@@ -5,10 +5,11 @@ import { Message } from '@/types/message';
 
 interface Props {
   captions: Message[];
+  speakerName?: string | null;
   size?: 'sm' | 'md' | 'lg';
 }
 
-export function RealTimeCaptionOverlay({ captions, size = 'md' }: Props) {
+export function RealTimeCaptionOverlay({ captions, speakerName = null, size = 'md' }: Props) {
   const latestCaption = captions[captions.length - 1];
   const [displayText, setDisplayText] = useState("");
 
@@ -18,26 +19,31 @@ export function RealTimeCaptionOverlay({ captions, size = 'md' }: Props) {
     }
   }, [latestCaption]);
 
-  if (!displayText) return null;
+  // Always show a small placeholder if no caption yet so the area is persistent
+  if (!displayText) return (
+    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
+      <div className="glass-card bg-black/40 border-white/10 rounded-[20px] px-4 py-2 text-sm text-muted-foreground text-center">Waiting for captions…</div>
+    </div>
+  );
 
   const sizeClasses = {
-    sm: "text-lg p-4",
-    md: "text-2xl p-6",
-    lg: "text-4xl p-8"
+    sm: "text-base p-3",
+    md: "text-lg p-4",
+    lg: "text-2xl p-6"
   };
 
   return (
-    <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-full max-w-4xl px-8 z-40 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="glass-card bg-black/60 border-white/20 rounded-[32px] shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)]">
-        <p className={`font-medium tracking-tight text-white text-center leading-relaxed transition-all ${sizeClasses[size]}`}>
-          {displayText}
-        </p>
-        
-        {/* Progress line to show it's active */}
-        <div className="px-8 pb-3">
-           <div className="h-0.5 bg-bridge-cyan/20 rounded-full overflow-hidden">
-              <div className="h-full bg-bridge-cyan w-full animate-progress-fast" />
-           </div>
+    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
+      <div className="glass-card bg-black/60 border-white/10 rounded-[20px] shadow-lg px-4 py-3 flex items-start gap-3">
+        <div className="flex-shrink-0">
+          <div className="text-xs font-bold text-bridge-cyan">{speakerName ?? 'Speaker'}</div>
+          <div className="text-[10px] text-muted-foreground">Live • {latestCaption.confidence ? `${Math.round(latestCaption.confidence*100)}%` : 'confidence N/A'}</div>
+        </div>
+        <div className={`flex-1 ${sizeClasses[size]}`}>
+          <p className="text-white font-medium leading-snug">{displayText}</p>
+        </div>
+        <div className="flex-shrink-0 text-[11px] text-muted-foreground">
+          <div className="px-2 py-1 rounded bg-muted/30">Translated: —</div>
         </div>
       </div>
     </div>

@@ -9,10 +9,12 @@ interface ParticipantVideoProps {
   source?: Track.Source;
   className?: string;
   mirrored?: boolean;
+  raised?: boolean;
+  reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[];
 }
 
 // Renders a single video tile for a participant
-export function ParticipantVideo({ participant, source = Track.Source.Camera, className, mirrored }: ParticipantVideoProps) {
+export function ParticipantVideo({ participant, source = Track.Source.Camera, className, mirrored, raised, reactions }: ParticipantVideoProps) {
   const tracks = useTracks([source]);
   const trackRef = tracks.find(t => t.participant.identity === participant.identity);
 
@@ -42,6 +44,22 @@ export function ParticipantVideo({ participant, source = Track.Source.Camera, cl
         </div>
       )}
 
+      {/* Raised hand indicator */}
+      {raised && (
+        <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 bg-amber-300/90 rounded-lg text-amber-900 text-[12px] font-bold backdrop-blur-sm">
+          <span className="text-lg">✋</span>
+          <span className="hidden md:inline">Raised</span>
+        </div>
+      )}
+
+      {/* Reaction overlay: show latest reaction for this participant */}
+      {reactions && reactions.length > 0 && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30">
+          {reactions.slice(-1).map(r => (
+            <div key={r.id} className="text-4xl animate-pop drop-shadow-lg">{r.emoji}</div>
+          ))}
+        </div>
+      )}
       {/* Name badge */}
       <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg text-white text-[10px] font-semibold max-w-[120px] truncate">
         {participant.identity}{participant instanceof LocalParticipant ? ' (You)' : ''}

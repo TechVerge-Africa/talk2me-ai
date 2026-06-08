@@ -4,11 +4,12 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff } from 'lucide-react';
+import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, Menu, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { MeetingLayout } from '@/features/meetings/room/layout';
 import { ControlDock } from '@/features/meetings/room/controls';
+import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { AiSignerView } from '@/features/accessibility/sign-language';
 import { CaptionList } from '@/features/captions/caption-list';
 import { ChatPanel } from '@/features/chat/chat-panel';
@@ -130,6 +131,8 @@ function PreJoinLobby({
           <div className="absolute top-4 left-4 z-30">
             <div className="px-3 py-1.5 rounded-full bg-black/40 text-white text-[10px] font-bold">Preview</div>
           </div>
+
+        
         </div>
 
         <div className="flex flex-col justify-center p-4">
@@ -288,7 +291,7 @@ function useActiveSpeaker(participants: (LocalParticipant | RemoteParticipant)[]
 }
 
 // Draggable self-view component (simple pointer-based dragging)
-function HidableSelfView({ participant, absolute = false }: { participant: LocalParticipant; absolute?: boolean }) {
+function HidableSelfView({ participant, absolute = false, raised, reactions }: { participant: LocalParticipant; absolute?: boolean; raised?: boolean; reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[] }) {
   const [hidden, setHidden] = useState(false);
   const width = 160;
   const height = 220;
@@ -324,7 +327,7 @@ function HidableSelfView({ participant, absolute = false }: { participant: Local
           className="rounded-xl overflow-hidden shadow-2xl ring-1 ring-border bg-slate-900"
         >
           <div className="relative w-full h-full">
-            <ParticipantVideo participant={participant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored />
+            <ParticipantVideo participant={participant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored raised={!!raised} reactions={reactions ?? []} />
             <button onClick={() => setHidden(true)} aria-label="Hide self view" className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2">
               ✕
             </button>
@@ -368,14 +371,16 @@ function RoomContent({
     micOn, camOn, screenShareOn, isDeafMode,
     captions, messages, participants,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
+    raisedHands, reactions, toggleRaiseHand, sendReaction,
   } = useMeeting(code);
 
-  const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'captions' | 'chat'>('captions');
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [codeCopied, setCodeCopied] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   const screenTracks = useTracks([Track.Source.ScreenShare]);
   const hasScreenShare = screenTracks.length > 0;
@@ -402,25 +407,135 @@ function RoomContent({
   }, [code]);
 
   // ─── Topbar ────────────────────────────────────────────────────
-  const topbar = (
-    <div className="px-4 sm:px-6 h-14 flex items-center justify-between border-b border-border bg-card/95 backdrop-blur-xl sticky top-0 z-20">
-      {/* Left — logo + code */}
-      <div className="flex items-center gap-3">
-        <div className="size-8 rounded-lg bg-gradient-to-br from-bridge-indigo to-bridge-cyan grid place-items-center text-white text-[10px] font-black">T2</div>
-        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 rounded-lg">
-          <span className="text-xs font-mono font-bold">{code}</span>
-          <button
-            onClick={shareRoom}
-            title={codeCopied ? 'Link copied!' : 'Copy invite link'}
-            className="text-bridge-indigo ml-1 hover:text-bridge-indigo/70 transition-colors"
-          >
-            {codeCopied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-          </button>
-        </div>
-      </div>
+  // Meeting duration timer (local to RoomContent)
+  const { user: authUser } = useAuth();
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setSecondsElapsed(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
-      {/* Right — role badge */}
+  const formatDuration = (s: number) => {
+    const mm = Math.floor(s / 60).toString().padStart(2, '0');
+    const ss = (s % 60).toString().padStart(2, '0');
+    return `${mm}:${ss}`;
+  };
+
+  // Recording and network indicators (placeholders)
+  const [recordingOn, setRecordingOn] = useState(false);
+  const [networkQuality, setNetworkQuality] = useState<'good' | 'ok' | 'poor'>('good');
+
+  const [displayName, setDisplayName] = useState<string | null>(() => {
+    try { return localStorage.getItem('t2_display_name'); } catch { return null; }
+  });
+
+  const openRename = () => {
+    const newName = window.prompt('Enter display name (applies on rejoin):', displayName || authUser?.email?.split('@')[0] || '');
+    if (newName !== null) {
+      setDisplayName(newName);
+      try { localStorage.setItem('t2_display_name', newName); } catch {}
+      alert('Display name saved. Rejoin to apply the change.');
+    }
+  };
+  const [viewMode, setViewMode] = useState<'grid' | 'speaker' | 'focus' | 'fullscreen'>('grid');
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [showTopbar, setShowTopbar] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && viewMode === 'fullscreen') {
+        setViewMode('grid');
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, [viewMode]);
+
+  const enterFullscreen = async () => {
+    try {
+      await document.documentElement.requestFullscreen();
+      setViewMode('fullscreen');
+    } catch (e) {
+      console.warn('Fullscreen request failed', e);
+    }
+  };
+
+  const exitFullscreen = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    }
+    setViewMode('grid');
+  };
+  const topbar = (
+    <div className={`transition-transform duration-300 ${showTopbar ? 'translate-y-0' : '-translate-y-full'}`}>
+      <div className="px-4 sm:px-6 h-14 flex items-center justify-between border-b border-border bg-black/30 backdrop-blur-xl border-white/10">
+      {/* Left — logo + code */}
+        <div className="flex items-center gap-3">
+          {/* Mobile menu button */}
+          <button className="sm:hidden p-2 rounded-md bg-black/20 backdrop-blur text-white" onClick={() => setMobileMenuOpen(v => !v)} aria-label="Open menu">
+            {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+          </button>
+          <div className="size-8 rounded-lg bg-gradient-to-br from-bridge-indigo to-bridge-cyan grid place-items-center text-white text-[10px] font-black">T2</div>
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 rounded-lg">
+            <span className="text-xs font-mono font-bold">{code}</span>
+            <button
+              onClick={shareRoom}
+              title={codeCopied ? 'Link copied!' : 'Copy invite link'}
+              className="text-bridge-indigo ml-1 hover:text-bridge-indigo/70 transition-colors"
+            >
+              {codeCopied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+            </button>
+          </div>
+
+          {/* Mobile summary: keep participant count and timer visible */}
+          <div className="flex items-center gap-2 sm:hidden ml-2">
+            <div className="text-xs font-bold">{participants ? participants.length : 0}</div>
+            <div className="text-xs text-muted-foreground">•</div>
+            <div className="text-xs text-muted-foreground">{formatDuration(secondsElapsed)}</div>
+          </div>
+        </div>
+
+      {/* Right — role badge + meeting info */}
       <div className="flex items-center gap-3">
+        <div className="hidden sm:flex flex-col text-xs text-muted-foreground mr-2">
+          <span className="font-bold text-foreground">Meeting: {code}</span>
+          <span className="text-[11px]">{participants.length} participants • {formatDuration(secondsElapsed)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${networkQuality === 'good' ? 'bg-emerald-400' : networkQuality === 'ok' ? 'bg-amber-400' : 'bg-red-500'}`} title={`Network: ${networkQuality}`} />
+          <div className={`px-2 py-1 rounded-md text-[11px] ${recordingOn ? 'bg-red-600 text-white' : 'bg-muted/40 text-muted-foreground'}`}>{recordingOn ? 'REC' : 'Not recording'}</div>
+        </div>
+        {/* View selector */}
+        <div className="relative">
+          <button onClick={() => setViewMenuOpen(v => !v)} className="px-3 py-1 rounded-lg bg-muted/40 text-xs font-bold">View</button>
+          {viewMenuOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-card rounded-lg ring-1 ring-border shadow-xl z-50">
+                <button onClick={() => { setViewMode('grid'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='grid' ? 'bg-muted/30' : ''}`}>Grid</button>
+                <button onClick={() => { setViewMode('speaker'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='speaker' ? 'bg-muted/30' : ''}`}>Speaker</button>
+                <button onClick={() => { setViewMode('focus'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='focus' ? 'bg-muted/30' : ''}`}>Focus</button>
+                <button onClick={() => { enterFullscreen(); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='fullscreen' ? 'bg-muted/30' : ''}`}>Fullscreen</button>
+              </div>
+            )}
+
+          {/* Mobile menu panel */}
+          {mobileMenuOpen && (
+            <div className="absolute left-3 top-full mt-2 w-56 bg-card rounded-lg ring-1 ring-border shadow-xl z-50 p-2 sm:hidden">
+              <button onClick={() => { openRename(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Profile • {displayName ?? (authUser?.email?.split('@')[0] ?? 'Guest')}</button>
+              <div className="border-t border-border my-1" />
+              <div className="text-xs text-muted-foreground px-3 py-1">View</div>
+              <button onClick={() => { setViewMode('grid'); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Grid</button>
+              <button onClick={() => { setViewMode('speaker'); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Speaker</button>
+              <button onClick={() => { setViewMode('focus'); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Focus</button>
+              <button onClick={() => { enterFullscreen(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Fullscreen</button>
+              <div className="border-t border-border my-1" />
+              <button onClick={() => { shareRoom(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Share</button>
+              <button onClick={() => { setTranscriptOpen(v => !v); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">{transcriptOpen ? 'Hide captions' : 'Show captions'}</button>
+              <button onClick={() => { setParticipantsOpen(v => !v); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Participants</button>
+              <button onClick={() => { setChatModalOpen(v => !v); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Chat</button>
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-1.5 text-xs font-medium">
           <span className={`size-1.5 rounded-full ${participants.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-muted'}`} />
           <span className="text-muted-foreground hidden sm:block">{participants.length} in call</span>
@@ -432,18 +547,19 @@ function RoomContent({
           </span>
         )}
 
-        {/* Role badge — distinct for host vs guest */}
-        {isHost ? (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500">
-            <Crown className="size-3.5" />
-            <span className="text-[10px] font-black uppercase tracking-wide">Host</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted border border-border text-muted-foreground">
-            <User className="size-3.5" />
-            <span className="text-[10px] font-bold uppercase tracking-wide">Participant</span>
-          </div>
-        )}
+        {/* Role badge */}
+        <div className="relative">
+          <button onClick={openRename} title="Profile / settings" className="flex items-center gap-2 px-3 py-1 rounded-lg bg-muted/30">
+            <User className="size-4" />
+            <span className="text-[12px] font-medium">{displayName ?? (authUser?.email?.split('@')[0] ?? 'Guest')}</span>
+          </button>
+        </div>
+        <div className="ml-2 hidden sm:block">
+          <button onClick={() => setShowTopbar(false)} title="Hide topbar" className="size-8 rounded-md bg-muted/20 p-2 grid place-items-center">
+            <EyeOff className="size-4" />
+          </button>
+        </div>
+      </div>
       </div>
     </div>
   );
@@ -487,14 +603,14 @@ function RoomContent({
     <div className="relative flex-1 w-full h-full min-h-0">
       <ScreenShareView className="w-full h-full rounded-2xl sm:rounded-[32px]" />
       {localParticipant && (
-        <HidableSelfView participant={localParticipant} absolute />
+        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} />
       )}
     </div>
   ) : (
     <div className="relative flex-1 w-full h-full min-h-0">
       <div className="w-full h-full rounded-2xl sm:rounded-[32px] overflow-hidden bg-slate-950 sm:ring-1 sm:ring-white/10">
         {activeSpeaker ? (
-          <ParticipantVideo participant={activeSpeaker} source={Track.Source.Camera} className="w-full h-full" />
+          <ParticipantVideo participant={activeSpeaker} source={Track.Source.Camera} className="w-full h-full" raised={!!raisedHands[activeSpeaker.identity]} reactions={reactions.filter(r => r.sender_id === activeSpeaker.identity)} />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-muted-foreground">
             <div className="size-24 rounded-full bg-gradient-to-br from-bridge-indigo/20 to-bridge-cyan/20 grid place-items-center ring-1 ring-bridge-cyan/20">
@@ -511,54 +627,80 @@ function RoomContent({
           </div>
         )}
       </div>
-      {/* Self-view PiP */}
-      {localParticipant && (
-        <HidableSelfView participant={localParticipant} absolute />
+      {/* Self-view PiP (only in grid view) */}
+      {localParticipant && viewMode !== 'focus' && (
+        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} />
       )}
     </div>
   );
 
+  // Use available layout height so the video fills to the bottom and overlays (controls/captions) sit on top
+  const mainContainerClass = viewMode === 'grid' ? "relative w-full h-full min-h-[400px]" : "relative w-full h-full min-h-0";
+
   return (
     <>
-      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar}
+      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} fullBleed={viewMode !== 'grid'}
         dock={
           <ControlDock
             micOn={micOn} camOn={camOn} screenShareOn={screenShareOn}
-            transcriptOn={transcriptOpen} deafOn={isDeafMode}
+            transcriptOn={!!raisedHands[localParticipant?.identity || '']} deafOn={isDeafMode}
             participantsOpen={participantsOpen} participantCount={participants.length}
             onToggleMic={toggleMic} onToggleCam={toggleCam}
             onToggleScreenShare={toggleScreenShare}
-            onToggleTranscript={() => setTranscriptOpen(v => !v)}
+            onToggleTranscript={() => toggleRaiseHand()}
             onToggleDeaf={toggleDeafMode}
             onToggleParticipants={() => setParticipantsOpen(v => !v)}
-            onAi={() => { setActiveTab('chat'); setTranscriptOpen(true); }}
-            onToggleChat={() => { setActiveTab('chat'); setChatModalOpen(v => !v); setTranscriptOpen(true); }}
-            onEmergency={() => alert('Emergency alert sent!')}
+            onAi={() => { setActiveTab('chat'); setChatModalOpen(true); }}
+            onToggleChat={() => { setActiveTab('chat'); setChatModalOpen(v => !v); }}
+            onEmergency={() => setEmojiOpen(v => !v)}
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
+            captionsOn={transcriptOpen} onToggleCaptions={() => setTranscriptOpen(v => !v)}
             onShare={shareRoom}
             onLeave={onLeave}
             isHost={isHost}
           />
         }
       >
-        <div className="relative w-full h-[calc(100vh-14rem)] min-h-[400px]">
+        <div className={mainContainerClass}>
           {mainStage}
-          {!isDeafMode && <RealTimeCaptionOverlay captions={captions} size={captionSize} />}
+          {/* Show captions only when transcript/captions are turned on */}
+          {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} speakerName={activeSpeaker?.identity} size={captionSize} />}
         </div>
 
-        {/* Thumbnail strip */}
-        {!isDeafMode && !hasScreenShare && stripParticipants.length > 0 && (
+        {/* Thumbnail strip (only in grid view) */}
+        {!isDeafMode && !hasScreenShare && stripParticipants.length > 0 && viewMode === 'grid' && (
           <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
             {stripParticipants.map(p => (
               <div key={p.sid || p.identity} className="flex-shrink-0 w-36 h-24 rounded-2xl overflow-hidden ring-1 ring-border bg-slate-900">
-                <ParticipantVideo participant={p} source={Track.Source.Camera} className="w-full h-full rounded-2xl" mirrored={p instanceof LocalParticipant} />
+                  <ParticipantVideo participant={p} source={Track.Source.Camera} className="w-full h-full rounded-2xl" mirrored={p instanceof LocalParticipant} raised={!!raisedHands[p.identity]} reactions={reactions.filter(r => r.sender_id === p.identity)} />
               </div>
             ))}
           </div>
         )}
       </MeetingLayout>
 
-      <ParticipantsPanel participants={participants} hostId={isHost ? localParticipant?.identity : undefined} isOpen={participantsOpen} onClose={() => setParticipantsOpen(false)} onMuteRequest={isHost ? requestMute : undefined} />
+      {/* Floating show-topbar button when topbar is hidden */}
+      {!showTopbar && (
+        <button onClick={() => setShowTopbar(true)} title="Show topbar" className="fixed top-3 right-3 z-50 bg-black/30 backdrop-blur rounded-full p-2 pointer-events-auto">
+          <Eye className="size-5 text-white" />
+        </button>
+      )}
+
+      <ParticipantsPanel participants={participants} hostId={isHost ? localParticipant?.identity : undefined} isOpen={participantsOpen} onClose={() => setParticipantsOpen(false)} onMuteRequest={isHost ? requestMute : undefined} raisedHands={raisedHands} />
+
+      {/* Emoji picker popover (simple) */}
+      {emojiOpen && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50">
+          <EmojiPicker onSelect={(e) => { sendReaction(e); setEmojiOpen(false); }} onClose={() => setEmojiOpen(false)} />
+        </div>
+      )}
+
+      {/* Reactions overlay: show recent reactions briefly */}
+      <div className="fixed right-6 top-24 z-40 flex flex-col gap-2 pointer-events-none">
+        {reactions.slice().reverse().slice(0,6).map(r => (
+          <div key={r.id} className="animate-pop text-3xl text-center">{r.emoji}</div>
+        ))}
+      </div>
 
       {/* Mobile Chat Modal */}
       {chatModalOpen && (
@@ -625,6 +767,8 @@ export default function RoomPage() {
       setError('Could not connect to the room. Please check your connection.');
     }
   }, [code, user]);
+
+  
 
   useEffect(() => {
     if (authLoading) return; // wait until auth is resolved
