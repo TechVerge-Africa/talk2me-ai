@@ -4,7 +4,7 @@ import { useRoomContext } from '@livekit/components-react';
 import { Message } from '@/types/message';
 import { TranscriptService } from '@/services/supabase/transcripts';
 
-export function useMeeting(roomCode: string) {
+export function useMeeting(roomCode: string, hostId?: string) {
   const room = useRoomContext();
 
   const [micOn, setMicOn] = useState(true);
@@ -66,7 +66,11 @@ export function useMeeting(roomCode: string) {
           // auto-remove after 6s
           setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
         } else if (msg.type === 'mute_request') {
-          if (room.localParticipant.identity === msg.target_id) {
+          if (
+            room.localParticipant.identity === msg.target_id &&
+            typeof msg.sender_id === 'string' &&
+            msg.sender_id === hostId
+          ) {
             if (msg.source === 'mic') {
               room.localParticipant.setMicrophoneEnabled(false);
               setMicOn(false);
@@ -120,7 +124,7 @@ export function useMeeting(roomCode: string) {
         room.off(RoomEvent.Connected, handleConnected);
       } catch (e) {}
     };
-  }, [room, roomCode]);
+  }, [room, roomCode, hostId]);
 
   const toggleRaiseHand = useCallback((senderId?: string) => {
     if (!room?.localParticipant) return;
@@ -207,7 +211,7 @@ export function useMeeting(roomCode: string) {
 
   const requestMute = useCallback((targetId: string, source: 'mic' | 'cam') => {
     if (!room?.localParticipant) return;
-    const msg = { type: 'mute_request', target_id: targetId, source };
+    const msg = { type: 'mute_request', target_id: targetId, source, sender_id: room.localParticipant.identity };
     const encoder = new TextEncoder();
     room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), { reliable: true });
   }, [room]);
