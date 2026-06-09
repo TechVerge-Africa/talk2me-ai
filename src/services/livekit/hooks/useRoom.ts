@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Room, RoomEvent, Participant } from 'livekit-client';
+import { getAllParticipants } from '@/lib/livekit-helpers';
 
 export function useLiveKitRoom(url: string, token: string) {
   const [room, setRoom] = useState<Room | null>(null);
