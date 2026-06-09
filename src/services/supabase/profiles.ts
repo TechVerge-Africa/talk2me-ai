@@ -1,4 +1,5 @@
 import { supabase } from './client';
+import { AppError } from '@/services/errors';
 
 export type UserRole = 'deaf_user' | 'hearing_user' | 'interpreter' | 'admin';
 
@@ -29,8 +30,13 @@ export const ProfileService = {
       .single();
 
     if (error) {
-      console.error('Error fetching profile:', error);
-      return null;
+      // PGRST116 = no rows found, normal for new users without a profile yet
+      if (error.code === 'PGRST116') return null;
+      throw new AppError(
+        'Failed to load user profile.',
+        'PROFILE_FETCH_FAILED',
+        { cause: error },
+      );
     }
 
     return data;
@@ -39,17 +45,20 @@ export const ProfileService = {
   /**
    * Updates user accessibility settings
    */
-  async updateSettings(userId: string, settings: Partial<UserProfile['settings']>) {
+  async updateSettings(userId: string, settings: Partial<UserProfile['settings']>): Promise<void> {
     const { error } = await supabase
       .from('profiles')
       .update({ 
-        settings: settings // Note: Assuming the settings column is JSONB and we merge or replace
+        settings: settings
       })
       .eq('id', userId);
 
     if (error) {
-       console.error('Error updating settings:', error);
-       throw error;
+      throw new AppError(
+        'Failed to update settings.',
+        'PROFILE_UPDATE_FAILED',
+        { cause: error },
+      );
     }
   },
 

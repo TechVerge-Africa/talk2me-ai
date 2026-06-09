@@ -59,6 +59,8 @@ export function useMeeting(roomCode: string, hostId?: string) {
           content: text,
           start_time: segments[0].startTime,
           end_time: segments[segments.length - 1].endTime,
+        }).catch((err) => {
+          console.error('Failed to persist transcript segment:', err);
         });
       }
     };
@@ -88,7 +90,9 @@ export function useMeeting(roomCode: string, hostId?: string) {
             }
           }
         }
-      } catch {}
+      } catch (e) {
+        console.warn('Failed to parse data message:', e);
+      }
     };
 
     room.on(RoomEvent.TranscriptionReceived, handleTranscription);
@@ -112,8 +116,8 @@ export function useMeeting(roomCode: string, hostId?: string) {
       room.on(RoomEvent.Disconnected, handleDisconnected);
       room.on(RoomEvent.Reconnecting, handleReconnecting);
       room.on(RoomEvent.Connected, handleConnected);
-    } catch (e) {
-      // Some runtimes / versions may not expose all events — ignore if unavailable
+    } catch {
+      // Some runtimes / versions may not expose all events — safe to ignore
     }
 
     // Sync initial state
@@ -130,7 +134,9 @@ export function useMeeting(roomCode: string, hostId?: string) {
         room.off(RoomEvent.Disconnected, handleDisconnected);
         room.off(RoomEvent.Reconnecting, handleReconnecting);
         room.off(RoomEvent.Connected, handleConnected);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Error removing room event listeners:', e);
+      }
     };
   }, [room, roomCode, addReaction, hostId]);
 
