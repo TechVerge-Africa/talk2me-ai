@@ -5,6 +5,7 @@ export interface Message {
   content: string;
   type: 'chat' | 'caption' | 'system';
   timestamp: string;
+  confidence?: number;
 }
 
 export interface AISummary {
