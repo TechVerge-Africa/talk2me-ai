@@ -10,19 +10,8 @@ import { QrBlock } from "@/packages/ui/qr-block";
 import { generateRoomCode, roomShareUrl } from "@/packages/shared/rooms";
 import { useAuth } from "@/features/auth/use-auth";
 import { MeetingService } from "@/services/supabase/meetings";
-
-const fadeInUp = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 }
-};
-
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.2 }
-  }
-};
+import { fadeInUp, staggerContainer } from "@/lib/motion";
+import { GradientBackground } from "@/components/ui/gradient-background";
 
 export default function CreatePage() {
   const code = useMemo(() => generateRoomCode(), []);
@@ -76,10 +65,7 @@ export default function CreatePage() {
   return (
     <main className="relative min-h-screen w-full pt-20 pb-20 lg:pt-32 lg:pb-32 bg-background">
       {/* Background elements */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-1/4 right-0 w-[600px] h-[600px] bg-cyan/8 rounded-full blur-3xl -mr-64" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo/8 rounded-full blur-3xl -ml-48" />
-      </div>
+      <GradientBackground />
 
       <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
         <motion.div

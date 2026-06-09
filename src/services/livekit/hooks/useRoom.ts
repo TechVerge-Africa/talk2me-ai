@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Room, RoomEvent, Participant, RemoteParticipant, LocalParticipant } from 'livekit-client';
+import { Room, RoomEvent, Participant } from 'livekit-client';
+import { getAllParticipants } from '@/lib/livekit-helpers';
 
 export function useLiveKitRoom(url: string, token: string) {
   const [room, setRoom] = useState<Room | null>(null);
@@ -9,22 +10,16 @@ export function useLiveKitRoom(url: string, token: string) {
     if (!url || !token) return;
 
     const r = new Room();
-    
-    r.on(RoomEvent.ParticipantConnected, () => {
-      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
-      setParticipants(allParticipants);
-    });
 
-    r.on(RoomEvent.ParticipantDisconnected, () => {
-      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
-      setParticipants(allParticipants);
-    });
+    const syncParticipants = () => setParticipants(getAllParticipants(r));
+
+    r.on(RoomEvent.ParticipantConnected, syncParticipants);
+    r.on(RoomEvent.ParticipantDisconnected, syncParticipants);
 
     async function connect() {
       await r.connect(url, token);
       setRoom(r);
-      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
-      setParticipants(allParticipants);
+      syncParticipants();
     }
 
     connect();

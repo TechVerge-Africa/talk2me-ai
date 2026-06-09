@@ -2,6 +2,19 @@ import { supabase } from './client';
 import { generateRoomCode } from '@/packages/shared/rooms';
 import { Meeting } from '@/types/meeting';
 
+/** Map a Supabase meetings row to the application Meeting model. */
+function toMeeting(row: Record<string, unknown>): Meeting {
+  return {
+    id: row.id as string,
+    title: row.room_name as string,
+    room_code: row.room_code as string,
+    host_id: row.host_id as string,
+    livekit_room_id: row.id as string,
+    created_at: row.created_at as string,
+    status: 'active',
+  };
+}
+
 export const MeetingService = {
   /**
    * Creates a new meeting room
@@ -31,15 +44,7 @@ export const MeetingService = {
       return null;
     }
 
-    return {
-      id: data.id,
-      title: data.room_name,
-      room_code: data.room_code,
-      host_id: data.host_id,
-      livekit_room_id: data.id, // Using internal ID as room name for LiveKit
-      created_at: data.created_at,
-      status: 'active'
-    };
+    return toMeeting(data);
   },
 
   /**
@@ -58,15 +63,7 @@ export const MeetingService = {
       return null;
     }
 
-    return {
-      id: data.id,
-      title: data.room_name,
-      room_code: data.room_code,
-      host_id: data.host_id,
-      livekit_room_id: data.id,
-      created_at: data.created_at,
-      status: 'active'
-    };
+    return toMeeting(data);
   },
 
   /**
