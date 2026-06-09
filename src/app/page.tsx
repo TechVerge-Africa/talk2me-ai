@@ -4,25 +4,8 @@ import React from 'react';
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { ArrowRight, Phone, Users, Radio, Zap, Globe, BarChart3, Quote, Check } from "lucide-react";
-
-const fadeInUp: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { 
-    opacity: 1, 
-    y: 0
-  }
-};
-
-const staggerContainer: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.12,
-      delayChildren: 0.2
-    }
-  }
-};
+import { fadeInUp, staggerContainer } from "@/lib/motion";
+import { GradientBackground } from "@/components/ui/gradient-background";
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
@@ -37,10 +20,7 @@ export function HeroSection() {
   return (
     <section className="relative w-full overflow-hidden pt-12 pb-10 sm:pt-16 sm:pb-14 lg:pt-32 lg:pb-28">
       {/* Animated background elements */}
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-1/4 right-0 w-[600px] h-[600px] bg-cyan/8 rounded-full blur-3xl -mr-64" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo/8 rounded-full blur-3xl -ml-48" />
-      </div>
+      <GradientBackground />
 
       <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
         <motion.div 

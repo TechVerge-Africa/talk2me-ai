@@ -3,6 +3,8 @@ import { RoomEvent, RemoteParticipant, LocalParticipant, TranscriptionSegment } 
 import { useRoomContext } from '@livekit/components-react';
 import { Message } from '@/types/message';
 import { TranscriptService } from '@/services/supabase/transcripts';
+import { generateId } from '@/lib/ids';
+import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
 
 export function useMeeting(roomCode: string, hostId?: string) {
   const room = useRoomContext();
@@ -17,12 +19,22 @@ export function useMeeting(roomCode: string, hostId?: string) {
   const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
 
+  const addReaction = useCallback((senderId: string, emoji: string) => {
+    const reaction = {
+      id: generateId('r'),
+      sender_id: senderId,
+      emoji,
+      timestamp: new Date().toISOString(),
+    };
+    setReactions(prev => [...prev.slice(-50), reaction]);
+    setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
+  }, []);
+
   useEffect(() => {
     if (!room) return;
 
     const updateParticipants = () => {
-      const all = [room.localParticipant, ...Array.from(room.remoteParticipants.values())];
-      setParticipants(all);
+      setParticipants(getAllParticipants(room) as (RemoteParticipant | LocalParticipant)[]);
     };
 
     const handleTranscription = (segments: TranscriptionSegment[], participant: any) => {
@@ -30,7 +42,7 @@ export function useMeeting(roomCode: string, hostId?: string) {
       if (!text.trim()) return;
 
       const newCaption: Message = {
-        id: `cap-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        id: generateId('cap'),
         meeting_id: roomCode,
         sender_id: participant.identity,
         content: text,
@@ -60,11 +72,7 @@ export function useMeeting(roomCode: string, hostId?: string) {
           // msg: { type: 'raise_hand', sender_id, raised }
           setRaisedHands(prev => ({ ...prev, [msg.sender_id]: !!msg.raised }));
         } else if (msg.type === 'reaction') {
-          // msg: { type: 'reaction', sender_id, emoji }
-          const reaction = { id: `r-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, sender_id: msg.sender_id, emoji: msg.emoji, timestamp: new Date().toISOString() };
-          setReactions(prev => [...prev.slice(-50), reaction]);
-          // auto-remove after 6s
-          setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
+          addReaction(msg.sender_id, msg.emoji);
         } else if (msg.type === 'mute_request') {
           if (
             room.localParticipant.identity === msg.target_id &&
@@ -124,17 +132,14 @@ export function useMeeting(roomCode: string, hostId?: string) {
         room.off(RoomEvent.Connected, handleConnected);
       } catch (e) {}
     };
-  }, [room, roomCode, hostId]);
+  }, [room, roomCode, addReaction, hostId]);
 
   const toggleRaiseHand = useCallback((senderId?: string) => {
     if (!room?.localParticipant) return;
     const id = senderId || room.localParticipant.identity;
     const currentlyRaised = !!raisedHands[id];
-    const payload = { type: 'raise_hand', sender_id: id, raised: !currentlyRaised };
-    const encoder = new TextEncoder();
     try {
-      room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), { reliable: true });
-      // optimistic update
+      publishRoomData(room.localParticipant, { type: 'raise_hand', sender_id: id, raised: !currentlyRaised }, { reliable: true });
       setRaisedHands(prev => ({ ...prev, [id]: !currentlyRaised }));
     } catch (e) {
       console.error('Failed to publish raise_hand:', e);
@@ -143,18 +148,13 @@ export function useMeeting(roomCode: string, hostId?: string) {
 
   const sendReaction = useCallback((emoji: string) => {
     if (!room?.localParticipant) return;
-    const payload = { type: 'reaction', sender_id: room.localParticipant.identity, emoji };
-    const encoder = new TextEncoder();
     try {
-      room.localParticipant.publishData(encoder.encode(JSON.stringify(payload)), { reliable: false });
-      // also locally show it
-      const reaction = { id: `r-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, sender_id: room.localParticipant.identity, emoji, timestamp: new Date().toISOString() };
-      setReactions(prev => [...prev.slice(-50), reaction]);
-      setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
+      publishRoomData(room.localParticipant, { type: 'reaction', sender_id: room.localParticipant.identity, emoji }, { reliable: false });
+      addReaction(room.localParticipant.identity, emoji);
     } catch (e) {
       console.error('Failed to publish reaction:', e);
     }
-  }, [room]);
+  }, [room, addReaction]);
 
   const toggleMic = useCallback(async () => {
     if (!room?.localParticipant) return;
@@ -195,7 +195,7 @@ export function useMeeting(roomCode: string, hostId?: string) {
     if (!room?.localParticipant) return;
 
     const msg: Message = {
-      id: `chat-${Date.now()}`,
+      id: generateId('chat'),
       meeting_id: roomCode,
       sender_id: room.localParticipant.identity,
       content,
@@ -204,16 +204,12 @@ export function useMeeting(roomCode: string, hostId?: string) {
     };
 
     setMessages(prev => [...prev, msg]);
-
-    const encoder = new TextEncoder();
-    room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), { reliable: true });
+    publishRoomData(room.localParticipant, msg as unknown as Record<string, unknown>, { reliable: true });
   }, [room, roomCode]);
 
   const requestMute = useCallback((targetId: string, source: 'mic' | 'cam') => {
     if (!room?.localParticipant) return;
-    const msg = { type: 'mute_request', target_id: targetId, source, sender_id: room.localParticipant.identity };
-    const encoder = new TextEncoder();
-    room.localParticipant.publishData(encoder.encode(JSON.stringify(msg)), { reliable: true });
+    publishRoomData(room.localParticipant, { type: 'mute_request', target_id: targetId, source, sender_id: room.localParticipant.identity }, { reliable: true });
   }, [room]);
 
   return {
