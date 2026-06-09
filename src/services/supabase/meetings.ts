@@ -1,12 +1,13 @@
 import { supabase } from './client';
 import { generateRoomCode } from '@/packages/shared/rooms';
 import { Meeting } from '@/types/meeting';
+import { AppError } from '@/services/errors';
 
 export const MeetingService = {
   /**
    * Creates a new meeting room
    */
-  async createMeeting(title: string, hostId: string): Promise<Meeting | null> {
+  async createMeeting(title: string, hostId: string): Promise<Meeting> {
     const roomCode = generateRoomCode();
     
     const { data, error } = await supabase
@@ -27,8 +28,11 @@ export const MeetingService = {
       .single();
 
     if (error) {
-      console.error('Error creating meeting:', error);
-      return null;
+      throw new AppError(
+        'Unable to create meeting. Please try again.',
+        'MEETING_CREATE_FAILED',
+        { cause: error },
+      );
     }
 
     return {
@@ -36,7 +40,7 @@ export const MeetingService = {
       title: data.room_name,
       room_code: data.room_code,
       host_id: data.host_id,
-      livekit_room_id: data.id, // Using internal ID as room name for LiveKit
+      livekit_room_id: data.id,
       created_at: data.created_at,
       status: 'active'
     };
@@ -53,10 +57,17 @@ export const MeetingService = {
       .eq('is_active', true)
       .single();
 
-    if (error || !data) {
-      console.error('Meeting not found:', error);
-      return null;
+    if (error) {
+      // PGRST116 means no rows found — a normal "not found" case
+      if (error.code === 'PGRST116') return null;
+      throw new AppError(
+        'Unable to look up meeting. Please try again.',
+        'MEETING_FETCH_FAILED',
+        { cause: error },
+      );
     }
+
+    if (!data) return null;
 
     return {
       id: data.id,
@@ -72,7 +83,7 @@ export const MeetingService = {
   /**
    * Marks a meeting as ended
    */
-  async endMeeting(meetingId: string) {
+  async endMeeting(meetingId: string): Promise<void> {
     const { error } = await supabase
       .from('meetings')
       .update({ 
@@ -82,7 +93,11 @@ export const MeetingService = {
       .eq('id', meetingId);
 
     if (error) {
-      console.error('Error ending meeting:', error);
+      throw new AppError(
+        'Failed to end the meeting.',
+        'MEETING_END_FAILED',
+        { cause: error },
+      );
     }
   }
 };

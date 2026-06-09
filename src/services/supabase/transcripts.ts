@@ -1,4 +1,5 @@
 import { supabase } from './client';
+import { AppError } from '@/services/errors';
 
 export interface TranscriptEntry {
   meeting_id: string;
@@ -13,13 +14,17 @@ export const TranscriptService = {
   /**
    * Saves a chunk of transcription text to the database
    */
-  async saveTranscript(entry: TranscriptEntry) {
+  async saveTranscript(entry: TranscriptEntry): Promise<void> {
     const { error } = await supabase
       .from('transcripts')
       .insert([entry]);
 
     if (error) {
-      console.error('Error saving transcript:', error);
+      throw new AppError(
+        'Failed to save transcript.',
+        'TRANSCRIPT_SAVE_FAILED',
+        { cause: error },
+      );
     }
   },
 
@@ -34,10 +39,13 @@ export const TranscriptService = {
       .order('start_time', { ascending: true });
 
     if (error) {
-      console.error('Error fetching transcripts:', error);
-      return [];
+      throw new AppError(
+        'Failed to load transcripts.',
+        'TRANSCRIPT_FETCH_FAILED',
+        { cause: error },
+      );
     }
 
-    return data;
+    return data ?? [];
   }
 };

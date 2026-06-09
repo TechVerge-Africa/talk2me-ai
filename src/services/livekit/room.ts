@@ -1,4 +1,4 @@
-import { Room, RoomEvent, Track, TranscriptionSegment } from 'livekit-client';
+import { Room } from 'livekit-client';
 
 export interface TranscriptionEvent {
   participantId: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -32,6 +32,8 @@ export default function CreatePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleCreateAndEnter = async () => {
     if (!user) {
       alert("Please sign in to host a meeting");
@@ -39,27 +41,38 @@ export default function CreatePage() {
     }
 
     setIsCreating(true);
+    setCreateError(null);
     try {
       const meeting = await MeetingService.createMeeting("New Meeting", user.id);
-      if (meeting) {
-        router.push(`/room/${meeting.room_code}`);
-      }
+      router.push(`/room/${meeting.room_code}`);
     } catch (error) {
-      console.error("Failed to create meeting:", error);
+      const message = error instanceof Error ? error.message : "Failed to create meeting";
+      setCreateError(message);
     } finally {
       setIsCreating(false);
     }
   };
 
   const copy = async (what: "link" | "code", text: string) => {
-    try { await navigator.clipboard.writeText(text); } catch {}
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.warn("Clipboard write failed:", err);
+    }
     setCopied(what);
     setTimeout(() => setCopied(null), 1600);
   };
 
   const share = async () => {
     if (navigator.share) {
-      try { await navigator.share({ title: "Join my Talk2Me room", url }); } catch {}
+      try {
+        await navigator.share({ title: "Join my Talk2Me room", url });
+      } catch (err) {
+        // AbortError means the user cancelled — not a real failure
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.warn("Share failed:", err);
+        }
+      }
     } else {
       copy("link", url);
     }
@@ -203,6 +216,10 @@ export default function CreatePage() {
                   </>
                 )}
               </button>
+
+              {createError && (
+                <p className="text-sm text-red-500 text-center mt-2">{createError}</p>
+              )}
             </div>
 
             {/* User Status Card */}
