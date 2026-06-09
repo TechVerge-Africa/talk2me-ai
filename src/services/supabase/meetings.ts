@@ -3,6 +3,19 @@ import { generateRoomCode } from '@/packages/shared/rooms';
 import { Meeting } from '@/types/meeting';
 import { AppError } from '@/services/errors';
 
+/** Map a Supabase meetings row to the application Meeting model. */
+function toMeeting(row: Record<string, unknown>): Meeting {
+  return {
+    id: row.id as string,
+    title: row.room_name as string,
+    room_code: row.room_code as string,
+    host_id: row.host_id as string,
+    livekit_room_id: row.id as string,
+    created_at: row.created_at as string,
+    status: 'active',
+  };
+}
+
 export const MeetingService = {
   /**
    * Creates a new meeting room

@@ -17,10 +17,10 @@ export function useLiveKitRoom(url: string, token: string) {
       setParticipants(allParticipants);
     });
 
-    r.on(RoomEvent.ParticipantDisconnected, () => {
-      const allParticipants: Participant[] = [r.localParticipant, ...Array.from(r.remoteParticipants.values())];
-      setParticipants(allParticipants);
-    });
+    const syncParticipants = () => setParticipants(getAllParticipants(r));
+
+    r.on(RoomEvent.ParticipantConnected, syncParticipants);
+    r.on(RoomEvent.ParticipantDisconnected, syncParticipants);
 
     async function connect() {
       try {
