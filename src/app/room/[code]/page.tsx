@@ -20,6 +20,7 @@ import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
 import { CameraPreview } from '@/features/meetings/room/camera-preview';
 import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
+import { supabase } from '@/services/supabase/client';
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
 
@@ -362,17 +363,19 @@ function RoomContent({
   code,
   isHost,
   onLeave,
+  hostIdentity,
 }: {
   code: string;
   isHost: boolean;
   onLeave: () => void;
+  hostIdentity?: string;
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode,
     captions, messages, participants,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
     raisedHands, reactions, toggleRaiseHand, sendReaction,
-  } = useMeeting(code);
+  } = useMeeting(code, hostIdentity);
 
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
@@ -758,7 +761,8 @@ export default function RoomPage() {
     const username = customName || user?.email?.split('@')[0];
     if (!username) return; // Prevent token fetch without a name
     try {
-      const t = await generateToken(code, username);
+      const { data: { session } } = await supabase.auth.getSession();
+      const t = await generateToken(code, username, session?.access_token);
       setToken(t);
       setHasLeft(false);
       setShowPreJoin(false);
@@ -836,7 +840,7 @@ export default function RoomPage() {
       options={roomOptions}
     >
       <RoomAudioRenderer />
-      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} />
+      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} />
     </LiveKitRoom>
   );
 }
