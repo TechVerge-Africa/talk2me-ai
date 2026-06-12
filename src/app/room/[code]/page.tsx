@@ -37,10 +37,13 @@ function PreJoinLobby({
   isHost?: boolean 
 }) {
   const [name, setName] = useState(defaultName);
-  // Start with cam/mic OFF — iOS Safari and many browsers block getUserMedia
-  // unless triggered by an explicit user gesture (button tap)
-  const [camOn, setCamOn] = useState(false);
-  const [micOn, setMicOn] = useState(false);
+  // Read initial mic/cam state from lobby prefs (persisted to localStorage)
+  const [camOn, setCamOn] = useState(() => {
+    try { return localStorage.getItem('t2_pref_cam') !== 'false'; } catch { return true; }
+  });
+  const [micOn, setMicOn] = useState(() => {
+    try { return localStorage.getItem('t2_pref_mic') !== 'false'; } catch { return true; }
+  });
   const [audioLevel, setAudioLevel] = useState(0);
   const [mediaAvailable, setMediaAvailable] = useState(true);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -53,6 +56,14 @@ function PreJoinLobby({
       setMediaAvailable(false);
     }
   }, []);
+
+  // Persist cam/mic prefs whenever they change
+  useEffect(() => {
+    try { localStorage.setItem('t2_pref_cam', String(camOn)); } catch {}
+  }, [camOn]);
+  useEffect(() => {
+    try { localStorage.setItem('t2_pref_mic', String(micOn)); } catch {}
+  }, [micOn]);
 
   useEffect(() => {
     let mounted = true;
@@ -189,7 +200,18 @@ function PreJoinLobby({
             </div>
           </div>
 
-          <form onSubmit={e => { e.preventDefault(); if (name.trim() || isHost) onJoin(name.trim() || 'Host'); }} className="flex flex-col gap-4 relative z-40">
+          <form onSubmit={e => {
+            e.preventDefault();
+            const joinName = name.trim() || (isHost ? 'Host' : '');
+            if (!joinName) return;
+            // Persist final prefs so the room starts with the correct state
+            try {
+              localStorage.setItem('t2_pref_mic', String(micOn));
+              localStorage.setItem('t2_pref_cam', String(camOn));
+              if (name.trim()) localStorage.setItem('t2_display_name', name.trim());
+            } catch {}
+            onJoin(joinName);
+          }} className="flex flex-col gap-4 relative z-40">
             {!isHost ? (
               <input
                 autoFocus
@@ -1019,9 +1041,15 @@ export default function RoomPage() {
   const code = params.code as string;
   const { user, loading: authLoading } = useAuth();
 
-  const [token, setToken] = useState<string | null>(null);
+  const SESSION_KEY = `t2_session_${code}`;
+
+  const [token, setToken] = useState<string | null>(() => {
+    // Restore token from sessionStorage on refresh — skip the pre-join lobby
+    try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; }
+  });
   const [error, setError] = useState<string | null>(null);
   const [hasLeft, setHasLeft] = useState(false);
+  // If we already have a session token, skip pre-join immediately
   const [showPreJoin, setShowPreJoin] = useState(false);
   const hasFetchedToken = useRef(false);
 
@@ -1045,11 +1073,14 @@ export default function RoomPage() {
 
   const fetchToken = useCallback(async (customName?: string) => {
     if (!code) return;
-    const username = customName || user?.email?.split('@')[0];
-    if (!username) return; // Prevent token fetch without a name
+    const username = customName || user?.email?.split('@')[0]
+      || (() => { try { return localStorage.getItem('t2_display_name') || undefined; } catch { return undefined; } })();
+    if (!username) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const t = await generateToken(code, username, session?.access_token);
+      // Persist token to sessionStorage so page refresh reconnects without the lobby
+      try { sessionStorage.setItem(SESSION_KEY, t); } catch {}
       setToken(t);
       setHasLeft(false);
       setShowPreJoin(false);
@@ -1057,17 +1088,26 @@ export default function RoomPage() {
       console.error('Failed to generate LiveKit token:', e);
       setError('Could not connect to the room. Please check your connection.');
     }
-  }, [code, user]);
+  }, [code, user, SESSION_KEY]);
 
   
 
   useEffect(() => {
-    if (authLoading) return; // wait until auth is resolved
+    if (authLoading) return;
     if (hasFetchedToken.current) return;
-    
-    // EVERYONE sees the Pre-Join lobby to satisfy Safari's User Gesture requirement for mic/cam
+
+    // If we restored a token from sessionStorage (page refresh), skip the lobby
+    // and silently reconnect. The token may be expired — fetchToken handles that.
+    const savedToken = (() => { try { return sessionStorage.getItem(SESSION_KEY); } catch { return null; } })();
+    if (savedToken) {
+      // Token already set from useState initialiser — just mark as fetched
+      hasFetchedToken.current = true;
+      return;
+    }
+
+    // Fresh visit: show Pre-Join lobby (required for Safari user-gesture)
     setShowPreJoin(true);
-  }, [authLoading]);
+  }, [authLoading, SESSION_KEY]);
 
   // NEW STATES
   const [meetingRecord, setMeetingRecord] = useState<any>(null);
@@ -1085,21 +1125,25 @@ export default function RoomPage() {
     if (endForAll && meetingRecord) {
       MeetingService.endMeeting(meetingRecord.id).catch(console.error);
     }
+    // Clear session token so a rejoin shows the pre-join lobby again
+    try { sessionStorage.removeItem(SESSION_KEY); } catch {}
     setToken(null);
+    hasFetchedToken.current = false;
     if (user) {
       router.push('/dashboard');
     } else {
       setHasLeft(true);
       setEndOptionSelected(endForAll);
     }
-  }, [meetingRecord, user, router]);
+  }, [meetingRecord, user, router, SESSION_KEY]);
 
   const handleRejoin = useCallback(() => {
+    try { sessionStorage.removeItem(SESSION_KEY); } catch {}
     hasFetchedToken.current = false;
     setShowPreJoin(true);
     setHasLeft(false);
     setEndOptionSelected(false);
-  }, []);
+  }, [SESSION_KEY]);
 
   // Pre-Join Lobby Screen
   if (showPreJoin) {

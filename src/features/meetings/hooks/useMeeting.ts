@@ -10,8 +10,13 @@ import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
 export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void) {
   const room = useRoomContext();
 
-  const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
+  // Read initial mic/cam preferences saved by the pre-join lobby
+  const [micOn, setMicOn] = useState(() => {
+    try { return localStorage.getItem('t2_pref_mic') !== 'false'; } catch { return true; }
+  });
+  const [camOn, setCamOn] = useState(() => {
+    try { return localStorage.getItem('t2_pref_cam') !== 'false'; } catch { return true; }
+  });
   const [screenShareOn, setScreenShareOn] = useState(false);
   const [isDeafMode, setIsDeafMode] = useState(false);
   const [participants, setParticipants] = useState<(RemoteParticipant | LocalParticipant)[]>([]);
@@ -65,6 +70,31 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
     if (room) loadSettings();
   }, [room, roomCode]);
+
+  // ─── Apply saved lobby prefs to real LiveKit tracks on room connect ─────
+  // This is the critical bridge: without this the track state doesn't match
+  // the UI preference that was set in the pre-join lobby.
+  useEffect(() => {
+    if (!room?.localParticipant) return;
+    // Only apply once — when the participant first connects
+    const onConnected = () => {
+      // Don't override if participant is unadmitted (that handler runs separately)
+      if (!isAdmitted) return;
+      room.localParticipant.setMicrophoneEnabled(micOn);
+      room.localParticipant.setCameraEnabled(camOn);
+    };
+    room.once('connected', onConnected);
+    // If already connected (e.g. on refresh), apply immediately
+    if (room.state === 'connected') {
+      if (isAdmitted) {
+        room.localParticipant.setMicrophoneEnabled(micOn).catch(() => {});
+        room.localParticipant.setCameraEnabled(camOn).catch(() => {});
+      }
+    }
+    return () => { room.off('connected', onConnected); };
+    // Only run once on room mount — intentionally exclude micOn/camOn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room]);
 
   // Handle local participant mute state when in unadmitted lobby
   useEffect(() => {
@@ -297,6 +327,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       const enabled = !micOn;
       await room.localParticipant.setMicrophoneEnabled(enabled);
       setMicOn(enabled);
+      try { localStorage.setItem('t2_pref_mic', String(enabled)); } catch {}
     } catch (e) {
       console.error('Failed to toggle microphone:', e);
     }
@@ -309,6 +340,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       const enabled = !camOn;
       await room.localParticipant.setCameraEnabled(enabled);
       setCamOn(enabled);
+      try { localStorage.setItem('t2_pref_cam', String(enabled)); } catch {}
     } catch (e) {
       console.error('Failed to toggle camera:', e);
     }
