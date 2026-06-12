@@ -37,12 +37,22 @@ function PreJoinLobby({
   isHost?: boolean 
 }) {
   const [name, setName] = useState(defaultName);
-  const [camOn, setCamOn] = useState(true);
-  const [micOn, setMicOn] = useState(true);
+  // Start with cam/mic OFF — iOS Safari and many browsers block getUserMedia
+  // unless triggered by an explicit user gesture (button tap)
+  const [camOn, setCamOn] = useState(false);
+  const [micOn, setMicOn] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [mediaAvailable, setMediaAvailable] = useState(true);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  // Check if mediaDevices API is available (requires HTTPS)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setMediaAvailable(false);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -121,14 +131,26 @@ function PreJoinLobby({
               </div>
             </div>
           )}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 md:left-4 md:-translate-x-0 flex items-center gap-3 z-30">
-            <button onClick={() => setCamOn(v => !v)} aria-label="Toggle camera" className="px-4 py-3 md:px-3 md:py-2 rounded-full bg-black/50 backdrop-blur text-white flex items-center gap-2 touch-manipulation">
-              {camOn ? <Video className="size-5" /> : <VideoOff className="size-5" />}
-              <span className="text-sm md:text-xs font-bold">{camOn ? 'Video' : 'Video Off'}</span>
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 md:left-3 md:-translate-x-0 flex items-center gap-2 z-30">
+            <button
+              onClick={() => setCamOn(v => !v)}
+              aria-label="Toggle camera"
+              className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
+                camOn ? 'bg-black/50 hover:bg-black/70' : 'bg-bridge-cyan/80 hover:bg-bridge-cyan shadow-lg'
+              }`}
+            >
+              {camOn ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+              <span className="text-xs">{camOn ? 'Video On' : 'Enable Camera'}</span>
             </button>
-            <button onClick={() => setMicOn(v => !v)} aria-label="Toggle microphone" className="px-4 py-3 md:px-3 md:py-2 rounded-full bg-black/50 backdrop-blur text-white flex items-center gap-2 touch-manipulation">
-              {micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}
-              <span className="text-sm md:text-xs font-bold">{micOn ? 'Mic' : 'Mic Off'}</span>
+            <button
+              onClick={() => setMicOn(v => !v)}
+              aria-label="Toggle microphone"
+              className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
+                micOn ? 'bg-black/50 hover:bg-black/70' : 'bg-bridge-indigo/80 hover:bg-bridge-indigo shadow-lg'
+              }`}
+            >
+              {micOn ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+              <span className="text-xs">{micOn ? 'Mic On' : 'Enable Mic'}</span>
             </button>
           </div>
           <div className="absolute top-4 left-4 z-30">
