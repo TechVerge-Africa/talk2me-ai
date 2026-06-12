@@ -2,6 +2,8 @@
 
 import React from 'react';
 import Link from "next/link";
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/features/auth/use-auth';
 import { motion, type Variants } from "framer-motion";
 import { ArrowRight, Phone, Users, Radio, Zap, Globe, BarChart3, Quote, Check } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
@@ -55,7 +57,7 @@ export function HeroSection() {
               className="flex flex-col sm:flex-row gap-3 w-full max-w-2xl"
             >
               <Link
-                href="/create"
+                href="/dashboard"
                 className="group flex items-center justify-center gap-2 px-6 py-4 bg-indigo text-white font-bold text-base rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
               >
                 Get Started
@@ -646,7 +648,7 @@ export function FinalCTASection() {
         
         <div className="flex flex-col sm:flex-row gap-6 items-center justify-center mb-12">
           <Link
-            href="/create"
+            href="/dashboard"
             className="group relative px-10 py-6 bg-white text-indigo rounded-2xl font-bold text-lg transition-all hover:scale-105 active:scale-95 shadow-2xl"
           >
             <span className="flex items-center gap-3">
@@ -673,6 +675,26 @@ export function FinalCTASection() {
 
 // ━━━ MAIN PAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export default function LandingPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard');
+    }
+  }, [user, loading, router]);
+
+  if (loading || user) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-cyan"></div>
+          <p className="text-sm font-bold tracking-widest text-muted-foreground uppercase">Verifying Session...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-screen w-full">
       <HeroSection />

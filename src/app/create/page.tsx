@@ -21,6 +21,7 @@ export default function CreatePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
 
+  const [requireApproval, setRequireApproval] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const handleCreateAndEnter = async () => {
@@ -32,7 +33,7 @@ export default function CreatePage() {
     setIsCreating(true);
     setCreateError(null);
     try {
-      const meeting = await MeetingService.createMeeting("New Meeting", user.id);
+      const meeting = await MeetingService.createMeeting("New Meeting", user.id, requireApproval);
       router.push(`/room/${meeting.room_code}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create meeting";
@@ -184,6 +185,30 @@ export default function CreatePage() {
                 <Share2 className="size-4" />
                 Share Invite
               </button>
+
+              {/* Privacy/Lobby Toggle settings */}
+              <div className="p-4 rounded-2xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">Room Access</div>
+                    <div className="text-sm font-bold text-foreground">Require Host Approval</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug">Private meeting: guests wait in a lobby until admitted by an admin.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRequireApproval(v => !v)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      requireApproval ? 'bg-indigo' : 'bg-muted'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        requireApproval ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
 
               <button
                 onClick={handleCreateAndEnter}

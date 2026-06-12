@@ -187,8 +187,8 @@ export function Navbar() {
 
   // Hide completely inside meeting rooms — just like Google Meet / Zoom
   // This return must come AFTER all hooks above
-  const isInRoom = pathname?.startsWith('/room/');
-  if (isInRoom) return null;
+  const isExcluded = pathname?.startsWith('/room/') || pathname?.startsWith('/dashboard');
+  if (isExcluded) return null;
 
   return (
     <>

@@ -9,6 +9,10 @@ export interface Meeting {
   created_at: string;
   scheduled_at?: string;
   status: MeetingStatus;
+  settings?: {
+    require_approval: boolean;
+    sign_language_enabled?: boolean;
+  };
 }
 
 export interface Participant {

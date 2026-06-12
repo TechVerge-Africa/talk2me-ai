@@ -18,7 +18,7 @@ const encoder = new TextEncoder();
 export function publishRoomData(
   localParticipant: LocalParticipant,
   payload: Record<string, unknown>,
-  options: { reliable: boolean },
+  options: { reliable: boolean; destinationIdentities?: string[] },
 ): void {
   localParticipant.publishData(
     encoder.encode(JSON.stringify(payload)),

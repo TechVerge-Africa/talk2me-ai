@@ -2,6 +2,7 @@ export interface Message {
   id: string;
   meeting_id: string;
   sender_id: string;
+  recipient_id?: string;
   content: string;
   type: 'chat' | 'caption' | 'system';
   timestamp: string;

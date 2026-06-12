@@ -19,33 +19,32 @@ export function RealTimeCaptionOverlay({ captions, speakerName = null, size = 'm
     }
   }, [latestCaption]);
 
-  // Always show a small placeholder if no caption yet so the area is persistent
-  if (!displayText) return (
-    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
-      <div className="glass-card bg-black/40 border-white/10 rounded-[20px] px-4 py-2 text-sm text-muted-foreground text-center">Waiting for captions…</div>
-    </div>
-  );
+  if (!displayText) {
+    return (
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-40">
+        <div className="bg-black/50 backdrop-blur-sm border border-white/5 rounded-full px-6 py-2.5 text-xs text-white/40 text-center font-medium">
+          Listening for speech...
+        </div>
+      </div>
+    );
+  }
 
   const sizeClasses = {
-    sm: "text-base p-3",
-    md: "text-lg p-4",
-    lg: "text-2xl p-6"
+    sm: "text-xs px-5 py-2",
+    md: "text-sm sm:text-base px-6 py-2.5",
+    lg: "text-lg sm:text-xl px-8 py-3.5"
   };
 
   return (
-    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 z-40">
-      <div className="glass-card bg-black/60 border-white/10 rounded-[20px] shadow-lg px-4 py-3 flex items-start gap-3">
-        <div className="flex-shrink-0">
-          <div className="text-xs font-bold text-bridge-cyan">{speakerName ?? 'Speaker'}</div>
-          <div className="text-[10px] text-muted-foreground">Live • {latestCaption.confidence ? `${Math.round(latestCaption.confidence*100)}%` : 'confidence N/A'}</div>
-        </div>
+    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40">
+      <div className="bg-black/60 backdrop-blur-md border border-white/5 rounded-full shadow-2xl flex items-center justify-center text-center">
         <div className={`flex-1 ${sizeClasses[size]}`}>
-          <p className="text-white font-medium leading-snug">{displayText}</p>
-        </div>
-        <div className="flex-shrink-0 text-[11px] text-muted-foreground">
-          <div className="px-2 py-1 rounded bg-muted/30">Translated: —</div>
+          <p className="text-white font-medium leading-relaxed tracking-wide">
+            {displayText}
+          </p>
         </div>
       </div>
     </div>
   );
 }
+

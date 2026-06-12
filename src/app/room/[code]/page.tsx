@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, Menu, X } from 'lucide-react';
+import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, Menu, X, Search, ChevronDown, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { MeetingLayout } from '@/features/meetings/room/layout';
@@ -21,6 +21,8 @@ import { CameraPreview } from '@/features/meetings/room/camera-preview';
 import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 import { supabase } from '@/services/supabase/client';
+import { MeetingService } from '@/services/supabase/meetings';
+import { Meeting } from '@/types/meeting';
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
 
@@ -207,6 +209,7 @@ function LeftMeetingScreen({
   onRejoin: () => void;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
   const duration = useRef(Math.floor(Math.random() * 30) + 10); // mock duration
 
   return (
@@ -271,11 +274,11 @@ function LeftMeetingScreen({
           )}
 
           <button
-            onClick={() => router.push('/')}
+            onClick={() => router.push(user ? '/dashboard' : '/')}
             className="w-full h-12 rounded-2xl font-medium text-muted-foreground flex items-center justify-center gap-2 hover:text-foreground transition"
           >
             <Home className="size-4" />
-            Back to Home
+            {user ? 'Back to Dashboard' : 'Back to Home'}
           </button>
         </div>
       </motion.div>
@@ -291,27 +294,93 @@ function useActiveSpeaker(participants: (LocalParticipant | RemoteParticipant)[]
   }, [participants]);
 }
 
-// Draggable self-view component (simple pointer-based dragging)
+// ─── Floating Reactions Overlay ──────────────────────────────────────
+function FloatingReactionsOverlay({ reactions }: { reactions: { id: string; sender_id: string; emoji: string; timestamp: string }[] }) {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      <AnimatePresence>
+        {reactions.map((r) => {
+          const hash = r.id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+          const startX = 20 + (hash % 60); // 20% to 80% of screen width
+          const duration = 3.0 + (hash % 15) / 10; // 3.0s to 4.5s duration
+          const drift = -80 + (hash % 160); // -80px to +80px horizontal drift
+          const size = 28 + (hash % 20); // 28px to 48px size
+          const startRotation = -20 + (hash % 40); // -20deg to +20deg
+          const endRotation = startRotation + (-30 + (hash % 60)); // rotation sweep
+
+          return (
+            <motion.div
+              key={r.id}
+              initial={{ 
+                opacity: 0, 
+                y: "105vh", 
+                x: `${startX}vw`, 
+                scale: 0.4, 
+                rotate: startRotation 
+              }}
+              animate={{ 
+                opacity: [0, 1, 1, 0.8, 0], 
+                y: "-15vh", 
+                x: `${startX}vw`,
+                translateX: drift,
+                scale: [0.4, 1.2, 1.2, 1.0, 0.8],
+                rotate: endRotation
+              }}
+              exit={{ opacity: 0 }}
+              transition={{ 
+                duration: duration,
+                ease: "easeOut",
+              }}
+              style={{ 
+                position: "absolute", 
+                fontSize: size, 
+                filter: "drop-shadow(0 10px 15px rgba(0,0,0,0.3))" 
+              }}
+            >
+              <div className="flex flex-col items-center">
+                <span className="select-none">{r.emoji}</span>
+                <span className="text-[9px] bg-black/60 text-white/90 font-bold px-1.5 py-0.5 rounded-full border border-white/5 backdrop-blur-sm mt-1 scale-75 whitespace-nowrap shadow-md">
+                  {r.sender_id}
+                </span>
+              </div>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Self-view PiP — responsive size, safely above the dock
 function HidableSelfView({ participant, absolute = false, raised, reactions }: { participant: LocalParticipant; absolute?: boolean; raised?: boolean; reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[] }) {
   const [hidden, setHidden] = useState(false);
-  const width = 160;
-  const height = 220;
-  const containerStyle: React.CSSProperties = absolute
-    ? { right: 16, bottom: 16, width, height, position: 'absolute', zIndex: 40 }
-    : { right: 20, bottom: 100, width, height, position: 'fixed', zIndex: 60 };
-  const miniStyle: React.CSSProperties = absolute
-    ? { right: 14, bottom: 14, position: 'absolute', zIndex: 40 }
-    : { right: 18, bottom: 28, position: 'fixed', zIndex: 60 };
+
+  // On mobile the dock is ~108px tall; add 12px margin. On desktop ~80px.
+  // Use a CSS calc so it works across device sizes.
+  const pipStyle: React.CSSProperties = {
+    position: absolute ? 'absolute' : 'fixed',
+    right: 12,
+    bottom: 'calc(var(--dock-h, 120px) + 8px)',
+    width: 'clamp(100px, 22vw, 160px)',
+    height: 'clamp(130px, 28vw, 210px)',
+    zIndex: absolute ? 40 : 60,
+  };
+  const miniStyle: React.CSSProperties = {
+    position: absolute ? 'absolute' : 'fixed',
+    right: 12,
+    bottom: 'calc(var(--dock-h, 120px) + 8px)',
+    zIndex: absolute ? 40 : 60,
+  };
 
   const containerVariants = {
-    hidden: { opacity: 0, y: 30, x: 20, scale: 0.97 },
-    visible: { opacity: 1, y: 0, x: 0, scale: 1 },
-    exit: { opacity: 0, y: 30, x: 20, scale: 0.97 },
+    hidden: { opacity: 0, y: 20, scale: 0.95 },
+    visible: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, y: 20, scale: 0.95 },
   };
   const miniVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 },
-    exit: { opacity: 0, y: 20 },
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: { opacity: 1, scale: 1 },
+    exit: { opacity: 0, scale: 0.8 },
   };
 
   return (
@@ -324,14 +393,21 @@ function HidableSelfView({ participant, absolute = false, raised, reactions }: {
           exit="exit"
           variants={containerVariants}
           transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-          style={containerStyle}
-          className="rounded-xl overflow-hidden shadow-2xl ring-1 ring-border bg-slate-900"
+          style={pipStyle}
+          className="rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-slate-900"
         >
           <div className="relative w-full h-full">
             <ParticipantVideo participant={participant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored raised={!!raised} reactions={reactions ?? []} />
-            <button onClick={() => setHidden(true)} aria-label="Hide self view" className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2">
+            <button
+              onClick={() => setHidden(true)}
+              aria-label="Hide self view"
+              className="absolute top-1.5 right-1.5 size-6 bg-black/60 backdrop-blur-sm text-white rounded-full flex items-center justify-center text-[10px] font-bold hover:bg-black/80 transition-colors touch-manipulation"
+            >
               ✕
             </button>
+            {raised && (
+              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 text-sm animate-bounce">✋</div>
+            )}
           </div>
         </motion.div>
       ) : (
@@ -341,14 +417,14 @@ function HidableSelfView({ participant, absolute = false, raised, reactions }: {
           animate="visible"
           exit="exit"
           variants={miniVariants}
-          transition={{ duration: 0.18 }}
+          transition={{ duration: 0.2 }}
           style={miniStyle}
         >
           <button
             onClick={() => setHidden(false)}
             aria-label="Show self view"
             title="Show your camera"
-            className="w-14 h-14 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-bridge-indigo to-bridge-cyan text-white shadow-2xl flex items-center justify-center ring-2 ring-white/20 animate-pulse"
+            className="size-12 rounded-full bg-gradient-to-br from-bridge-indigo to-bridge-cyan text-white shadow-2xl flex items-center justify-center ring-2 ring-white/20 touch-manipulation"
           >
             <Video className="size-5" />
           </button>
@@ -364,18 +440,23 @@ function RoomContent({
   isHost,
   onLeave,
   hostIdentity,
+  meetingId,
 }: {
   code: string;
   isHost: boolean;
-  onLeave: () => void;
+  onLeave: (endForAll?: boolean) => void;
   hostIdentity?: string;
+  meetingId?: string;
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode,
     captions, messages, participants,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
-    raisedHands, reactions, toggleRaiseHand, sendReaction,
-  } = useMeeting(code, hostIdentity);
+    raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
+
+    isAdmitted, joinRequests, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
+    approveJoinRequest, denyJoinRequest, updateSettings, changeParticipantRole, stopParticipantScreenShare
+  } = useMeeting(code, hostIdentity, () => onLeave(false));
 
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
@@ -384,12 +465,13 @@ function RoomContent({
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [codeCopied, setCodeCopied] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [admissionPopup, setAdmissionPopup] = useState(true);
 
   const screenTracks = useTracks([Track.Source.ScreenShare]);
   const hasScreenShare = screenTracks.length > 0;
   const activeSpeaker = useActiveSpeaker(participants);
   const localParticipant = participants.find(p => p instanceof LocalParticipant) as LocalParticipant | undefined;
-  const stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity && p.identity !== localParticipant?.identity);
+  const stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
 
   const shareRoom = useCallback(async () => {
     const url = `${window.location.origin}/room/${code}`;
@@ -444,6 +526,7 @@ function RoomContent({
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [showTopbar, setShowTopbar] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [roomMode, setRoomMode] = useState<'call' | 'onthego'>('call');
 
   useEffect(() => {
     const onFsChange = () => {
@@ -472,125 +555,120 @@ function RoomContent({
   };
   const topbar = (
     <div className={`transition-transform duration-300 ${showTopbar ? 'translate-y-0' : '-translate-y-full'}`}>
-      <div className="px-4 sm:px-6 h-14 flex items-center justify-between border-b border-border bg-black/30 backdrop-blur-xl border-white/10">
-      {/* Left — logo + code */}
-        <div className="flex items-center gap-3">
-          {/* Mobile menu button */}
-          <button className="sm:hidden p-2 rounded-md bg-black/20 backdrop-blur text-white" onClick={() => setMobileMenuOpen(v => !v)} aria-label="Open menu">
-            {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+      <div className="px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between border-b border-white/5 bg-[#181b20]/95 backdrop-blur-xl relative z-40">
+
+        {/* Left — Logo + (on desktop) room title + timer */}
+        <div className="flex items-center gap-2.5">
+          <div className="size-8 sm:size-9 rounded-xl bg-blue-500 flex items-center justify-center text-white flex-shrink-0 shadow-lg shadow-blue-500/10">
+            <Video className="size-4 sm:size-5" />
+          </div>
+          {/* Title — hidden on very small screens */}
+          <div className="hidden sm:flex flex-col sm:flex-row sm:items-center gap-2">
+            <span className="text-sm font-bold text-white tracking-tight truncate max-w-[140px] md:max-w-none">
+              Room {code}
+            </span>
+          </div>
+          {/* Timer — always visible */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#2a2d35]/70 border border-white/5 rounded-full text-[10px] font-mono font-bold text-white/70 shadow-sm">
+            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            {formatDuration(secondsElapsed)}
+          </div>
+        </div>
+
+        {/* Middle — Search (desktop only) */}
+        <div className="hidden lg:flex items-center gap-2.5 px-4 py-2 bg-[#1e2227] border border-white/5 rounded-full w-64 xl:w-80 text-white/40 text-xs shadow-inner">
+          <Search className="size-3.5 text-white/30" />
+          <span className="truncate">Search messages...</span>
+        </div>
+
+        {/* Right */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Mode toggle — icon only on mobile */}
+          <button
+            onClick={() => setRoomMode(m => m === 'call' ? 'onthego' : 'call')}
+            title={roomMode === 'call' ? 'Switch to On-the-Go (audio only)' : 'Switch to Call mode (video)'}
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] font-bold tracking-wide border transition-all duration-300 shadow-md touch-manipulation ${
+              roomMode === 'onthego'
+                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                : 'bg-[#1e2227] border-white/5 text-white/50 hover:text-white/80'
+            }`}
+          >
+            <Phone className="size-3.5" />
+            <span className="hidden sm:inline">{roomMode === 'onthego' ? 'On the Go' : 'Call Mode'}</span>
           </button>
-          <div className="size-8 rounded-lg bg-gradient-to-br from-bridge-indigo to-bridge-cyan grid place-items-center text-white text-[10px] font-black">T2</div>
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-muted/60 rounded-lg">
-            <span className="text-xs font-mono font-bold">{code}</span>
+
+          {/* Network dot + REC — hidden on tiny screens */}
+          <div className="hidden xs:flex items-center gap-1.5 text-xs">
+            <div className={`w-2 h-2 rounded-full ${networkQuality === 'good' ? 'bg-emerald-400 animate-pulse' : networkQuality === 'ok' ? 'bg-amber-400' : 'bg-red-500'}`} title={`Network: ${networkQuality}`} />
+            <span className={`hidden sm:inline px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${recordingOn ? 'bg-red-600 text-white' : 'bg-[#1e2227] text-white/40 border border-white/5'}`}>
+              {recordingOn ? 'REC' : 'LIVE'}
+            </span>
+          </div>
+
+          {/* Avatar + view menu */}
+          <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2 sm:border-l border-white/5 relative">
             <button
-              onClick={shareRoom}
-              title={codeCopied ? 'Link copied!' : 'Copy invite link'}
-              className="text-bridge-indigo ml-1 hover:text-bridge-indigo/70 transition-colors"
+              onClick={openRename}
+              title="Change display name"
+              className="size-8 sm:size-9 rounded-full bg-gradient-to-tr from-cyan-400 to-indigo-500 border border-white/10 flex items-center justify-center text-white text-xs font-black shadow-md hover:scale-105 active:scale-95 transition-all touch-manipulation"
             >
-              {codeCopied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+              {displayName?.slice(0, 2).toUpperCase() || authUser?.email?.slice(0, 2).toUpperCase() || 'U'}
             </button>
-          </div>
-
-          {/* Mobile summary: keep participant count and timer visible */}
-          <div className="flex items-center gap-2 sm:hidden ml-2">
-            <div className="text-xs font-bold">{participants ? participants.length : 0}</div>
-            <div className="text-xs text-muted-foreground">•</div>
-            <div className="text-xs text-muted-foreground">{formatDuration(secondsElapsed)}</div>
-          </div>
-        </div>
-
-      {/* Right — role badge + meeting info */}
-      <div className="flex items-center gap-3">
-        <div className="hidden sm:flex flex-col text-xs text-muted-foreground mr-2">
-          <span className="font-bold text-foreground">Meeting: {code}</span>
-          <span className="text-[11px]">{participants.length} participants • {formatDuration(secondsElapsed)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${networkQuality === 'good' ? 'bg-emerald-400' : networkQuality === 'ok' ? 'bg-amber-400' : 'bg-red-500'}`} title={`Network: ${networkQuality}`} />
-          <div className={`px-2 py-1 rounded-md text-[11px] ${recordingOn ? 'bg-red-600 text-white' : 'bg-muted/40 text-muted-foreground'}`}>{recordingOn ? 'REC' : 'Not recording'}</div>
-        </div>
-        {/* View selector */}
-        <div className="relative">
-          <button onClick={() => setViewMenuOpen(v => !v)} className="px-3 py-1 rounded-lg bg-muted/40 text-xs font-bold">View</button>
-          {viewMenuOpen && (
-              <div className="absolute right-0 mt-2 w-40 bg-card rounded-lg ring-1 ring-border shadow-xl z-50">
-                <button onClick={() => { setViewMode('grid'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='grid' ? 'bg-muted/30' : ''}`}>Grid</button>
-                <button onClick={() => { setViewMode('speaker'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='speaker' ? 'bg-muted/30' : ''}`}>Speaker</button>
-                <button onClick={() => { setViewMode('focus'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='focus' ? 'bg-muted/30' : ''}`}>Focus</button>
-                <button onClick={() => { enterFullscreen(); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 ${viewMode==='fullscreen' ? 'bg-muted/30' : ''}`}>Fullscreen</button>
+            <button onClick={() => setViewMenuOpen(v => !v)} className="hidden sm:block text-white/40 hover:text-white/95 transition-colors">
+              <ChevronDown className="size-4" />
+            </button>
+            {viewMenuOpen && (
+              <div className="absolute right-0 top-11 w-40 bg-[#1e2227] border border-white/5 rounded-xl shadow-2xl z-50 p-1.5 text-white/80 text-xs flex flex-col gap-0.5">
+                <button onClick={() => { setViewMode('grid'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 ${viewMode==='grid' ? 'bg-blue-500 text-white font-bold' : ''}`}>Grid View</button>
+                <button onClick={() => { setViewMode('speaker'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 ${viewMode==='speaker' ? 'bg-blue-500 text-white font-bold' : ''}`}>Speaker View</button>
+                <button onClick={() => { setViewMode('focus'); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 ${viewMode==='focus' ? 'bg-blue-500 text-white font-bold' : ''}`}>Focus View</button>
+                <button onClick={() => { enterFullscreen(); setViewMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 ${viewMode==='fullscreen' ? 'bg-blue-500 text-white font-bold' : ''}`}>Fullscreen</button>
               </div>
             )}
-
-          {/* Mobile menu panel */}
-          {mobileMenuOpen && (
-            <div className="absolute left-3 top-full mt-2 w-56 bg-card rounded-lg ring-1 ring-border shadow-xl z-50 p-2 sm:hidden">
-              <button onClick={() => { openRename(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Profile • {displayName ?? (authUser?.email?.split('@')[0] ?? 'Guest')}</button>
-              <div className="border-t border-border my-1" />
-              <div className="text-xs text-muted-foreground px-3 py-1">View</div>
-              <button onClick={() => { setViewMode('grid'); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Grid</button>
-              <button onClick={() => { setViewMode('speaker'); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Speaker</button>
-              <button onClick={() => { setViewMode('focus'); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Focus</button>
-              <button onClick={() => { enterFullscreen(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Fullscreen</button>
-              <div className="border-t border-border my-1" />
-              <button onClick={() => { shareRoom(); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Share</button>
-              <button onClick={() => { setTranscriptOpen(v => !v); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">{transcriptOpen ? 'Hide captions' : 'Show captions'}</button>
-              <button onClick={() => { setParticipantsOpen(v => !v); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Participants</button>
-              <button onClick={() => { setChatModalOpen(v => !v); setMobileMenuOpen(false); }} className="w-full text-left px-3 py-2 hover:bg-muted/20 rounded">Chat</button>
-            </div>
-          )}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-medium">
-          <span className={`size-1.5 rounded-full ${participants.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-muted'}`} />
-          <span className="text-muted-foreground hidden sm:block">{participants.length} in call</span>
-        </div>
-
-        {hasScreenShare && (
-          <span className="px-2 py-1 bg-red-500/15 border border-red-500/30 text-red-400 text-[10px] font-bold rounded-lg uppercase animate-pulse hidden sm:flex">
-            Screen Sharing
-          </span>
-        )}
-
-        {/* Role badge */}
-        <div className="relative">
-          <button onClick={openRename} title="Profile / settings" className="flex items-center gap-2 px-3 py-1 rounded-lg bg-muted/30">
-            <User className="size-4" />
-            <span className="text-[12px] font-medium">{displayName ?? (authUser?.email?.split('@')[0] ?? 'Guest')}</span>
-          </button>
-        </div>
-        <div className="ml-2 hidden sm:block">
-          <button onClick={() => setShowTopbar(false)} title="Hide topbar" className="size-8 rounded-md bg-muted/20 p-2 grid place-items-center">
-            <EyeOff className="size-4" />
-          </button>
-        </div>
-      </div>
       </div>
     </div>
   );
 
   // ─── Sidebar ───────────────────────────────────────────────────
   const sidebar = transcriptOpen && !isDeafMode ? (
-    <div className="h-full glass-card rounded-[24px] p-5 flex flex-col border border-border/50">
-      <div className="flex items-center gap-3 mb-5 p-1 bg-muted/40 rounded-xl">
-        <button onClick={() => setActiveTab('captions')} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${activeTab === 'captions' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}>
+    <div className="h-full bg-[#1c1f24] p-5 flex flex-col border-l border-white/5 relative z-20">
+      <div className="flex items-center gap-1.5 mb-5 p-1 bg-[#121417] border border-white/5 rounded-full">
+        <button 
+          onClick={() => setActiveTab('captions')} 
+          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-full transition-all ${
+            activeTab === 'captions' 
+              ? 'bg-[#2563eb] text-white shadow-md' 
+              : 'text-white/40 hover:text-white/80'
+          }`}
+        >
           Captions
         </button>
-        <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${activeTab === 'chat' ? 'bg-card shadow text-foreground' : 'text-muted-foreground'}`}>
+        <button 
+          onClick={() => setActiveTab('chat')} 
+          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-full transition-all ${
+            activeTab === 'chat' 
+              ? 'bg-[#2563eb] text-white shadow-md' 
+              : 'text-white/40 hover:text-white/80'
+          }`}
+        >
           Chat
         </button>
       </div>
       <div className="flex-1 overflow-hidden">
         {activeTab === 'captions'
           ? <CaptionList captions={captions} size={captionSize} />
-          : <ChatPanel messages={messages} onSendMessage={sendMessage} />
+          : <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
         }
       </div>
 
       {/* Guest sign-in nudge in sidebar */}
       {!isHost && (
-        <div className="mt-4 pt-4 border-t border-border/50">
-          <div className="p-3 rounded-xl bg-bridge-indigo/5 border border-bridge-indigo/20 text-center">
-            <p className="text-[10px] text-muted-foreground mb-2">Sign in to host your own meetings</p>
-            <a href="/auth" className="text-[10px] font-black uppercase tracking-wider text-bridge-indigo flex items-center justify-center gap-1">
+        <div className="mt-4 pt-4 border-t border-white/5">
+          <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 text-center">
+            <p className="text-[10px] text-white/55 mb-2">Sign in to host your own meetings</p>
+            <a href="/auth" className="text-[10px] font-black uppercase tracking-wider text-blue-400 flex items-center justify-center gap-1">
               <LogIn className="size-3" /> Create Account
             </a>
           </div>
@@ -600,20 +678,136 @@ function RoomContent({
   ) : null;
 
   // ─── Main stage ────────────────────────────────────────────────
-  const mainStage = isDeafMode ? (
+  // On-the-Go mode: premium audio-only minimal UI
+  const onTheGoStage = (
+    <div className="relative flex-1 w-full h-full min-h-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0f1115] via-[#131720] to-[#0c0e12] overflow-hidden">
+      {/* Ambient glow rings */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-700 ${
+          micOn ? 'w-[480px] h-[480px] bg-emerald-500/5 ring-1 ring-emerald-500/10 blur-2xl animate-pulse' : 'w-[320px] h-[320px] bg-slate-500/5'
+        }`} />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[220px] h-[220px] rounded-full bg-blue-500/5 ring-1 ring-blue-500/10 blur-xl" />
+      </div>
+
+      {/* Participants audio avatars */}
+      <div className="flex items-end justify-center gap-4 mb-10 flex-wrap px-8">
+        {participants.slice(0, 6).map((p, i) => {
+          const isActive = p.identity === activeSpeaker?.identity;
+          const initials = p.identity.slice(0, 2).toUpperCase();
+          return (
+            <motion.div
+              key={p.identity}
+              animate={isActive ? { scale: [1, 1.08, 1], transition: { repeat: Infinity, duration: 1.2 } } : { scale: 1 }}
+              className="flex flex-col items-center gap-2"
+            >
+              <div className={`relative size-14 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                isActive
+                  ? 'bg-gradient-to-br from-emerald-400 to-cyan-500 text-white shadow-2xl shadow-emerald-400/30 ring-4 ring-emerald-400/30'
+                  : 'bg-gradient-to-br from-[#2a2d35] to-[#1e2227] text-white/60 ring-1 ring-white/5'
+              }`}>
+                {initials}
+                {isActive && (
+                  <span className="absolute -bottom-1 -right-1 size-4 rounded-full bg-emerald-400 border-2 border-[#131720] animate-pulse" />
+                )}
+              </div>
+              <span className="text-[10px] font-semibold text-white/40 max-w-[56px] truncate text-center">
+                {p.identity.split('@')[0]}
+              </span>
+            </motion.div>
+          );
+        })}
+        {participants.length === 0 && (
+          <div className="flex flex-col items-center gap-3 text-white/30">
+            <div className="size-16 rounded-full bg-white/5 ring-1 ring-white/5 flex items-center justify-center text-3xl">🎙️</div>
+            <p className="text-xs font-semibold tracking-wide">Waiting for others...</p>
+          </div>
+        )}
+      </div>
+
+      {/* Live transcript bubble */}
+      <AnimatePresence mode="wait">
+        {captions.length > 0 && (
+          <motion.div
+            key={captions[captions.length - 1]?.id || captions.length}
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            transition={{ duration: 0.25 }}
+            className="max-w-sm w-full mx-auto px-6 mb-10"
+          >
+            <div className="relative bg-[#1a1d24]/90 backdrop-blur-md border border-white/5 rounded-3xl px-5 py-3.5 shadow-2xl">
+              <div className="text-[10px] uppercase tracking-widest font-bold text-white/25 mb-1">
+                {captions[captions.length - 1]?.sender_id?.split('@')[0] || activeSpeaker?.identity?.split('@')[0] || 'Speaking'}
+              </div>
+              <p className="text-white/90 text-sm leading-relaxed">
+                {captions[captions.length - 1]?.content}
+              </p>
+              <span className="absolute bottom-3 right-4 size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Large central mic + deaf controls */}
+      <div className="flex items-center gap-6">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={toggleMic}
+          className={`relative flex flex-col items-center gap-2 group`}
+        >
+          <div className={`size-20 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 ${
+            micOn
+              ? 'bg-gradient-to-br from-emerald-400 to-cyan-500 shadow-emerald-500/30 ring-4 ring-emerald-400/20'
+              : 'bg-[#1e2227] ring-1 ring-white/10'
+          }`}>
+            {micOn ? <Mic className="size-8 text-white" /> : <MicOff className="size-8 text-white/50" />}
+          </div>
+          <span className={`text-xs font-bold tracking-wide ${
+            micOn ? 'text-emerald-400' : 'text-white/30'
+          }`}>{micOn ? 'Mic On' : 'Muted'}</span>
+        </motion.button>
+
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={toggleDeafMode}
+          className={`relative flex flex-col items-center gap-2 group`}
+        >
+          <div className={`size-20 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 ${
+            !isDeafMode
+              ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30 ring-4 ring-blue-400/20'
+              : 'bg-[#1e2227] ring-1 ring-white/10'
+          }`}>
+            {!isDeafMode ? <Eye className="size-8 text-white" /> : <EyeOff className="size-8 text-white/50" />}
+          </div>
+          <span className={`text-xs font-bold tracking-wide ${
+            !isDeafMode ? 'text-blue-400' : 'text-white/30'
+          }`}>{!isDeafMode ? 'Hearing' : 'Deaf Mode'}</span>
+        </motion.button>
+      </div>
+
+      {/* Duration + meeting code badge */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-[#1e2227]/80 border border-white/5 rounded-full text-[11px] font-mono font-bold text-white/40 shadow-lg">
+        <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        On the Go · {formatDuration(secondsElapsed)}
+        <span className="ml-2 text-white/20">#{code}</span>
+      </div>
+    </div>
+  );
+
+  const mainStage = isDeafMode && roomMode === 'call' ? (
     <AiSignerView currentCaption={captions[captions.length - 1]?.content} />
-  ) : hasScreenShare ? (
+  ) : roomMode === 'onthego' ? onTheGoStage : hasScreenShare ? (
     <div className="relative flex-1 w-full h-full min-h-0">
-      <ScreenShareView className="w-full h-full rounded-2xl sm:rounded-[32px]" />
+      <ScreenShareView className="w-full h-full rounded-none" />
       {localParticipant && (
         <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} />
       )}
     </div>
   ) : (
     <div className="relative flex-1 w-full h-full min-h-0">
-      <div className="w-full h-full rounded-2xl sm:rounded-[32px] overflow-hidden bg-slate-950 sm:ring-1 sm:ring-white/10">
+      <div className="w-full h-full overflow-hidden bg-slate-950">
         {activeSpeaker ? (
-          <ParticipantVideo participant={activeSpeaker} source={Track.Source.Camera} className="w-full h-full" raised={!!raisedHands[activeSpeaker.identity]} reactions={reactions.filter(r => r.sender_id === activeSpeaker.identity)} />
+          <ParticipantVideo participant={activeSpeaker} source={Track.Source.Camera} className="w-full h-full" raised={!!raisedHands[activeSpeaker.identity]} reactions={reactions.filter(r => r.sender_id === activeSpeaker.identity)} isMain={true} />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-muted-foreground">
             <div className="size-24 rounded-full bg-gradient-to-br from-bridge-indigo/20 to-bridge-cyan/20 grid place-items-center ring-1 ring-bridge-cyan/20">
@@ -640,11 +834,43 @@ function RoomContent({
   // Use available layout height so the video fills to the bottom and overlays (controls/captions) sit on top
   const mainContainerClass = viewMode === 'grid' ? "relative w-full h-full min-h-[400px]" : "relative w-full h-full min-h-0";
 
+  if (!isAdmitted) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#121417] text-white px-6 relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#4f46e5]/5 via-transparent to-[#06b6d4]/5 pointer-events-none" />
+        <div className="relative text-center">
+          <div className="size-20 rounded-3xl bg-blue-500/10 border border-blue-500/20 grid place-items-center mx-auto mb-6 shadow-2xl animate-pulse">
+            <span className="text-4xl">🔒</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight mb-2">Waiting for Host...</h1>
+          <p className="text-white/60 text-sm max-w-sm mx-auto mb-8">
+            This meeting is private. The host has been notified of your request to join and will admit you shortly.
+          </p>
+          
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e2227]/90 rounded-full border border-white/5 text-xs font-semibold text-white/70 shadow-lg">
+            <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
+            Request pending...
+          </div>
+          
+          <div className="mt-8">
+            <button
+              onClick={() => onLeave(false)}
+              className="h-12 px-6 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold transition-all active:scale-95 cursor-pointer text-white"
+            >
+              Cancel & Leave
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} fullBleed={viewMode !== 'grid'}
+      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'}
         dock={
           <ControlDock
+            code={code}
             micOn={micOn} camOn={camOn} screenShareOn={screenShareOn}
             transcriptOn={!!raisedHands[localParticipant?.identity || '']} deafOn={isDeafMode}
             participantsOpen={participantsOpen} participantCount={participants.length}
@@ -659,28 +885,53 @@ function RoomContent({
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
             captionsOn={transcriptOpen} onToggleCaptions={() => setTranscriptOpen(v => !v)}
             onShare={shareRoom}
-            onLeave={onLeave}
+            onLeave={(endForAll) => onLeave(endForAll)}
             isHost={isHost}
           />
         }
       >
-        <div className={mainContainerClass}>
+        {/* Main active speaker video frame */}
+        <div className="w-full h-full min-h-0 relative">
           {mainStage}
           {/* Show captions only when transcript/captions are turned on */}
           {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} speakerName={activeSpeaker?.identity} size={captionSize} />}
         </div>
-
-        {/* Thumbnail strip (only in grid view) */}
-        {!isDeafMode && !hasScreenShare && stripParticipants.length > 0 && viewMode === 'grid' && (
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
-            {stripParticipants.map(p => (
-              <div key={p.sid || p.identity} className="flex-shrink-0 w-36 h-24 rounded-2xl overflow-hidden ring-1 ring-border bg-slate-900">
-                  <ParticipantVideo participant={p} source={Track.Source.Camera} className="w-full h-full rounded-2xl" mirrored={p instanceof LocalParticipant} raised={!!raisedHands[p.identity]} reactions={reactions.filter(r => r.sender_id === p.identity)} />
-              </div>
-            ))}
-          </div>
-        )}
       </MeetingLayout>
+
+      {/* Floating Admission Request list (real admission flow) */}
+      <div className="fixed left-6 top-20 z-50 flex flex-col gap-3 pointer-events-auto">
+        <AnimatePresence>
+          {isAdmin && joinRequests.map((req) => (
+            <motion.div
+              key={req.id}
+              initial={{ opacity: 0, x: -20, scale: 0.95 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: -20, scale: 0.95 }}
+              className="flex items-center gap-3 bg-[#1e2227]/95 backdrop-blur-md border border-white/5 rounded-2xl p-3.5 shadow-2xl w-80"
+            >
+              <div className="size-10 rounded-full bg-gradient-to-tr from-cyan-400 to-indigo-500 border border-white/10 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                {req.sender_id.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] uppercase font-bold tracking-wider text-white/40">wants to join</div>
+                <div className="text-sm font-bold text-white truncate">{req.sender_id}</div>
+              </div>
+              <button 
+                onClick={() => approveJoinRequest(req.sender_id)}
+                className="px-3.5 py-1.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+              >
+                Admit
+              </button>
+              <button 
+                onClick={() => denyJoinRequest(req.sender_id)}
+                className="text-white/40 hover:text-white/95 p-1 transition-colors cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
 
       {/* Floating show-topbar button when topbar is hidden */}
       {!showTopbar && (
@@ -689,7 +940,24 @@ function RoomContent({
         </button>
       )}
 
-      <ParticipantsPanel participants={participants} hostId={isHost ? localParticipant?.identity : undefined} isOpen={participantsOpen} onClose={() => setParticipantsOpen(false)} onMuteRequest={isHost ? requestMute : undefined} raisedHands={raisedHands} />
+      <ParticipantsPanel 
+        participants={participants} 
+        hostId={meetingHostId || (isHost ? localParticipant?.identity : undefined)} 
+        isOpen={participantsOpen} 
+        onClose={() => setParticipantsOpen(false)} 
+        onMuteRequest={requestMute} 
+        onKickRequest={requestKick} 
+        raisedHands={raisedHands} 
+        isAdmin={isAdmin}
+        cohosts={cohosts}
+        meetingHostId={meetingHostId}
+        requireApproval={requireApproval}
+        allowScreenShare={allowScreenShare}
+        localParticipantIdentity={localParticipant?.identity}
+        onUpdateSettings={updateSettings}
+        onChangeParticipantRole={changeParticipantRole}
+        onStopParticipantScreenShare={stopParticipantScreenShare}
+      />
 
       {/* Emoji picker popover (simple) */}
       {emojiOpen && (
@@ -698,12 +966,8 @@ function RoomContent({
         </div>
       )}
 
-      {/* Reactions overlay: show recent reactions briefly */}
-      <div className="fixed right-6 top-24 z-40 flex flex-col gap-2 pointer-events-none">
-        {reactions.slice().reverse().slice(0,6).map(r => (
-          <div key={r.id} className="animate-pop text-3xl text-center">{r.emoji}</div>
-        ))}
-      </div>
+      {/* Floating reactions animation overlay */}
+      <FloatingReactionsOverlay reactions={reactions} />
 
       {/* Mobile Chat Modal */}
       {chatModalOpen && (
@@ -717,7 +981,7 @@ function RoomContent({
               </button>
             </div>
             <div className="p-4 h-[calc(100%-56px)]">
-              <ChatPanel messages={messages} onSendMessage={sendMessage} />
+              <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
             </div>
           </div>
         </div>
@@ -729,6 +993,7 @@ function RoomContent({
 // ─── Outer page — handles token fetch, auth role, leave/rejoin ───────
 export default function RoomPage() {
   const params = useParams();
+  const router = useRouter();
   const code = params.code as string;
   const { user, loading: authLoading } = useAuth();
 
@@ -782,15 +1047,36 @@ export default function RoomPage() {
     setShowPreJoin(true);
   }, [authLoading]);
 
-  const handleLeave = useCallback(() => {
+  // NEW STATES
+  const [meetingRecord, setMeetingRecord] = useState<any>(null);
+  const [endOptionSelected, setEndOptionSelected] = useState(false);
+
+  useEffect(() => {
+    if (code) {
+      MeetingService.getMeetingByCode(code)
+        .then(m => setMeetingRecord(m))
+        .catch(e => console.error("Failed to load meeting details:", e));
+    }
+  }, [code]);
+
+  const handleLeave = useCallback((endForAll: boolean = false) => {
+    if (endForAll && meetingRecord) {
+      MeetingService.endMeeting(meetingRecord.id).catch(console.error);
+    }
     setToken(null);
-    setHasLeft(true);
-  }, []);
+    if (user) {
+      router.push('/dashboard');
+    } else {
+      setHasLeft(true);
+      setEndOptionSelected(endForAll);
+    }
+  }, [meetingRecord, user, router]);
 
   const handleRejoin = useCallback(() => {
     hasFetchedToken.current = false;
     setShowPreJoin(true);
     setHasLeft(false);
+    setEndOptionSelected(false);
   }, []);
 
   // Pre-Join Lobby Screen
@@ -805,7 +1091,7 @@ export default function RoomPage() {
   // Left screen
   if (hasLeft) {
     return (
-      <LeftMeetingScreen code={code} isHost={isHost} onRejoin={handleRejoin} />
+      <LeftMeetingScreen code={code} isHost={isHost && endOptionSelected} onRejoin={handleRejoin} />
     );
   }
 
@@ -840,7 +1126,7 @@ export default function RoomPage() {
       options={roomOptions}
     >
       <RoomAudioRenderer />
-      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} />
+      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} meetingId={meetingRecord?.id} />
     </LiveKitRoom>
   );
 }
