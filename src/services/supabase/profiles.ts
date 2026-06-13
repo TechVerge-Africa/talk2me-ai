@@ -67,5 +67,26 @@ export const ProfileService = {
    */
   async setDeafMode(userId: string, enabled: boolean) {
     return this.updateSettings(userId, { deaf_mode: enabled });
+  },
+
+  /**
+   * Fetches all user profiles (e.g. for messaging directory)
+   */
+  async getAllProfiles(): Promise<UserProfile[]> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      throw new AppError(
+        'Failed to load user profiles.',
+        'PROFILE_FETCH_ALL_FAILED',
+        { cause: error },
+      );
+    }
+
+    return data || [];
   }
 };

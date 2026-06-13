@@ -58,6 +58,7 @@ import {
 import { useAuth } from '@/features/auth/use-auth';
 import { Meeting } from '@/types/meeting';
 import { MeetingService } from '@/services/supabase/meetings';
+import { ProfileService, UserProfile } from '@/services/supabase/profiles';
 import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
 import { AiWaveBackground } from '@/packages/ui/ai-effects';
 import { QrBlock } from '@/packages/ui/qr-block';
@@ -122,13 +123,43 @@ export default function DashboardPage() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [keyboardNav, setKeyboardNav] = useState(false);
 
-  // ── MOCK SYSTEM DATA ───────────────────────────────────────────────
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: 'AI Summary Ready', body: 'The summary for "Design Align" is available.', read: false, time: '10m ago' },
-    { id: 2, title: 'Upcoming Broadcast', body: 'Webinar "Future of UX" starts in 1 hour.', read: false, time: '1h ago' },
-    { id: 3, title: 'Access Request', body: 'Sarah wants to join your organization.', read: true, time: '1d ago' }
-  ]);
+  // ── DYNAMIC NOTIFICATIONS & ACTIVITY DATA ───────────────────────────
+  const [unreadNotifications, setUnreadNotifications] = useState<Record<string, boolean>>({});
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string>('');
+  const [newMessageText, setNewMessageText] = useState('');
+  const [chatHistories, setChatHistories] = useState<Record<string, { sender: 'me' | 'them'; text: string; time: string }[]>>({
+    'bot-interpreter': [
+      { sender: 'them', text: 'Hi! I am a certified ASL interpreter. You can request me for any live session!', time: '10:00 AM' }
+    ],
+    'bot-companion': [
+      { sender: 'them', text: 'Hello! I am your Talk2Me companion. I can summarize past meetings, check action items, or answer accessibility questions.', time: '10:00 AM' }
+    ],
+    'sarah-jenkins': [
+      { sender: 'them', text: 'Hi! I reviewed the Deaf Mode visual scales for our webinar tomorrow. They look extremely clean!', time: '12:04 PM' },
+      { sender: 'me', text: 'Excellent, thank you Sarah. We will start the stream simulation soon.', time: '12:05 PM' }
+    ]
+  });
+
+  const notifications = useMemo(() => {
+    const ended = dbMeetings.filter(m => m.status === 'ended').slice(0, 3);
+    return ended.map((m) => ({
+      id: m.id,
+      title: 'AI Summary Ready',
+      body: `The transcription and summary for "${m.title || 'Untitled Meeting'}" is available.`,
+      read: unreadNotifications[m.id] ?? false,
+      time: new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })
+    }));
+  }, [dbMeetings, unreadNotifications]);
+
+  const markAllNotificationsRead = () => {
+    const updated: Record<string, boolean> = {};
+    notifications.forEach(n => {
+      updated[n.id] = true;
+    });
+    setUnreadNotifications(prev => ({ ...prev, ...updated }));
+  };
 
   // ── AI ASSISTANT CHAT STATE ───────────────────────────────────────
   const [aiChatInput, setAiChatInput] = useState('');
@@ -174,17 +205,23 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, router]);
 
-  // Fetch user meetings from database
+  // Fetch user meetings and other workspace profiles from database
   useEffect(() => {
     if (user) {
       MeetingService.getUserMeetings(user.id)
         .then(setDbMeetings)
         .catch(console.error);
+
+      ProfileService.getAllProfiles()
+        .then(data => {
+          setProfiles(data.filter(p => p.id !== user.id));
+        })
+        .catch(console.error);
     }
   }, [user]);
 
   const displaySchedule = useMemo(() => {
-    const activeDbMeetings = dbMeetings
+    return dbMeetings
       .filter(m => m.status === 'active')
       .map(m => ({
         title: m.title || 'Untitled Meeting',
@@ -193,41 +230,93 @@ export default function DashboardPage() {
         people: 'Host: You',
         code: m.room_code
       }));
-
-    return [
-      ...activeDbMeetings,
-      {
-        title: 'Project Handover & Review',
-        time: 'Today, 2:00 PM',
-        type: 'Meeting',
-        people: 'Sarah Jenkins, Michael Osei + 4 others',
-        code: 'T2M-XYZ-KLS'
-      },
-      {
-        title: 'Talk2Me Accessibility Product Keynote',
-        time: 'Tomorrow, 10:00 AM',
-        type: 'Live Stream',
-        people: '230 audience registered',
-        code: 'streams'
-      }
-    ];
   }, [dbMeetings]);
 
   const displayMeetings = useMemo(() => {
-    const mapped = dbMeetings.map(m => ({
+    return dbMeetings.map(m => ({
       id: m.id,
       name: m.title || 'Untitled Meeting',
       code: m.room_code,
       date: new Date(m.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
       status: m.status === 'active' ? 'Active' : 'Ended'
     }));
-
-    return mapped.length > 0 ? mapped : [
-      { id: 'mock-1', name: 'Sprint Standup & A11y Audit', code: 'T2M-HJK-LMP', date: 'Today, 9:15 AM', status: 'Active' },
-      { id: 'mock-2', name: 'Developer Q&A and Setup', code: 'WXP-KLS-QRT', date: 'Yesterday, 3:00 PM', status: 'Inactive' },
-      { id: 'mock-3', name: 'Accessibility Test Session', code: 'ACC-TST-V92', date: 'June 8, 4:45 PM', status: 'Inactive' }
-    ];
   }, [dbMeetings]);
+
+  const recentActivity = useMemo(() => {
+    return dbMeetings
+      .filter(m => m.status === 'ended')
+      .slice(0, 3)
+      .map(m => ({
+        title: m.title || 'Untitled Meeting',
+        date: new Date(m.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
+        icon: Video,
+        insights: true,
+        recording: false,
+        code: m.room_code
+      }));
+  }, [dbMeetings]);
+
+  const displayChats = useMemo(() => {
+    const dbChats = profiles.map(p => ({
+      id: p.id,
+      name: p.full_name || 'Workspace User',
+      role: p.is_interpreter ? 'Sign Language Interpreter' : 'Workspace Member',
+      isBot: false,
+    }));
+
+    if (dbChats.length > 0) return dbChats;
+
+    return [
+      { id: 'bot-interpreter', name: 'Premium Sign Language Interpreter', role: 'Sign Professional', isBot: true },
+      { id: 'bot-companion', name: 'Talk2Me AI Assistant', role: 'AI Assistant', isBot: true },
+      { id: 'sarah-jenkins', name: 'Sarah Jenkins', role: 'Deaf Interpreter', isBot: true }
+    ];
+  }, [profiles]);
+
+  useEffect(() => {
+    if (displayChats.length > 0 && !selectedChatId) {
+      setSelectedChatId(displayChats[0].id);
+    }
+  }, [displayChats, selectedChatId]);
+
+  const activeChat = useMemo(() => {
+    return displayChats.find(c => c.id === selectedChatId) || displayChats[0];
+  }, [displayChats, selectedChatId]);
+
+  const handleSendMessage = () => {
+    if (!newMessageText.trim() || !activeChat) return;
+
+    const newMsg = {
+      sender: 'me' as const,
+      text: newMessageText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setChatHistories(prev => ({
+      ...prev,
+      [activeChat.id]: [...(prev[activeChat.id] || []), newMsg]
+    }));
+
+    setNewMessageText('');
+
+    if (activeChat.isBot) {
+      setTimeout(() => {
+        const botReply = {
+          sender: 'them' as const,
+          text: activeChat.id === 'bot-companion'
+            ? `I received your message: "${newMessageText}". As your Talk2Me AI Assistant, I can help you summarize meetings or translate transcriptions once you join a room!`
+            : activeChat.id === 'sarah-jenkins'
+            ? `Hi! As a Deaf Interpreter, I can translate this session. Start a call with me or schedule a meeting!`
+            : `Hello! I'm ready to assist with Sign Language translation. Start a call using the button in the top right to invite me to interpret!`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatHistories(prev => ({
+          ...prev,
+          [activeChat.id]: [...(prev[activeChat.id] || []), botReply]
+        }));
+      }, 1000);
+    }
+  };
 
   const handleDeleteMeeting = async (meetingId: string) => {
     if (!window.confirm("Are you sure you want to delete this meeting? This action cannot be undone.")) {
@@ -235,9 +324,7 @@ export default function DashboardPage() {
     }
     
     try {
-      if (!meetingId.startsWith('mock-')) {
-        await MeetingService.deleteMeeting(meetingId);
-      }
+      await MeetingService.deleteMeeting(meetingId);
       setDbMeetings(prev => prev.filter(m => m.id !== meetingId));
     } catch (err) {
       console.error("Failed to delete meeting:", err);
@@ -643,29 +730,33 @@ export default function DashboardPage() {
                       <div className="flex justify-between items-center mb-4">
                         <span className="font-bold text-sm">Notifications</span>
                         <button
-                          onClick={() =>
-                            setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-                          }
-                          className="text-xs text-indigo hover:underline font-bold"
+                          onClick={markAllNotificationsRead}
+                          className="text-xs text-indigo hover:underline font-bold cursor-pointer"
                         >
                           Mark all read
                         </button>
                       </div>
                       <div className="space-y-2.5 max-h-60 overflow-y-auto no-scrollbar">
-                        {notifications.map(item => (
-                          <div
-                            key={item.id}
-                            className={`p-2.5 rounded-xl border transition-all ${
-                              item.read ? 'border-transparent bg-foreground/3' : 'border-indigo/20 bg-indigo/5'
-                            }`}
-                          >
-                            <div className="flex justify-between text-xs font-bold mb-1">
-                              <span className="truncate">{item.title}</span>
-                              <span className="text-muted-foreground text-[10px] font-normal">{item.time}</span>
-                            </div>
-                            <p className="text-xs text-muted-foreground leading-relaxed">{item.body}</p>
+                        {notifications.length === 0 ? (
+                          <div className="text-center py-8 text-xs text-muted-foreground font-semibold">
+                            No new notifications
                           </div>
-                        ))}
+                        ) : (
+                          notifications.map(item => (
+                            <div
+                              key={item.id}
+                              className={`p-2.5 rounded-xl border transition-all ${
+                                item.read ? 'border-transparent bg-foreground/3' : 'border-indigo/20 bg-indigo/5'
+                              }`}
+                            >
+                              <div className="flex justify-between text-xs font-bold mb-1">
+                                <span className="truncate">{item.title}</span>
+                                <span className="text-muted-foreground text-[10px] font-normal">{item.time}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground leading-relaxed">{item.body}</p>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </motion.div>
                   </>
@@ -840,37 +931,44 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="space-y-3">
-                        {displaySchedule.map((event, index) => (
-                          <div
-                            key={index}
-                            className="p-4 rounded-xl border border-border/40 bg-card/40 hover:bg-card transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-4"
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
-                                  event.type === 'Meeting' ? 'bg-indigo/10 text-indigo' : 'bg-red-500/10 text-red-500'
-                                }`}>
-                                  {event.type}
-                                </span>
-                                <span className="text-xs text-muted-foreground font-medium">{event.time}</span>
-                              </div>
-                              <h3 className="font-bold text-sm text-foreground">{event.title}</h3>
-                              <p className="text-[11px] text-muted-foreground">{event.people}</p>
-                            </div>
-                            <button
-                              onClick={() => {
-                                if (event.type === 'Meeting') {
-                                  router.push(`/room/${event.code}`);
-                                } else {
-                                  setCurrentView(event.code as DashboardView);
-                                }
-                              }}
-                              className="px-4 py-2 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow transition-all self-start sm:self-auto"
-                            >
-                              Join
-                            </button>
+                        {displaySchedule.length === 0 ? (
+                          <div className="p-8 text-center border border-dashed border-border/40 rounded-2xl text-muted-foreground text-xs font-semibold bg-card/20 flex flex-col items-center justify-center gap-2">
+                            <Calendar className="size-8 opacity-30 text-indigo animate-pulse" />
+                            <span>No upcoming meetings scheduled. Start or schedule a session above!</span>
                           </div>
-                        ))}
+                        ) : (
+                          displaySchedule.map((event, index) => (
+                            <div
+                              key={index}
+                              className="p-4 rounded-xl border border-border/40 bg-card/40 hover:bg-card transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-4"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
+                                    event.type === 'Meeting' ? 'bg-indigo/10 text-indigo' : 'bg-red-500/10 text-red-500'
+                                  }`}>
+                                    {event.type}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground font-medium">{event.time}</span>
+                                </div>
+                                <h3 className="font-bold text-sm text-foreground">{event.title}</h3>
+                                <p className="text-[11px] text-muted-foreground">{event.people}</p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  if (event.type === 'Meeting') {
+                                    router.push(`/room/${event.code}`);
+                                  } else {
+                                    setCurrentView(event.code as DashboardView);
+                                  }
+                                }}
+                                className="px-4 py-2 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow transition-all self-start sm:self-auto cursor-pointer"
+                              >
+                                Join
+                              </button>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
 
@@ -878,44 +976,48 @@ export default function DashboardPage() {
                     <div className="space-y-4">
                       <h2 className="text-lg font-bold tracking-tight">Recent Activity</h2>
                       <div className="space-y-3">
-                        {[
-                          { title: 'Weekly Product Alignment', date: '2 hours ago', icon: Video, insights: true, recording: true },
-                          { title: 'Accessibility Feature Briefing', date: 'Yesterday', icon: Radio, insights: true, recording: false }
-                        ].map((activity, idx) => {
-                          const ActIcon = activity.icon;
-                          return (
-                            <div key={idx} className="p-4 rounded-xl border border-border/40 bg-card/45 hover:bg-card transition-all space-y-3">
-                              <div className="flex items-center gap-3">
-                                <div className="size-8 rounded-lg bg-indigo/10 grid place-items-center text-indigo flex-shrink-0">
-                                  <ActIcon className="size-4" />
+                        {recentActivity.length === 0 ? (
+                          <div className="p-8 text-center border border-dashed border-border/40 rounded-2xl text-muted-foreground text-xs font-semibold bg-card/20 flex flex-col items-center justify-center gap-2">
+                            <Activity className="size-8 opacity-30 text-indigo" />
+                            <span>No recent activity found. Join a meeting to get started.</span>
+                          </div>
+                        ) : (
+                          recentActivity.map((activity, idx) => {
+                            const ActIcon = activity.icon;
+                            return (
+                              <div key={idx} className="p-4 rounded-xl border border-border/40 bg-card/45 hover:bg-card transition-all space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="size-8 rounded-lg bg-indigo/10 grid place-items-center text-indigo flex-shrink-0">
+                                    <ActIcon className="size-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className="font-bold text-xs text-foreground truncate">{activity.title}</h4>
+                                    <p className="text-[10px] text-muted-foreground">{activity.date}</p>
+                                  </div>
                                 </div>
-                                <div className="min-w-0">
-                                  <h4 className="font-bold text-xs text-foreground truncate">{activity.title}</h4>
-                                  <p className="text-[10px] text-muted-foreground">{activity.date}</p>
+                                <div className="flex gap-2">
+                                  {activity.insights && (
+                                    <button
+                                      onClick={() => setCurrentView('ai-workspace')}
+                                      className="text-[9px] font-black uppercase px-2 py-1 rounded bg-indigo/15 text-indigo hover:bg-indigo/20 transition-all flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Sparkles className="size-2.5" />
+                                      AI Summary
+                                    </button>
+                                  )}
+                                  {activity.recording && (
+                                    <button
+                                      onClick={() => setCurrentView('recordings')}
+                                      className="text-[9px] font-black uppercase px-2 py-1 rounded bg-foreground/5 text-muted-foreground hover:bg-foreground/10 transition-all cursor-pointer"
+                                    >
+                                      Recording
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex gap-2">
-                                {activity.insights && (
-                                  <button
-                                    onClick={() => setCurrentView('ai-workspace')}
-                                    className="text-[9px] font-black uppercase px-2 py-1 rounded bg-indigo/15 text-indigo hover:bg-indigo/20 transition-all flex items-center gap-1"
-                                  >
-                                    <Sparkles className="size-2.5" />
-                                    AI Summary
-                                  </button>
-                                )}
-                                {activity.recording && (
-                                  <button
-                                    onClick={() => setCurrentView('recordings')}
-                                    className="text-[9px] font-black uppercase px-2 py-1 rounded bg-foreground/5 text-muted-foreground hover:bg-foreground/10 transition-all"
-                                  >
-                                    Recording
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1009,37 +1111,45 @@ export default function DashboardPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {displayMeetings.map((room, idx) => (
-                            <tr key={idx} className="border-b border-border/20 last:border-0 hover:bg-foreground/2">
-                              <td className="p-4 font-bold">{room.name}</td>
-                              <td className="p-4 font-mono text-xs text-indigo">{room.code}</td>
-                              <td className="p-4 text-muted-foreground text-xs">{room.date}</td>
-                              <td className="p-4">
-                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                                  room.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-foreground/5 text-muted-foreground'
-                                }`}>
-                                  {room.status}
-                                </span>
-                              </td>
-                              <td className="p-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => router.push(`/room/${room.code}`)}
-                                    className="px-3 py-1.5 rounded bg-indigo text-white font-bold text-xs hover:shadow transition"
-                                  >
-                                    Enter
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteMeeting(room.id)}
-                                    className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 transition"
-                                    title="Delete Meeting"
-                                  >
-                                    <Trash2 className="size-4" />
-                                  </button>
-                                </div>
+                          {displayMeetings.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="p-8 text-center text-muted-foreground text-xs font-semibold">
+                                No meetings found. Create or schedule a meeting above to start.
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            displayMeetings.map((room, idx) => (
+                              <tr key={idx} className="border-b border-border/20 last:border-0 hover:bg-foreground/2">
+                                <td className="p-4 font-bold">{room.name}</td>
+                                <td className="p-4 font-mono text-xs text-indigo">{room.code}</td>
+                                <td className="p-4 text-muted-foreground text-xs">{room.date}</td>
+                                <td className="p-4">
+                                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                                    room.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-foreground/5 text-muted-foreground'
+                                  }`}>
+                                    {room.status}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => router.push(`/room/${room.code}`)}
+                                      className="px-3 py-1.5 rounded bg-indigo text-white font-bold text-xs hover:shadow transition cursor-pointer"
+                                    >
+                                      Enter
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteMeeting(room.id)}
+                                      className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 transition cursor-pointer"
+                                      title="Delete Meeting"
+                                    >
+                                      <Trash2 className="size-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1436,23 +1546,20 @@ export default function DashboardPage() {
                         className="w-full h-10 px-3 bg-foreground/5 rounded-xl text-xs outline-none border border-transparent focus:bg-background focus:ring-1 focus:ring-indigo"
                       />
                       <div className="space-y-2">
-                        {[
-                          { name: 'Sarah Jenkins', role: 'Deaf Interpreter', active: true },
-                          { name: 'Global Inclusion Org', role: 'Channel', active: false },
-                          { name: 'Michael Osei', role: 'Core dev', active: false }
-                        ].map((chat, i) => (
+                        {displayChats.map((chat) => (
                           <button
-                            key={i}
-                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 ${
-                              chat.active ? 'bg-indigo/10 text-indigo' : 'hover:bg-foreground/3 text-muted-foreground'
+                            key={chat.id}
+                            onClick={() => setSelectedChatId(chat.id)}
+                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 cursor-pointer ${
+                              chat.id === selectedChatId ? 'bg-indigo/10 text-indigo font-bold' : 'hover:bg-foreground/3 text-muted-foreground'
                             }`}
                           >
                             <div className="size-8 rounded-full bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-[10px] font-black">
                               {chat.name.slice(0, 2).toUpperCase()}
                             </div>
-                            <div>
-                              <h4 className="font-bold text-xs text-foreground">{chat.name}</h4>
-                              <p className="text-[10px] text-muted-foreground">{chat.role}</p>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-bold text-xs text-foreground truncate">{chat.name}</h4>
+                              <p className="text-[10px] text-muted-foreground truncate">{chat.role}</p>
                             </div>
                           </button>
                         ))}
@@ -1460,36 +1567,70 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Chat Area */}
-                    <div className="md:col-span-2 flex flex-col justify-between p-4 md:p-6 overflow-hidden h-[480px] md:h-full">
-                      <div className="flex justify-between items-center border-b border-border/40 pb-4">
-                        <div>
-                          <h3 className="font-bold text-base">Sarah Jenkins</h3>
-                          <p className="text-[10px] text-muted-foreground">Available to translate ASL sessions</p>
+                    {activeChat ? (
+                      <div className="md:col-span-2 flex flex-col justify-between p-4 md:p-6 overflow-hidden h-[480px] md:h-full">
+                        <div className="flex justify-between items-center border-b border-border/40 pb-4">
+                          <div>
+                            <h3 className="font-bold text-base">{activeChat.name}</h3>
+                            <p className="text-[10px] text-muted-foreground">{activeChat.role}</p>
+                          </div>
+                          <button
+                            onClick={() => router.push('/create')}
+                            className="px-3 py-1.5 rounded-lg bg-indigo text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Video className="size-3" />
+                            Start Call
+                          </button>
                         </div>
-                        <button className="px-3 py-1.5 rounded-lg bg-indigo text-white font-bold text-xs flex items-center gap-1">
-                          <Video className="size-3" />
-                          Start Call
-                        </button>
-                      </div>
 
-                      <div className="flex-1 py-4 space-y-3 overflow-y-auto no-scrollbar">
-                        <div className="p-3 bg-foreground/5 rounded-2xl max-w-sm self-start">
-                          <p className="text-xs">Hi! I reviewed the Deaf Mode visual scales for our webinar tomorrow. They look extremely clean!</p>
+                        <div className="flex-1 py-4 space-y-3 overflow-y-auto no-scrollbar flex flex-col">
+                          {(chatHistories[activeChat.id] || []).length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground text-xs gap-2 py-8">
+                              <MessageSquare className="size-8 opacity-20 text-indigo" />
+                              <span>No messages yet. Send a message to start the conversation!</span>
+                            </div>
+                          ) : (
+                            (chatHistories[activeChat.id] || []).map((msg, i) => (
+                              <div
+                                key={i}
+                                className={`p-3 rounded-2xl max-w-xs md:max-w-sm ${
+                                  msg.sender === 'me'
+                                    ? 'bg-indigo text-white self-end ml-auto'
+                                    : 'bg-foreground/5 text-foreground self-start mr-auto'
+                                }`}
+                              >
+                                <p className="text-xs">{msg.text}</p>
+                                <span className="text-[8px] opacity-60 block text-right mt-1">{msg.time}</span>
+                              </div>
+                            ))
+                          )}
                         </div>
-                        <div className="p-3 bg-indigo text-white rounded-2xl max-w-sm self-end ml-auto">
-                          <p className="text-xs">Excellent, thank you Sarah. We will start the stream simulation soon.</p>
-                        </div>
-                      </div>
 
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Type your message..."
-                          className="flex-1 px-4 py-3 bg-foreground/5 rounded-xl text-xs outline-none focus:bg-background focus:ring-1 focus:ring-indigo"
-                        />
-                        <button className="px-4 py-3 bg-indigo text-white font-bold text-xs rounded-xl">Send</button>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={newMessageText}
+                            onChange={(e) => setNewMessageText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSendMessage();
+                            }}
+                            placeholder="Type your message..."
+                            className="flex-1 px-4 py-3 bg-foreground/5 rounded-xl text-xs outline-none focus:bg-background focus:ring-1 focus:ring-indigo"
+                          />
+                          <button
+                            onClick={handleSendMessage}
+                            className="px-4 py-3 bg-indigo text-white font-bold text-xs rounded-xl cursor-pointer"
+                          >
+                            Send
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="md:col-span-2 flex flex-col items-center justify-center text-center text-muted-foreground p-8 gap-2">
+                        <MessageSquare className="size-10 opacity-20 text-indigo" />
+                        <span className="text-sm font-semibold">Select a chat to start messaging</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
