@@ -18,7 +18,7 @@ export function MeetingLayout({
   fullBleed = false
 }: MeetingLayoutProps) {
   return (
-    <main className="fixed inset-0 flex flex-col bg-[#121417] text-white overflow-hidden">
+    <main className={`fixed inset-0 flex flex-col bg-[#121417] text-white overflow-hidden ${sidebar ? 'layout-has-sidebar' : ''}`}>
       {/* Topbar — sticky at top */}
       {topbar && (
         <div className="absolute top-0 left-0 right-0 z-40 pointer-events-auto">

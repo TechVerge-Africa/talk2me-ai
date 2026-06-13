@@ -101,8 +101,8 @@ function ParticipantRow({
         </div>
       </div>
 
-      {/* Admin Action dropdown (Only visible to main host to promote/demote) */}
-      {isLocalHost && !isRowLocal && onChangeParticipantRole && (
+      {/* Admin Action dropdown (Visible to any admin to promote/demote) */}
+      {isAdmin && !isRowLocal && onChangeParticipantRole && (
         <select
           value={p.identity === meetingHostId ? 'host' : (cohosts && cohosts[p.identity] ? 'cohost' : 'participant')}
           onChange={(e) => onChangeParticipantRole(p.identity, e.target.value as any)}

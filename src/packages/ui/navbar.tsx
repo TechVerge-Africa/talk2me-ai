@@ -94,6 +94,12 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
 /* ─── Mobile Navbar ─────────────────────────────────────────────── */
 function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, loading } = useAuth();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    onClose();
+    window.location.href = "/";
+  };
   
   return (
     <AnimatePresence>
@@ -149,15 +155,42 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
             </nav>
 
             <div className="p-8 border-t border-border/50 space-y-4">
-              {!loading && !user && (
-                <Link
-                  href="/auth"
-                  onClick={onClose}
-                  className="flex items-center justify-center gap-3 w-full py-5 text-lg font-bold rounded-3xl bg-card ring-1 ring-border shadow-sm"
-                >
-                  <LogIn className="size-5" />
-                  Log In
-                </Link>
+              {!loading && (
+                user ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 px-3 mb-2">
+                      <div className="size-10 rounded-xl bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg flex-shrink-0">
+                        {user.email?.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-cyan opacity-70">Authenticated</span>
+                        <span className="text-xs text-muted-foreground truncate">{user.email}</span>
+                      </div>
+                    </div>
+                    <Link
+                      href="/dashboard"
+                      onClick={onClose}
+                      className="flex items-center justify-center gap-3 w-full py-4 text-base font-bold rounded-2xl bg-indigo text-white shadow-md text-center hover:opacity-90 transition-opacity"
+                    >
+                      Go to Dashboard
+                    </Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="flex items-center justify-center gap-3 w-full py-4 text-base font-bold rounded-2xl bg-card ring-1 ring-border text-red-500 hover:bg-red-500/5 transition-colors cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    href="/auth"
+                    onClick={onClose}
+                    className="flex items-center justify-center gap-3 w-full py-5 text-lg font-bold rounded-3xl bg-card ring-1 ring-border shadow-sm"
+                  >
+                    <LogIn className="size-5" />
+                    Log In
+                  </Link>
+                )
               )}
             </div>
           </motion.aside>

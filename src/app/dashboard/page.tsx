@@ -571,12 +571,12 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col min-w-0 relative">
         <GradientBackground />
         {/* ── TOP NAV BAR ───────────────────────────────────────────── */}
-        <header className="h-16 flex items-center justify-between px-6 border-b border-border/40 bg-card/40 backdrop-blur-xl relative z-20">
+        <header className="h-16 flex items-center justify-between px-3 md:px-6 border-b border-border/40 bg-card/40 backdrop-blur-xl relative z-20">
           {/* Left: Mobile Sidebar toggle and global Search bar */}
-          <div className="flex items-center gap-4 flex-1 max-w-xl">
+          <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-xl">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="md:hidden p-2 rounded-lg bg-foreground/5 text-muted-foreground hover:text-foreground"
+              className="md:hidden p-2 rounded-lg bg-foreground/5 text-muted-foreground hover:text-foreground flex-shrink-0"
             >
               {sidebarOpen ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
             </button>
@@ -584,25 +584,25 @@ export default function DashboardPage() {
             {/* Global Search palette button */}
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center gap-3 w-full max-w-md h-10 px-4 rounded-xl border border-border/40 bg-foreground/5 hover:bg-foreground/8 transition-all text-left text-muted-foreground text-sm"
+              className="flex items-center justify-center sm:justify-start gap-3 w-10 sm:w-full max-w-md h-10 px-0 sm:px-4 rounded-xl border border-transparent sm:border-border/40 bg-foreground/5 hover:bg-foreground/8 transition-all text-left text-muted-foreground text-sm flex-shrink-0 sm:flex-shrink"
             >
-              <Search className="size-4 text-muted-foreground" />
-              <span className="flex-1 truncate">Search meetings, events, or ask AI...</span>
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold border rounded bg-card/60 shadow-sm uppercase tracking-wide">
+              <Search className="size-4 text-muted-foreground flex-shrink-0" />
+              <span className="hidden sm:inline flex-1 truncate">Search meetings, events, or ask AI...</span>
+              <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold border rounded bg-card/60 shadow-sm uppercase tracking-wide">
                 Ctrl K
               </kbd>
             </button>
           </div>
 
           {/* Right: Quick actions, notifications, status, profile */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             {/* Quick action button */}
             <div className="relative">
               <button
                 onClick={() => triggerCreateSession('meeting')}
-                className="h-10 px-4 rounded-xl bg-indigo text-white font-bold text-sm hover:shadow-lg transition-all flex items-center gap-2"
+                className="size-10 sm:h-10 sm:w-auto sm:px-4 rounded-xl bg-indigo text-white font-bold text-sm hover:shadow-lg transition-all flex items-center justify-center gap-2"
               >
-                <Plus className="size-4" />
+                <Plus className="size-4 flex-shrink-0" />
                 <span className="hidden sm:inline">Quick Start</span>
               </button>
             </div>
@@ -610,7 +610,7 @@ export default function DashboardPage() {
             {/* Accessibility Status indicator */}
             <button
               onClick={() => setCurrentView('accessibility')}
-              className={`p-2 rounded-xl border transition-all ${
+              className={`p-2 rounded-xl border transition-all flex-shrink-0 ${
                 captionsEnabled || signLanguageMode || highContrast
                   ? 'bg-cyan/15 border-cyan/40 text-cyan shadow-sm animate-pulse-slow'
                   : 'bg-foreground/5 border-transparent text-muted-foreground hover:text-foreground'
@@ -621,7 +621,7 @@ export default function DashboardPage() {
             </button>
 
             {/* Notification system */}
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <button
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
                 className="p-2 rounded-xl bg-foreground/5 hover:bg-foreground/8 text-muted-foreground hover:text-foreground relative transition-all"
@@ -704,6 +704,98 @@ export default function DashboardPage() {
                     <p className="text-muted-foreground text-sm font-medium">
                       Welcome back to your inclusive communication operating system.
                     </p>
+                  </div>
+
+                  {/* Quick Actions Grid */}
+                  <div className="space-y-4">
+                    <h2 className="text-lg font-bold tracking-tight">Quick Actions</h2>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                      {/* Action 1: Instant Call */}
+                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-indigo/30 transition-all flex flex-col justify-between min-h-[180px] group">
+                        <div className="space-y-2">
+                          <div className="size-10 rounded-xl bg-indigo/10 text-indigo flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                            <Video className="size-5" />
+                          </div>
+                          <h3 className="font-bold text-sm text-foreground">Instant Call</h3>
+                          <p className="text-[11px] text-muted-foreground leading-normal">Start an immediate inclusive video session.</p>
+                        </div>
+                        <button
+                          onClick={() => triggerCreateSession('meeting')}
+                          className="w-full py-2 px-3 mt-4 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow-md transition-all cursor-pointer"
+                        >
+                          Start Meeting
+                        </button>
+                      </div>
+
+                      {/* Action 2: Join with Code */}
+                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-cyan/30 transition-all flex flex-col justify-between min-h-[180px] group">
+                        <div className="space-y-2">
+                          <div className="size-10 rounded-xl bg-cyan/10 text-cyan flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                            <Lock className="size-5" />
+                          </div>
+                          <h3 className="font-bold text-sm text-foreground">Join with Code</h3>
+                          <p className="text-[11px] text-muted-foreground leading-normal">Enter room credentials to join a session.</p>
+                        </div>
+                        <div className="flex gap-1.5 mt-4">
+                          <input
+                            type="text"
+                            placeholder="ABC-DEF-GHI"
+                            className="w-full px-2 py-1.5 rounded-lg border border-border/40 bg-foreground/5 text-[10px] uppercase font-mono text-center outline-none focus:bg-background focus:ring-1 focus:ring-cyan"
+                            onChange={(e) => setGeneratedCode(e.target.value)}
+                          />
+                          <button
+                            onClick={() => {
+                              if (generatedCode.trim()) {
+                                router.push(`/room/${generatedCode.trim().toUpperCase()}`);
+                              } else {
+                                alert('Please enter a valid room code.');
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-foreground text-background font-bold text-[10px] hover:opacity-90 cursor-pointer"
+                          >
+                            Join
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Action 3: Schedule Meeting */}
+                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-indigo/30 transition-all flex flex-col justify-between min-h-[180px] group">
+                        <div className="space-y-2">
+                          <div className="size-10 rounded-xl bg-indigo/10 text-indigo flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                            <Calendar className="size-5" />
+                          </div>
+                          <h3 className="font-bold text-sm text-foreground">Schedule Session</h3>
+                          <p className="text-[11px] text-muted-foreground leading-normal">Book a future meeting with a11y features.</p>
+                        </div>
+                        <button
+                          onClick={() => triggerCreateSession('event')}
+                          className="w-full py-2 px-3 mt-4 rounded-xl border border-border hover:bg-foreground/5 text-foreground font-bold text-xs transition-all cursor-pointer"
+                        >
+                          Schedule
+                        </button>
+                      </div>
+
+                      {/* Action 4: Streaming Studio */}
+                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-cyan/30 transition-all flex flex-col justify-between min-h-[180px] group">
+                        <div className="space-y-2">
+                          <div className="size-10 rounded-xl bg-cyan/10 text-cyan flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
+                            <Radio className="size-5" />
+                          </div>
+                          <h3 className="font-bold text-sm text-foreground">Go Live</h3>
+                          <p className="text-[11px] text-muted-foreground leading-normal">Launch streaming console to broadcast.</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setStreamTitle('Live Broadcast Studio');
+                            setCurrentView('streams');
+                            setStreamIsLive(true);
+                          }}
+                          className="w-full py-2 px-3 mt-4 rounded-xl bg-cyan text-slate-950 font-bold text-xs hover:shadow-md transition-all cursor-pointer"
+                        >
+                          Start Broadcast
+                        </button>
+                      </div>
+                    </div>
                   </div>
                           {/* 3 Core Highlight Metrics */}
                   <div className="grid sm:grid-cols-3 gap-6">
@@ -1335,9 +1427,9 @@ export default function DashboardPage() {
                     <p className="text-muted-foreground text-sm">Connect with team members or translation professionals securely.</p>
                   </div>
 
-                  <div className="glass-card rounded-3xl border border-border/40 grid md:grid-cols-3 min-h-[480px]">
+                  <div className="glass-card rounded-3xl border border-border/40 grid md:grid-cols-3 h-[680px] md:h-[500px] overflow-hidden">
                     {/* Channel lists */}
-                    <div className="border-r border-border/40 p-4 space-y-4">
+                    <div className="border-b md:border-b-0 md:border-r border-border/40 p-4 space-y-4 overflow-y-auto no-scrollbar h-[200px] md:h-full flex-shrink-0">
                       <input
                         type="text"
                         placeholder="Search chats..."
@@ -1368,7 +1460,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Chat Area */}
-                    <div className="md:col-span-2 flex flex-col justify-between p-6">
+                    <div className="md:col-span-2 flex flex-col justify-between p-4 md:p-6 overflow-hidden h-[480px] md:h-full">
                       <div className="flex justify-between items-center border-b border-border/40 pb-4">
                         <div>
                           <h3 className="font-bold text-base">Sarah Jenkins</h3>

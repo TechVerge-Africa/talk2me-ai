@@ -43,6 +43,8 @@
   --color-cyan: var(--cyan);
   --color-cream: var(--cream);
   --color-charcoal: var(--charcoal);
+  --color-bridge-indigo: var(--indigo);
+  --color-bridge-cyan: var(--cyan);
 
   --font-sans: var(--font-geist-sans, 'Inter', ui-sans-serif, system-ui, sans-serif);
 
@@ -60,6 +62,9 @@
   --charcoal: oklch(0.15 0.008 60);
   --indigo: oklch(0.40 0.15 260);
   --cyan: oklch(0.62 0.14 200);
+
+  --bridge-indigo: var(--indigo);
+  --bridge-cyan: var(--cyan);
 
   --background: var(--cream);
   --foreground: var(--charcoal);
@@ -80,6 +85,9 @@
   --border: oklch(0 0 0 / 5%);
   --input: oklch(0 0 0 / 6%);
   --ring: var(--cyan);
+
+  /* Meeting Room Responsive Variable default */
+  --dock-h: 80px;
 }
 
 .dark {
@@ -100,6 +108,9 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
   --ring: oklch(0.62 0.14 200);
+
+  --bridge-indigo: var(--primary);
+  --bridge-cyan: var(--accent);
 }
 
 .glass-card {
@@ -168,3 +179,14 @@
   html, body { background-color: var(--color-background); color: var(--color-foreground); }
   body { font-family: var(--font-sans); font-feature-settings: "ss01", "cv11"; }
 }
+
+/* Meeting Room Responsive Variable overrides */
+@media (max-width: 1023px) {
+  :root {
+    --dock-h: 116px;
+  }
+  .layout-has-sidebar {
+    --dock-h: 0px;
+  }
+}
+

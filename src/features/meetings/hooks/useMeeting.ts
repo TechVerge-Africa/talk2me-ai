@@ -226,14 +226,17 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             setAllowScreenShare(msg.allow_screen_share);
           }
         } else if (msg.type === 'role_update') {
-          if (msg.role === 'host') {
-            setMeetingHostId(msg.target_id);
-            // Clear their cohost state if they became host
-            setCohosts(prev => ({ ...prev, [msg.target_id]: false }));
-          } else if (msg.role === 'cohost') {
-            setCohosts(prev => ({ ...prev, [msg.target_id]: true }));
-          } else if (msg.role === 'participant') {
-            setCohosts(prev => ({ ...prev, [msg.target_id]: false }));
+          const isSenderAdmin = msg.sender_id === meetingHostId || !!cohosts[msg.sender_id];
+          if (isSenderAdmin) {
+            if (msg.role === 'host') {
+              setMeetingHostId(msg.target_id);
+              // Clear their cohost state if they became host
+              setCohosts(prev => ({ ...prev, [msg.target_id]: false }));
+            } else if (msg.role === 'cohost') {
+              setCohosts(prev => ({ ...prev, [msg.target_id]: true }));
+            } else if (msg.role === 'participant') {
+              setCohosts(prev => ({ ...prev, [msg.target_id]: false }));
+            }
           }
         } else if (msg.type === 'stop_screenshare_request') {
           const isSenderAdmin = msg.sender_id === meetingHostId || cohosts[msg.sender_id];

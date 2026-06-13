@@ -151,7 +151,7 @@ function PreJoinLobby({
               }`}
             >
               {camOn ? <Video className="size-4" /> : <VideoOff className="size-4" />}
-              <span className="text-xs">{camOn ? 'Video On' : 'Enable Camera'}</span>
+              <span className="text-xs hidden sm:inline">{camOn ? 'Video On' : 'Enable Camera'}</span>
             </button>
             <button
               onClick={() => setMicOn(v => !v)}
@@ -161,7 +161,7 @@ function PreJoinLobby({
               }`}
             >
               {micOn ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-              <span className="text-xs">{micOn ? 'Mic On' : 'Enable Mic'}</span>
+              <span className="text-xs hidden sm:inline">{micOn ? 'Mic On' : 'Enable Mic'}</span>
             </button>
           </div>
           <div className="absolute top-4 left-4 z-30">
@@ -727,10 +727,18 @@ function RoomContent({
     <div className="relative flex-1 w-full h-full min-h-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#0f1115] via-[#131720] to-[#0c0e12] overflow-hidden">
       {/* Ambient glow rings */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-700 ${
-          micOn ? 'w-[480px] h-[480px] bg-emerald-500/5 ring-1 ring-emerald-500/10 blur-2xl animate-pulse' : 'w-[320px] h-[320px] bg-slate-500/5'
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-1000 ${
+          activeSpeaker
+            ? 'w-[540px] h-[540px] bg-emerald-500/8 ring-1 ring-emerald-500/15 blur-3xl scale-110'
+            : micOn
+            ? 'w-[480px] h-[480px] bg-emerald-500/5 ring-1 ring-emerald-500/10 blur-2xl animate-pulse'
+            : 'w-[320px] h-[320px] bg-slate-500/5'
         }`} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[220px] h-[220px] rounded-full bg-blue-500/5 ring-1 ring-blue-500/10 blur-xl" />
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-1000 ${
+          activeSpeaker
+            ? 'w-[300px] h-[300px] bg-cyan-500/10 ring-1 ring-cyan-500/15 blur-2xl scale-105'
+            : 'w-[220px] h-[220px] bg-blue-500/5 ring-1 ring-blue-500/10 blur-xl'
+        }`} />
       </div>
 
       {/* Participants audio avatars */}
@@ -750,8 +758,64 @@ function RoomContent({
                   : 'bg-gradient-to-br from-[#2a2d35] to-[#1e2227] text-white/60 ring-1 ring-white/5'
               }`}>
                 {initials}
+                
+                {/* Speaking staggered sonic rings */}
                 {isActive && (
-                  <span className="absolute -bottom-1 -right-1 size-4 rounded-full bg-emerald-400 border-2 border-[#131720] animate-pulse" />
+                  <>
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0.8 }}
+                      animate={{ scale: 2.0, opacity: 0 }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 2,
+                        ease: "easeOut",
+                      }}
+                      className="absolute inset-0 rounded-full bg-emerald-500/25 -z-10"
+                    />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0.6 }}
+                      animate={{ scale: 2.5, opacity: 0 }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 2,
+                        delay: 0.6,
+                        ease: "easeOut",
+                      }}
+                      className="absolute inset-0 rounded-full bg-cyan-500/15 -z-10"
+                    />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0.4 }}
+                      animate={{ scale: 3.0, opacity: 0 }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 2,
+                        delay: 1.2,
+                        ease: "easeOut",
+                      }}
+                      className="absolute inset-0 rounded-full bg-indigo-500/10 -z-10"
+                    />
+                  </>
+                )}
+
+                {/* Speaking visualizer capsule */}
+                {isActive && (
+                  <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 h-[18px] px-2 rounded-full bg-emerald-500 flex items-center justify-center gap-[2px] border border-[#131720] shadow-lg shadow-emerald-500/20">
+                    <motion.span
+                      animate={{ height: ["4px", "10px", "4px"] }}
+                      transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
+                      className="w-[2px] bg-white rounded-full"
+                    />
+                    <motion.span
+                      animate={{ height: ["2px", "12px", "2px"] }}
+                      transition={{ duration: 0.4, repeat: Infinity, repeatType: "reverse", ease: "easeInOut", delay: 0.15 }}
+                      className="w-[2px] bg-white rounded-full"
+                    />
+                    <motion.span
+                      animate={{ height: ["4px", "8px", "4px"] }}
+                      transition={{ duration: 0.6, repeat: Infinity, repeatType: "reverse", ease: "easeInOut", delay: 0.3 }}
+                      className="w-[2px] bg-white rounded-full"
+                    />
+                  </div>
                 )}
               </div>
               <span className="text-[10px] font-semibold text-white/40 max-w-[56px] truncate text-center">
