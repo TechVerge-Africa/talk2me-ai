@@ -32,6 +32,7 @@ interface ControlDockProps {
   onLeave: (endForAll?: boolean) => void;
   participantCount?: number;
   participantsOpen?: boolean;
+  unreadCount?: number;
 }
 
 export function ControlDock({
@@ -44,6 +45,7 @@ export function ControlDock({
   onAi, onEmergency, onCaptionSize, onShare, onLeave,
   onToggleChat,
   captionsOn, onToggleCaptions,
+  unreadCount = 0,
 }: ControlDockProps) {
   const [copied, setCopied] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -96,8 +98,13 @@ export function ControlDock({
 
           {/* Chat */}
           {onToggleChat && (
-            <button onClick={onToggleChat} title="Chat" className={idleBtn}>
+            <button onClick={onToggleChat} title="Chat" className={`${idleBtn} relative`}>
               <MessageSquare className="size-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-[#ea4335] text-white text-[9px] font-bold flex items-center justify-center border border-[#1f2228]">
+                  {unreadCount}
+                </span>
+              )}
             </button>
           )}
 
@@ -207,18 +214,23 @@ export function ControlDock({
                   <span className="text-[11px] text-white/70 font-medium">{deafOn ? "Audible Mode" : "Deaf Mode"}</span>
                 </button>
 
-                {/* AI Assistant */}
+                {/* Chat */}
                 <button
                   onClick={() => {
                     onAi();
                     setMoreMenuOpen(false);
                   }}
-                  className="flex flex-col items-center gap-2 text-center group cursor-pointer"
+                  className="flex flex-col items-center gap-2 text-center group relative cursor-pointer"
                 >
-                  <div className="size-12 rounded-2xl bg-[#2d3139]/80 text-white/95 flex items-center justify-center group-active:scale-95 transition-all">
-                    <Sparkles className="size-5 text-indigo-400" />
+                  <div className="size-12 rounded-2xl bg-[#2d3139]/80 text-white/95 flex items-center justify-center group-active:scale-95 transition-all relative">
+                    <MessageSquare className="size-5 text-indigo-400" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-[#ea4335] text-white text-[9px] font-bold flex items-center justify-center border border-[#181b20]">
+                        {unreadCount}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[11px] text-white/70 font-medium">AI Assistant</span>
+                  <span className="text-[11px] text-white/70 font-medium">Chat</span>
                 </button>
 
                 {/* Reactions */}
@@ -342,8 +354,13 @@ export function ControlDock({
               </span>
             )}
           </button>
-          <button onClick={onAi} title="AI Assistant" className={idleBtn}>
-            <Sparkles className="size-5" />
+          <button onClick={onAi} title="Chat" className={`${idleBtn} relative`}>
+            <MessageSquare className="size-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-[#ea4335] text-white text-[9px] font-bold flex items-center justify-center border border-[#1f2228]">
+                {unreadCount}
+              </span>
+            )}
           </button>
           <button onClick={onToggleDeaf} title={deafOn ? "Disable Deaf Mode" : "Enable Deaf Mode"}
             className={deafOn ? activeBtn("bg-purple-600 hover:bg-purple-700") : idleBtn}>

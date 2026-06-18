@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, Menu, X, Search, ChevronDown, Phone } from 'lucide-react';
+import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, Menu, X, Search, ChevronDown, Phone, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { MeetingLayout } from '@/features/meetings/room/layout';
@@ -517,6 +517,59 @@ function RoomContent({
   const localParticipant = participants.find(p => p instanceof LocalParticipant) as LocalParticipant | undefined;
   const stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
 
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [activeNotification, setActiveNotification] = useState<{
+    id: string;
+    sender: string;
+    content: string;
+  } | null>(null);
+
+  // Track unread messages and notifications
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMessage = messages[messages.length - 1];
+    
+    // Don't count or notify for our own messages
+    const isMe = lastMessage.sender_id === localParticipant?.identity;
+    if (isMe) return;
+
+    // Check if chat is open/visible
+    const isChatVisible = chatModalOpen || (transcriptOpen && activeTab === 'chat');
+    
+    if (isChatVisible) {
+      setUnreadCount(0);
+      return;
+    }
+
+    // Increment unread count
+    setUnreadCount(prev => prev + 1);
+
+    // Show floating toast notification
+    const senderPart = participants.find(p => p.identity === lastMessage.sender_id);
+    const senderName = senderPart?.identity || lastMessage.sender_id || 'Someone';
+
+    setActiveNotification({
+      id: lastMessage.id,
+      sender: senderName,
+      content: lastMessage.content
+    });
+
+    // Auto-dismiss notification after 4 seconds
+    const timer = setTimeout(() => {
+      setActiveNotification(null);
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [messages, chatModalOpen, transcriptOpen, activeTab, localParticipant?.identity, participants]);
+
+  // Reset unread count to 0 if chat becomes visible
+  useEffect(() => {
+    const isChatVisible = chatModalOpen || (transcriptOpen && activeTab === 'chat');
+    if (isChatVisible) {
+      setUnreadCount(0);
+    }
+  }, [chatModalOpen, transcriptOpen, activeTab]);
+
   const shareRoom = useCallback(async () => {
     const url = `${window.location.origin}/room/${code}`;
     try {
@@ -995,6 +1048,7 @@ function RoomContent({
             onShare={shareRoom}
             onLeave={(endForAll) => onLeave(endForAll)}
             isHost={isHost}
+            unreadCount={unreadCount}
           />
         }
       >
@@ -1003,6 +1057,43 @@ function RoomContent({
           {mainStage}
           {/* Show captions only when transcript/captions are turned on */}
           {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} speakerName={activeSpeaker?.identity} size={captionSize} />}
+          
+          {/* Floating Message Notification popup */}
+          <AnimatePresence>
+            {activeNotification && (
+              <motion.div
+                initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.9 }}
+                className="absolute top-4 right-4 z-40 max-w-xs sm:max-w-sm bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-2xl flex items-start gap-3 pointer-events-auto cursor-pointer"
+                onClick={() => {
+                  setActiveTab('chat');
+                  setChatModalOpen(true);
+                  setActiveNotification(null);
+                }}
+              >
+                <div className="size-9 rounded-full bg-blue-600 flex items-center justify-center text-white flex-shrink-0 shadow-md">
+                  <MessageSquare className="size-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-blue-400 uppercase tracking-wider">New Message</div>
+                  <div className="text-xs text-white/50 font-medium truncate mt-0.5">{activeNotification.sender}</div>
+                  <div className="text-sm text-white/90 font-semibold mt-1 break-words line-clamp-2">
+                    {activeNotification.content}
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveNotification(null);
+                  }}
+                  className="text-white/40 hover:text-white/80 p-0.5 rounded flex-shrink-0 self-start transition-colors"
+                >
+                  <X className="size-4" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </MeetingLayout>
 
