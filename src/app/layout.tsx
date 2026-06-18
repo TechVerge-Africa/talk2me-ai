@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Talk2Me AI - Real-time Sign & Speech Interpretation",
-  description: "Bridge sign and speech with zero-latency AI interpretation. The inclusive standard for global collaboration. Real-time captions, sign-to-speech, and accessible meetings.",
+  title: "Talk2Me — The AI-Powered Communication Platform",
+  description:
+    "Meet, stream, collaborate, and communicate without barriers. Real-time captions, live translation, AI meeting assistance, accessibility tools, and intelligent communication built into every conversation.",
 };
 
 export default function RootLayout({

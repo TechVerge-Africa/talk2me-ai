@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home,
@@ -593,21 +594,34 @@ export default function DashboardPage() {
         animate={{ width: sidebarOpen ? '280px' : '80px' }}
         className="hidden md:flex flex-col flex-shrink-0 bg-card/60 backdrop-blur-xl border-r border-border/40 relative z-30"
       >
-        {/* Brand Header */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-border/40">
+        <div className="h-16 flex items-center justify-between px-5 border-b border-border/40">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-lg border border-white/20 flex-shrink-0">
-              <span className="text-white font-black text-sm tracking-tighter">T2</span>
-            </div>
-            {sidebarOpen && (
-              <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent truncate">
-                Talk2Me
-              </span>
+            {sidebarOpen ? (
+              <Link href="/" className="flex items-center">
+                <img
+                  src="/assets/logo-light.png"
+                  alt="Talk2Me Logo"
+                  className="dark:hidden block h-9 w-auto object-contain"
+                />
+                <img
+                  src="/assets/logo-dark.png"
+                  alt="Talk2Me Logo"
+                  className="hidden dark:block h-9 w-auto object-contain"
+                />
+              </Link>
+            ) : (
+              <Link href="/" className="flex items-center justify-center w-9 h-9 flex-shrink-0">
+                <img
+                  src="/assets/logo-symbol.png"
+                  alt="Talk2Me Symbol"
+                  className="h-8 w-8 object-contain"
+                />
+              </Link>
             )}
           </div>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 rounded-lg hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
+            className="p-1 rounded hover:bg-foreground/5 text-muted-foreground hover:text-foreground flex-shrink-0"
           >
             {sidebarOpen ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
           </button>
@@ -2314,12 +2328,18 @@ export default function DashboardPage() {
             >
               {/* Header */}
               <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-lg border border-white/20">
-                    <span className="text-white font-black text-sm tracking-tighter">T2</span>
-                  </div>
-                  <span className="font-black text-lg text-indigo">Talk2Me</span>
-                </div>
+                <Link href="/" className="flex items-center">
+                  <img
+                    src="/assets/logo-light.png"
+                    alt="Talk2Me Logo"
+                    className="dark:hidden block h-9 w-auto object-contain"
+                  />
+                  <img
+                    src="/assets/logo-dark.png"
+                    alt="Talk2Me Logo"
+                    className="hidden dark:block h-9 w-auto object-contain"
+                  />
+                </Link>
                 <button
                   onClick={() => setSidebarOpen(false)}
                   className="p-1 rounded hover:bg-foreground/5 text-muted-foreground hover:text-foreground"

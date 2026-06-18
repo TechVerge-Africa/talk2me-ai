@@ -30,17 +30,23 @@ function DesktopNav({ scrolled }: { scrolled: boolean }) {
   return (
     <div className="hidden lg:flex items-center justify-between h-[72px] w-full">
       {/* Logo Section */}
-      <Link href="/" className="flex items-center gap-3 group flex-shrink-0">
+      <Link href="/" className="flex items-center group flex-shrink-0">
         <motion.div
-  whileHover={{ scale: 1.1, rotate: -5 }}
-  whileTap={{ scale: 0.95 }}
-          className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-lg group-hover:shadow-premium transition-all border border-white/20"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="h-10 flex items-center"
         >
-          <span className="text-white font-black text-base tracking-tighter">T2</span>
+          <img
+            src="/assets/logo-light.png"
+            alt="Talk2Me Logo"
+            className="dark:hidden block h-10 w-auto object-contain"
+          />
+          <img
+            src="/assets/logo-dark.png"
+            alt="Talk2Me Logo"
+            className="hidden dark:block h-10 w-auto object-contain"
+          />
         </motion.div>
-        <div className="flex flex-col leading-none">
-          <span className="text-lg font-bold tracking-tight text-foreground">Talk2Me</span>
-        </div>
       </Link>
 
       {/* Navigation Links — Fixed in the center */}
@@ -123,11 +129,17 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
             className="fixed right-0 top-0 bottom-0 z-50 w-[85vw] max-w-[400px] bg-background shadow-2xl flex flex-col lg:hidden border-l border-border/50"
           >
             <div className="flex items-center justify-between p-7 border-b border-border/50">
-            <Link href="/" onClick={onClose} className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-md">
-                  <span className="text-white font-black text-sm">T2</span>
-                </div>
-                <span className="font-bold text-lg">Talk2Me</span>
+            <Link href="/" onClick={onClose} className="flex items-center">
+                <img
+                  src="/assets/logo-light.png"
+                  alt="Talk2Me Logo"
+                  className="dark:hidden block h-9 w-auto object-contain"
+                />
+                <img
+                  src="/assets/logo-dark.png"
+                  alt="Talk2Me Logo"
+                  className="hidden dark:block h-9 w-auto object-contain"
+                />
               </Link>
               <button onClick={onClose} className="p-2 rounded-xl hover:bg-foreground/5">
                 <X className="w-6 h-6" />
@@ -238,11 +250,17 @@ export function Navbar() {
           <DesktopNav scrolled={scrolled} />
 
           <div className="flex lg:hidden items-center justify-between h-14">
-            <Link href="/" className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo to-cyan flex items-center justify-center shadow-md">
-                <span className="text-white font-black text-sm">T2</span>
-              </div>
-              <span className="font-bold text-lg">Talk2Me</span>
+            <Link href="/" className="flex items-center">
+              <img
+                src="/assets/logo-light.png"
+                alt="Talk2Me Logo"
+                className="dark:hidden block h-9 w-auto object-contain"
+              />
+              <img
+                src="/assets/logo-dark.png"
+                alt="Talk2Me Logo"
+                className="hidden dark:block h-9 w-auto object-contain"
+              />
             </Link>
 
             <button
