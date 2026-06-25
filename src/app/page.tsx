@@ -17,14 +17,32 @@ const containerVariants: Variants = {
   }
 };
 
+const HERO_FEATURES = [
+  { 
+    icon: Phone, 
+    label: "1:1 Calls", 
+    desc: "Direct sign language interpretation and real-time transcription" 
+  },
+  { 
+    icon: Users, 
+    label: "Team Meetings", 
+    desc: "Collaborate with automatic captions and visual descriptions" 
+  },
+  { 
+    icon: Radio, 
+    label: "Live Broadcasting", 
+    desc: "Stream to audiences globally with full accessibility features" 
+  }
+];
+
 // ━━━ SECTION 1: Hero ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function HeroSection() {
   return (
-    <section className="relative w-full overflow-hidden pt-12 pb-10 sm:pt-16 sm:pb-14 lg:pt-32 lg:pb-28">
+    <section className="relative w-full overflow-hidden pt-16 pb-10 sm:pt-24 sm:pb-14 lg:pt-32 lg:pb-28">
       {/* Animated background elements */}
       <GradientBackground />
 
-      <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+      <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 w-full">
         <motion.div 
           initial="hidden"
           animate="visible"
@@ -39,15 +57,15 @@ export function HeroSection() {
                 variants={fadeInUp} 
                 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black tracking-tighter text-balance leading-[1.02]"
               >
-                <span className="block text-foreground">Communication</span>
-                <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Without Barriers</span>
+                <span className="block text-foreground">Communicate Better.</span>
+                <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Together.</span>
               </motion.h1>
 
               <motion.p 
                 variants={fadeInUp} 
                 className="text-base sm:text-lg text-muted-foreground text-pretty leading-relaxed font-medium max-w-3xl"
               >
-                AI-powered interpretation, real-time captions, and seamless streaming make communication truly accessible for everyone.
+                A new way to meet, stream, and collaborate with AI assistance built in.
               </motion.p>
             </div>
 
@@ -73,28 +91,12 @@ export function HeroSection() {
               </Link>
             </motion.div>
 
-            {/* Feature cards grid */}
+            {/* Feature cards grid (Desktop Only) */}
             <motion.div 
               variants={fadeInUp}
-              className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full pt-4"
+              className="hidden md:grid grid-cols-1 sm:grid-cols-2 gap-4 w-full pt-4"
             >
-              {[
-                { 
-                  icon: Phone, 
-                  label: "1:1 Calls", 
-                  desc: "Direct sign language interpretation and real-time transcription" 
-                },
-                { 
-                  icon: Users, 
-                  label: "Team Meetings", 
-                  desc: "Collaborate with automatic captions and visual descriptions" 
-                },
-                { 
-                  icon: Radio, 
-                  label: "Live Broadcasting", 
-                  desc: "Stream to audiences globally with full accessibility features" 
-                }
-              ].map(({ icon: Icon, label, desc }) => (
+              {HERO_FEATURES.map(({ icon: Icon, label, desc }) => (
                 <motion.div 
                   key={label}
                   variants={fadeInUp}
@@ -673,6 +675,79 @@ export function FinalCTASection() {
   );
 }
 
+export function MobileFeaturesSection() {
+  const [activeIndex, setActiveIndex] = React.useState(0);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    const scrollLeft = container.scrollLeft;
+    
+    // If we've reached the maximum scroll limit, force the last card active
+    const isAtEnd = scrollLeft + container.clientWidth >= container.scrollWidth - 15;
+    if (isAtEnd) {
+      setActiveIndex(HERO_FEATURES.length - 1);
+      return;
+    }
+    
+    // Calculate closest card based on horizontal offset
+    const cards = container.children;
+    let closestIndex = 0;
+    let minDiff = Infinity;
+    
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i] as HTMLElement;
+      // 20px is the padding-left offset matching scroll-pl-5
+      const diff = Math.abs(card.offsetLeft - scrollLeft - 20); 
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = i;
+      }
+    }
+    setActiveIndex(closestIndex);
+  };
+
+  return (
+    <div className="w-full pb-12 md:hidden">
+      <motion.div
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true }}
+        variants={staggerContainer}
+        onScroll={handleScroll}
+        className="flex overflow-x-auto snap-x snap-mandatory scroll-pl-5 no-scrollbar gap-4 w-full px-5"
+      >
+        {HERO_FEATURES.map(({ icon: Icon, label, desc }) => (
+          <motion.div 
+            key={label}
+            variants={fadeInUp}
+            className="group flex flex-col gap-3 p-5 rounded-xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md hover:border-cyan/40 hover:bg-white/60 dark:hover:bg-white/12 transition-all duration-300 snap-start shrink-0 w-[82vw] max-w-[300px]"
+          >
+            <div className="w-10 h-10 rounded-lg bg-indigo/20 grid place-items-center group-hover:bg-indigo/30 transition-colors">
+              <Icon className="size-5 text-indigo" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-foreground mb-1">{label}</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+            </div>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {/* Interactive indicator dots */}
+      <div className="flex justify-center gap-1.5 mt-4">
+        {HERO_FEATURES.map((_, idx) => (
+          <div 
+            key={idx}
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              activeIndex === idx ? "w-6 bg-indigo" : "w-1.5 bg-foreground/20 dark:bg-white/20"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ━━━ MAIN PAGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export default function LandingPage() {
   const { user, loading } = useAuth();
@@ -698,6 +773,7 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen w-full">
       <HeroSection />
+      <MobileFeaturesSection />
       <CommunicationModesSection />
       <AccessibilitySection />
       <AILayerSection />
