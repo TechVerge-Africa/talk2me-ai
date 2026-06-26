@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Navbar } from "@/packages/ui/navbar";
 import { PwaRegister } from "@/components/pwa-register";
+import { InstallAppPrompt } from "@/components/install-app-prompt";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -48,9 +49,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background selection:bg-bridge-cyan/30">
         <PwaRegister />
+        <InstallAppPrompt />
         <Navbar />
         {children}
       </body>
     </html>
   );
 }
+
