@@ -2,9 +2,10 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Check, Crown, User, LogIn, ArrowRight, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, Menu, X, Search, ChevronDown, Phone, MessageSquare } from 'lucide-react';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, Search, ChevronDown, Phone, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { MeetingLayout } from '@/features/meetings/room/layout';
@@ -53,7 +54,7 @@ function PreJoinLobby({
   // Check if mediaDevices API is available (requires HTTPS)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setMediaAvailable(false);
+      setTimeout(() => setMediaAvailable(false), 0);
     }
   }, []);
 
@@ -75,7 +76,7 @@ function PreJoinLobby({
           return;
         }
         audioStreamRef.current = stream;
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const ctx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
         const src = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
@@ -254,7 +255,8 @@ function LeftMeetingScreen({
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  const duration = useRef(Math.floor(Math.random() * 30) + 10); // mock duration
+  const [duration] = useState(() => Math.floor(Math.random() * 30) + 10); // mock duration
+  const [randomParticipants] = useState(() => Math.floor(Math.random() * 5) + 2);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 gap-8">
@@ -285,11 +287,11 @@ function LeftMeetingScreen({
         {isHost && (
           <div className="mt-6 grid grid-cols-2 gap-3">
             <div className="p-4 rounded-2xl bg-card ring-1 ring-border text-center">
-              <div className="text-2xl font-bold text-bridge-cyan">{duration.current}m</div>
+              <div className="text-2xl font-bold text-bridge-cyan">{duration}m</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">Duration</div>
             </div>
             <div className="p-4 rounded-2xl bg-card ring-1 ring-border text-center">
-              <div className="text-2xl font-bold text-bridge-indigo">{Math.floor(Math.random() * 5) + 2}</div>
+              <div className="text-2xl font-bold text-bridge-indigo">{randomParticipants}</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">Participants</div>
             </div>
           </div>
@@ -396,7 +398,19 @@ function FloatingReactionsOverlay({ reactions }: { reactions: { id: string; send
 }
 
 // Self-view PiP — responsive size, safely above the dock
-function HidableSelfView({ participant, absolute = false, raised, reactions }: { participant: LocalParticipant; absolute?: boolean; raised?: boolean; reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[] }) {
+function HidableSelfView({ 
+  participant, 
+  absolute = false, 
+  raised, 
+  reactions,
+  dragConstraints
+}: { 
+  participant: LocalParticipant; 
+  absolute?: boolean; 
+  raised?: boolean; 
+  reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[];
+  dragConstraints?: React.RefObject<HTMLDivElement | null>;
+}) {
   const [hidden, setHidden] = useState(false);
 
   // On mobile the dock is ~108px tall; add 12px margin. On desktop ~80px.
@@ -438,14 +452,18 @@ function HidableSelfView({ participant, absolute = false, raised, reactions }: {
           variants={containerVariants}
           transition={{ type: 'spring', stiffness: 300, damping: 28 }}
           style={pipStyle}
-          className="rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-slate-900"
+          className="rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 bg-slate-900 cursor-grab active:cursor-grabbing touch-none select-none"
+          drag
+          dragConstraints={dragConstraints}
+          dragMomentum={false}
+          dragElastic={0.08}
         >
-          <div className="relative w-full h-full">
+          <div className="relative w-full h-full pointer-events-none">
             <ParticipantVideo participant={participant} source={Track.Source.Camera} className="w-full h-full object-cover" mirrored raised={!!raised} reactions={reactions ?? []} />
             <button
               onClick={() => setHidden(true)}
               aria-label="Hide self view"
-              className="absolute top-1.5 right-1.5 size-6 bg-black/60 backdrop-blur-sm text-white rounded-full flex items-center justify-center text-[10px] font-bold hover:bg-black/80 transition-colors touch-manipulation"
+              className="absolute top-1.5 right-1.5 size-6 bg-black/60 backdrop-blur-sm text-white rounded-full flex items-center justify-center text-[10px] font-bold hover:bg-black/80 transition-colors pointer-events-auto cursor-pointer"
             >
               ✕
             </button>
@@ -502,6 +520,7 @@ function RoomContent({
     approveJoinRequest, denyJoinRequest, updateSettings, changeParticipantRole, stopParticipantScreenShare
   } = useMeeting(code, hostIdentity, () => onLeave(false));
 
+  const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
@@ -537,22 +556,26 @@ function RoomContent({
     const isChatVisible = chatModalOpen || (transcriptOpen && activeTab === 'chat');
     
     if (isChatVisible) {
-      setUnreadCount(0);
+      setTimeout(() => setUnreadCount(0), 0);
       return;
     }
 
     // Increment unread count
-    setUnreadCount(prev => prev + 1);
+    setTimeout(() => {
+      setUnreadCount(prev => prev + 1);
+    }, 0);
 
     // Show floating toast notification
     const senderPart = participants.find(p => p.identity === lastMessage.sender_id);
     const senderName = senderPart?.identity || lastMessage.sender_id || 'Someone';
 
-    setActiveNotification({
-      id: lastMessage.id,
-      sender: senderName,
-      content: lastMessage.content
-    });
+    setTimeout(() => {
+      setActiveNotification({
+        id: lastMessage.id,
+        sender: senderName,
+        content: lastMessage.content
+      });
+    }, 0);
 
     // Auto-dismiss notification after 4 seconds
     const timer = setTimeout(() => {
@@ -566,7 +589,7 @@ function RoomContent({
   useEffect(() => {
     const isChatVisible = chatModalOpen || (transcriptOpen && activeTab === 'chat');
     if (isChatVisible) {
-      setUnreadCount(0);
+      setTimeout(() => setUnreadCount(0), 0);
     }
   }, [chatModalOpen, transcriptOpen, activeTab]);
 
@@ -796,7 +819,7 @@ function RoomContent({
 
       {/* Participants audio avatars */}
       <div className="flex items-end justify-center gap-4 mb-10 flex-wrap px-8">
-        {participants.slice(0, 6).map((p, i) => {
+        {participants.slice(0, 6).map((p) => {
           const isActive = p.identity === activeSpeaker?.identity;
           const initials = p.identity.slice(0, 2).toUpperCase();
           return (
@@ -958,14 +981,14 @@ function RoomContent({
   const mainStage = isDeafMode && roomMode === 'call' ? (
     <AiSignerView currentCaption={captions[captions.length - 1]?.content} />
   ) : roomMode === 'onthego' ? onTheGoStage : hasScreenShare ? (
-    <div className="relative flex-1 w-full h-full min-h-0">
+    <div ref={selfViewConstraintsRef} className="relative flex-1 w-full h-full min-h-0">
       <ScreenShareView className="w-full h-full rounded-none" />
       {localParticipant && (
-        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} />
+        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} dragConstraints={selfViewConstraintsRef} />
       )}
     </div>
   ) : (
-    <div className="relative flex-1 w-full h-full min-h-0">
+    <div ref={selfViewConstraintsRef} className="relative flex-1 w-full h-full min-h-0">
       <div className="w-full h-full overflow-hidden bg-slate-950">
         {activeSpeaker ? (
           <ParticipantVideo participant={activeSpeaker} source={Track.Source.Camera} className="w-full h-full" raised={!!raisedHands[activeSpeaker.identity]} reactions={reactions.filter(r => r.sender_id === activeSpeaker.identity)} isMain={true} />
@@ -987,13 +1010,10 @@ function RoomContent({
       </div>
       {/* Self-view PiP (only in grid view) */}
       {localParticipant && viewMode !== 'focus' && (
-        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} />
+        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} dragConstraints={selfViewConstraintsRef} />
       )}
     </div>
   );
-
-  // Use available layout height so the video fills to the bottom and overlays (controls/captions) sit on top
-  const mainContainerClass = viewMode === 'grid' ? "relative w-full h-full min-h-[400px]" : "relative w-full h-full min-h-0";
 
   if (!isAdmitted) {
     return (
@@ -1261,11 +1281,13 @@ export default function RoomPage() {
     }
 
     // Fresh visit: show Pre-Join lobby (required for Safari user-gesture)
-    setShowPreJoin(true);
+    setTimeout(() => {
+      setShowPreJoin(true);
+    }, 0);
   }, [authLoading, SESSION_KEY]);
 
   // NEW STATES
-  const [meetingRecord, setMeetingRecord] = useState<any>(null);
+  const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
   const [endOptionSelected, setEndOptionSelected] = useState(false);
 
   useEffect(() => {
@@ -1322,7 +1344,7 @@ export default function RoomPage() {
         <div className="size-16 rounded-2xl bg-red-500/10 grid place-items-center text-3xl">⚠️</div>
         <h2 className="font-bold text-xl">Connection Failed</h2>
         <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
-        <a href="/" className="text-sm font-bold text-bridge-indigo underline">Go Home</a>
+        <Link href="/" className="text-sm font-bold text-bridge-indigo underline">Go Home</Link>
       </div>
     );
   }
