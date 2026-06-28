@@ -19,6 +19,7 @@ import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/vide
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
 import { CameraPreview } from '@/features/meetings/room/camera-preview';
+import { MeetingDoorPortal } from '@/features/meetings/room/door-portal';
 import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 import { supabase } from '@/services/supabase/client';
@@ -517,7 +518,7 @@ function RoomContent({
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
 
     isAdmitted, joinRequests, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
-    approveJoinRequest, denyJoinRequest, updateSettings, changeParticipantRole, stopParticipantScreenShare
+    approveJoinRequest, denyJoinRequest, admitAllJoinRequests, muteAllParticipants, updateSettings, changeParticipantRole, stopParticipantScreenShare
   } = useMeeting(code, hostIdentity, () => onLeave(false));
 
   const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
@@ -529,6 +530,15 @@ function RoomContent({
   const [codeCopied, setCodeCopied] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [admissionPopup, setAdmissionPopup] = useState(true);
+  const [isEnteringDoor, setIsEnteringDoor] = useState(false);
+  const prevAdmittedRef = useRef(isAdmitted);
+
+  useEffect(() => {
+    if (!prevAdmittedRef.current && isAdmitted) {
+      setIsEnteringDoor(true);
+    }
+    prevAdmittedRef.current = isAdmitted;
+  }, [isAdmitted]);
 
   const screenTracks = useTracks([Track.Source.ScreenShare]);
   const hasScreenShare = screenTracks.length > 0;
@@ -1017,37 +1027,27 @@ function RoomContent({
 
   if (!isAdmitted) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#121417] text-white px-6 relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#4f46e5]/5 via-transparent to-[#06b6d4]/5 pointer-events-none" />
-        <div className="relative text-center">
-          <div className="size-20 rounded-3xl bg-blue-500/10 border border-blue-500/20 grid place-items-center mx-auto mb-6 shadow-2xl animate-pulse">
-            <span className="text-4xl">🔒</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight mb-2">Waiting for Host...</h1>
-          <p className="text-white/60 text-sm max-w-sm mx-auto mb-8">
-            This meeting is private. The host has been notified of your request to join and will admit you shortly.
-          </p>
-          
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e2227]/90 rounded-full border border-white/5 text-xs font-semibold text-white/70 shadow-lg">
-            <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
-            Request pending...
-          </div>
-          
-          <div className="mt-8">
-            <button
-              onClick={() => onLeave(false)}
-              className="h-12 px-6 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold transition-all active:scale-95 cursor-pointer text-white"
-            >
-              Cancel & Leave
-            </button>
-          </div>
-        </div>
-      </div>
+      <MeetingDoorPortal
+        isWaiting={true}
+        isEntering={false}
+        onCancel={() => onLeave(false)}
+        displayName={localParticipant?.identity || hostIdentity || 'Communicator'}
+        roomCode={code}
+      />
     );
   }
 
   return (
     <>
+      {isEnteringDoor && (
+        <MeetingDoorPortal
+          isWaiting={false}
+          isEntering={true}
+          onCompleteOpening={() => setIsEnteringDoor(false)}
+          displayName={localParticipant?.identity || hostIdentity || 'Communicator'}
+          roomCode={code}
+        />
+      )}
       <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'}
         dock={
           <ControlDock
@@ -1172,10 +1172,13 @@ function RoomContent({
         meetingHostId={meetingHostId}
         requireApproval={requireApproval}
         allowScreenShare={allowScreenShare}
+        joinRequests={joinRequests}
         localParticipantIdentity={localParticipant?.identity}
         onUpdateSettings={updateSettings}
         onChangeParticipantRole={changeParticipantRole}
         onStopParticipantScreenShare={stopParticipantScreenShare}
+        onAdmitAllRequests={admitAllJoinRequests}
+        onMuteAllParticipants={muteAllParticipants}
       />
 
       {/* Emoji picker popover (simple) */}

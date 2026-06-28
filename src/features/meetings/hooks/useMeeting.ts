@@ -4,8 +4,10 @@ import { useRoomContext } from '@livekit/components-react';
 import { Message } from '@/types/message';
 import { TranscriptService } from '@/services/supabase/transcripts';
 import { MeetingService } from '@/services/supabase/meetings';
+import { supabase } from '@/services/supabase/client';
 import { generateId } from '@/lib/ids';
 import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
+import { ParticipantRole, ParticipantStatus } from '@/types/meeting';
 
 export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void) {
   const room = useRoomContext();
@@ -26,6 +28,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
 
   // ─── ADMIN & SECURITY STATES ──────────────────────────────────────────
+  const [meetingDbId, setMeetingDbId] = useState<string | null>(null);
   const [requireApproval, setRequireApproval] = useState(false);
   const [isAdmitted, setIsAdmitted] = useState(true);
   const [joinRequests, setJoinRequests] = useState<{ id: string; sender_id: string }[]>([]);
@@ -46,21 +49,43 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     setTimeout(() => setReactions(prev => prev.filter(r => r.id !== reaction.id)), 6000);
   }, []);
 
-  // Sync initial meeting settings from Supabase
+  // Sync initial meeting settings & register participant in Supabase
   useEffect(() => {
-    async function loadSettings() {
+    async function loadSettingsAndRegister() {
       try {
         const meeting = await MeetingService.getMeetingByCode(roomCode);
         if (meeting) {
+          setMeetingDbId(meeting.id);
           setMeetingHostId(meeting.host_id);
           if (meeting.settings) {
             const reqApproval = !!meeting.settings.require_approval;
             setRequireApproval(reqApproval);
+            if (typeof meeting.settings.allow_screen_share === 'boolean') {
+              setAllowScreenShare(meeting.settings.allow_screen_share);
+            }
             
-            // Check if local participant is the creator/host
+            // Check if local participant is host
             const isLocalHost = room?.localParticipant?.identity === meeting.host_id;
+            const initialStatus: ParticipantStatus = (isLocalHost || !reqApproval) ? 'admitted' : 'waiting';
+            
             if (!isLocalHost && reqApproval) {
               setIsAdmitted(false);
+            } else {
+              setIsAdmitted(true);
+            }
+
+            if (room?.localParticipant) {
+              const localIdentity = room.localParticipant.identity;
+              const displayName = localStorage.getItem('t2_display_name') || localIdentity;
+              const role: ParticipantRole = isLocalHost ? 'host' : 'participant';
+
+              await MeetingService.joinMeetingParticipant({
+                meeting_id: meeting.id,
+                identity: localIdentity,
+                display_name: displayName,
+                role,
+                status: initialStatus
+              }).catch(e => console.warn('Supabase join participant fallback:', e));
             }
           }
         }
@@ -68,23 +93,136 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         console.error('Failed to load meeting settings:', e);
       }
     }
-    if (room) loadSettings();
+    if (room) loadSettingsAndRegister();
   }, [room, roomCode]);
 
-  // ─── Apply saved lobby prefs to real LiveKit tracks on room connect ─────
-  // This is the critical bridge: without this the track state doesn't match
-  // the UI preference that was set in the pre-join lobby.
+  // ─── SUPABASE REALTIME SUBSCRIPTION FOR PARTICIPANTS ────────────────────
+  useEffect(() => {
+    if (!meetingDbId || !room?.localParticipant) return;
+
+    const channel = supabase
+      .channel(`meeting_participants_${meetingDbId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'meeting_participants',
+          filter: `meeting_id=eq.${meetingDbId}`,
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          if (!newRow) return;
+
+          const localIdentity = room.localParticipant.identity;
+
+          // If change affects local participant
+          if (newRow.identity === localIdentity) {
+            if (newRow.status === 'admitted' && !isAdmitted) {
+              setIsAdmitted(true);
+            } else if (newRow.status === 'rejected') {
+              alert('The host has denied your request to join the meeting.');
+              room.disconnect();
+              if (onLeave) onLeave();
+            }
+
+            if (newRow.role === 'host') {
+              setMeetingHostId(localIdentity);
+            } else if (newRow.role === 'cohost') {
+              setCohosts(prev => ({ ...prev, [localIdentity]: true }));
+            }
+          } else {
+            // Check host/cohost role updates for others
+            if (newRow.role === 'host') {
+              setMeetingHostId(newRow.identity);
+              setCohosts(prev => ({ ...prev, [newRow.identity]: false }));
+            } else if (newRow.role === 'cohost') {
+              setCohosts(prev => ({ ...prev, [newRow.identity]: true }));
+            } else if (newRow.role === 'participant') {
+              setCohosts(prev => ({ ...prev, [newRow.identity]: false }));
+            }
+
+            // Waiting list updates for admins
+            if (newRow.status === 'waiting') {
+              setJoinRequests(prev => {
+                if (prev.some(r => r.sender_id === newRow.identity)) return prev;
+                return [...prev, { id: generateId('jr'), sender_id: newRow.identity }];
+              });
+            } else {
+              setJoinRequests(prev => prev.filter(r => r.sender_id !== newRow.identity));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [meetingDbId, room, isAdmitted, onLeave]);
+
+  // ─── PERSISTENT CHAT: LOAD HISTORY + REALTIME SUBSCRIPTION ─────────────
+  useEffect(() => {
+    if (!isAdmitted) return;
+
+    let chatChannel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function loadAndSubscribeChatHistory() {
+      // 1) Load all existing messages for this room from Supabase
+      const history = await MeetingService.getMeetingMessages(roomCode);
+      if (history.length > 0) {
+        setMessages(() => history);
+      }
+
+      // 2) Subscribe to Supabase Realtime for new messages written by others
+      chatChannel = supabase
+        .channel(`meeting_messages_${roomCode}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'meeting_messages',
+            filter: `room_code=eq.${roomCode}`,
+          },
+          (payload) => {
+            const row = payload.new as any;
+            // Avoid duplicates if the message was sent by the local participant
+            // (those are already in state from setMessages in sendMessage)
+            setMessages(prev => {
+              if (prev.some(m => m.id === row.id)) return prev;
+              return [...prev, {
+                id: row.id,
+                meeting_id: row.room_code,
+                sender_id: row.sender_id,
+                recipient_id: row.recipient_id || undefined,
+                content: row.content,
+                type: row.type || 'chat',
+                timestamp: row.created_at,
+              }];
+            });
+          }
+        )
+        .subscribe();
+    }
+
+    loadAndSubscribeChatHistory();
+
+    return () => {
+      if (chatChannel) supabase.removeChannel(chatChannel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmitted, roomCode]);
+
+  // Apply saved lobby prefs to real LiveKit tracks on room connect
   useEffect(() => {
     if (!room?.localParticipant) return;
-    // Only apply once — when the participant first connects
     const onConnected = () => {
-      // Don't override if participant is unadmitted (that handler runs separately)
       if (!isAdmitted) return;
       room.localParticipant.setMicrophoneEnabled(micOn);
       room.localParticipant.setCameraEnabled(camOn);
     };
     room.once('connected', onConnected);
-    // If already connected (e.g. on refresh), apply immediately
     if (room.state === 'connected') {
       if (isAdmitted) {
         room.localParticipant.setMicrophoneEnabled(micOn).catch(() => {});
@@ -92,7 +230,6 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       }
     }
     return () => { room.off('connected', onConnected); };
-    // Only run once on room mount — intentionally exclude micOn/camOn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room]);
 
@@ -114,13 +251,22 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
           type: 'join_request',
           sender_id: room.localParticipant.identity,
         }, { reliable: true });
+
+        if (meetingDbId) {
+          MeetingService.joinMeetingParticipant({
+            meeting_id: meetingDbId,
+            identity: room.localParticipant.identity,
+            display_name: localStorage.getItem('t2_display_name') || room.localParticipant.identity,
+            status: 'waiting'
+          }).catch(() => {});
+        }
       };
 
       sendJoinRequest();
       const interval = setInterval(sendJoinRequest, 5000);
       return () => clearInterval(interval);
     }
-  }, [isAdmitted, room]);
+  }, [isAdmitted, room, meetingDbId]);
 
   useEffect(() => {
     if (!room) return;
@@ -230,7 +376,6 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
           if (isSenderAdmin) {
             if (msg.role === 'host') {
               setMeetingHostId(msg.target_id);
-              // Clear their cohost state if they became host
               setCohosts(prev => ({ ...prev, [msg.target_id]: false }));
             } else if (msg.role === 'cohost') {
               setCohosts(prev => ({ ...prev, [msg.target_id]: true }));
@@ -299,7 +444,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         console.warn('Error removing room event listeners:', e);
       }
     };
-  }, [room, roomCode, addReaction, meetingHostId, cohosts]);
+  }, [room, roomCode, addReaction, meetingHostId, cohosts, onLeave]);
 
   const toggleRaiseHand = useCallback((senderId?: string) => {
     if (!room?.localParticipant) return;
@@ -384,7 +529,18 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       timestamp: new Date().toISOString(),
     };
 
+    // Add to local state immediately (optimistic)
     setMessages(prev => [...prev, msg]);
+
+    // Persist to Supabase for late-joiners & rejoiners
+    MeetingService.saveMeetingMessage({
+      room_code: roomCode,
+      meeting_id: meetingDbId || undefined,
+      sender_id: room.localParticipant.identity,
+      recipient_id: msg.recipient_id,
+      content,
+      type: 'chat',
+    }).catch(e => console.warn('Failed to persist chat message:', e));
 
     const publishOptions: { reliable: boolean; destinationIdentities?: string[] } = { reliable: true };
     if (recipientId && recipientId !== 'everyone') {
@@ -392,7 +548,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
 
     publishRoomData(room.localParticipant, msg as unknown as Record<string, unknown>, publishOptions);
-  }, [room, roomCode, isAdmitted]);
+  }, [room, roomCode, meetingDbId, isAdmitted]);
 
   const requestMute = useCallback((targetId: string, source: 'mic' | 'cam', action: 'mute' | 'unmute' = 'mute') => {
     if (!room?.localParticipant) return;
@@ -403,7 +559,10 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const requestKick = useCallback((targetId: string) => {
     if (!room?.localParticipant) return;
     publishRoomData(room.localParticipant, { type: 'kick_request', target_id: targetId, sender_id: room.localParticipant.identity }, { reliable: true });
-  }, [room]);
+    if (meetingDbId) {
+      MeetingService.updateParticipantStatus(meetingDbId, [targetId], 'rejected').catch(() => {});
+    }
+  }, [room, meetingDbId]);
 
   // ─── ADMIN CONTROLLERS ──────────────────────────────────────────────
   const approveJoinRequest = useCallback((senderId: string) => {
@@ -415,7 +574,11 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       sender_id: room.localParticipant.identity,
     }, { reliable: true });
     setJoinRequests(prev => prev.filter(r => r.sender_id !== senderId));
-  }, [room]);
+
+    if (meetingDbId) {
+      MeetingService.updateParticipantStatus(meetingDbId, [senderId], 'admitted').catch(() => {});
+    }
+  }, [room, meetingDbId]);
 
   const denyJoinRequest = useCallback((senderId: string) => {
     if (!room?.localParticipant) return;
@@ -426,7 +589,25 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       sender_id: room.localParticipant.identity,
     }, { reliable: true });
     setJoinRequests(prev => prev.filter(r => r.sender_id !== senderId));
-  }, [room]);
+
+    if (meetingDbId) {
+      MeetingService.updateParticipantStatus(meetingDbId, [senderId], 'rejected').catch(() => {});
+    }
+  }, [room, meetingDbId]);
+
+  const admitAllJoinRequests = useCallback(() => {
+    if (!room?.localParticipant || joinRequests.length === 0) return;
+    const identities = joinRequests.map(r => r.sender_id);
+    identities.forEach(id => approveJoinRequest(id));
+  }, [room, joinRequests, approveJoinRequest]);
+
+  const muteAllParticipants = useCallback(() => {
+    if (!room?.localParticipant) return;
+    const remotes = participants.filter(p => p instanceof RemoteParticipant);
+    remotes.forEach(p => {
+      requestMute(p.identity, 'mic', 'mute');
+    });
+  }, [room, participants, requestMute]);
 
   const updateSettings = useCallback(async (requireApp: boolean, allowShare: boolean) => {
     if (!room?.localParticipant) return;
@@ -453,7 +634,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
   }, [room, roomCode]);
 
-  const changeParticipantRole = useCallback((targetId: string, role: 'host' | 'cohost' | 'participant') => {
+  const changeParticipantRole = useCallback((targetId: string, role: ParticipantRole) => {
     if (!room?.localParticipant) return;
 
     publishRoomData(room.localParticipant, {
@@ -471,7 +652,11 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     } else if (role === 'participant') {
       setCohosts(prev => ({ ...prev, [targetId]: false }));
     }
-  }, [room]);
+
+    if (meetingDbId) {
+      MeetingService.updateParticipantRole(meetingDbId, targetId, role).catch(() => {});
+    }
+  }, [room, meetingDbId]);
 
   const stopParticipantScreenShare = useCallback((targetId: string) => {
     if (!room?.localParticipant) return;
@@ -513,6 +698,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     isAdmin,
     approveJoinRequest,
     denyJoinRequest,
+    admitAllJoinRequests,
+    muteAllParticipants,
     updateSettings,
     changeParticipantRole,
     stopParticipantScreenShare,

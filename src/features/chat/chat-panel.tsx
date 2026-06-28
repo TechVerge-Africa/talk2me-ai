@@ -75,7 +75,14 @@ export function ChatPanel({
             <p className="text-xs text-white">No messages yet. Start the conversation.</p>
           </div>
         ) : (
-          messages.map((msg) => {
+          <>
+            {/* History header — shown so late joiners know they're seeing past messages */}
+            <div className="flex items-center gap-2 py-2 px-1 sticky top-0 z-10">
+              <div className="flex-1 h-px bg-white/8" />
+              <span className="text-[9px] uppercase font-black tracking-widest text-white/25 whitespace-nowrap">Chat history</span>
+              <div className="flex-1 h-px bg-white/8" />
+            </div>
+            {messages.map((msg) => {
             const isMe =
               msg.sender_id === "me" ||
               msg.sender_id === "You" ||
@@ -113,11 +120,12 @@ export function ChatPanel({
                         }`
                   }`}
                 >
-                  {msg.content}
+                {msg.content}
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>

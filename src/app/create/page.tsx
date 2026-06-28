@@ -22,6 +22,7 @@ export default function CreatePage() {
   const { user, loading: authLoading } = useAuth();
 
   const [requireApproval, setRequireApproval] = useState(false);
+  const [allowScreenShare, setAllowScreenShare] = useState(true);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const handleCreateAndEnter = async () => {
@@ -33,7 +34,7 @@ export default function CreatePage() {
     setIsCreating(true);
     setCreateError(null);
     try {
-      const meeting = await MeetingService.createMeeting("New Meeting", user.id, requireApproval);
+      const meeting = await MeetingService.createMeeting("New Meeting", user.id, requireApproval, undefined, allowScreenShare);
       router.push(`/room/${meeting.room_code}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create meeting";
@@ -187,10 +188,11 @@ export default function CreatePage() {
               </button>
 
               {/* Privacy/Lobby Toggle settings */}
-              <div className="p-4 rounded-2xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md space-y-3">
+              <div className="p-4 rounded-2xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md space-y-4">
+                <div className="text-xs font-black uppercase tracking-widest text-muted-foreground border-b border-border/20 pb-2">Room Moderation Controls</div>
+                
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1">
-                    <div className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">Room Access</div>
                     <div className="text-sm font-bold text-foreground">Require Host Approval</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug">Private meeting: guests wait in a lobby until admitted by an admin.</div>
                   </div>
@@ -204,6 +206,26 @@ export default function CreatePage() {
                     <span
                       className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                         requireApproval ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-1">
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-foreground">Allow Guest Screen Sharing</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5 leading-snug">Permit non-host participants to present their screen.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAllowScreenShare(v => !v)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      allowScreenShare ? 'bg-indigo' : 'bg-muted'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        allowScreenShare ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
                   </button>

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getSmartGreeting } from '@/lib/greetings';
 import {
   Home,
   Video,
@@ -112,6 +113,7 @@ export default function DashboardPage() {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [scheduledTime, setScheduledTime] = useState('');
   const [scheduledRequireApproval, setScheduledRequireApproval] = useState(false);
+  const [scheduledAllowScreenShare, setScheduledAllowScreenShare] = useState(true);
 
   // ── ACCESSIBILITY SETTINGS STATE ───────────────────────────────────
   const [captionsEnabled, setCaptionsEnabled] = useState(true);
@@ -417,6 +419,11 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [streamIsLive]);
 
+  // User details
+  const userName = profile?.full_name || user?.email?.split('@')[0] || 'Communicator';
+  const userInitials = (profile?.full_name || user?.email || 'US').slice(0, 2).toUpperCase();
+  const smartGreeting = useMemo(() => getSmartGreeting(userName), [userName]);
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen grid place-items-center bg-slate-950">
@@ -427,10 +434,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  // User details
-  const userName = profile?.full_name || user.email?.split('@')[0] || 'Communicator';
-  const userInitials = (profile?.full_name || user.email || 'US').slice(0, 2).toUpperCase();
 
   // ── QUICK SESSION GENERATOR ────────────────────────────────────────
   const triggerCreateSession = (type: 'meeting' | 'stream' | 'event') => {
@@ -446,6 +449,7 @@ export default function DashboardPage() {
     const localISO = new Date(nextHour.getTime() - nextHour.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     setScheduledTime(localISO);
     setScheduledRequireApproval(false);
+    setScheduledAllowScreenShare(true);
     
     setCreateModalOpen(true);
   };
@@ -454,7 +458,13 @@ export default function DashboardPage() {
     setIsCreatingSession(true);
     try {
       if (createModalType === 'meeting') {
-        const meeting = await MeetingService.createMeeting(sessionName || 'New Meeting', user.id);
+        const meeting = await MeetingService.createMeeting(
+          sessionName || 'New Meeting', 
+          user.id, 
+          scheduledRequireApproval, 
+          undefined, 
+          scheduledAllowScreenShare
+        );
         router.push(`/room/${meeting.room_code}`);
       } else if (createModalType === 'stream') {
         // Stream simulated setup
@@ -469,7 +479,8 @@ export default function DashboardPage() {
           sessionName || 'Scheduled Meeting', 
           user.id, 
           scheduledRequireApproval, 
-          isoTime
+          isoTime,
+          scheduledAllowScreenShare
         );
         
         // Refresh meetings
@@ -803,11 +814,11 @@ export default function DashboardPage() {
                 <div className="space-y-8 max-w-5xl mx-auto">
                   {/* Clean Greeting Header */}
                   <div className="space-y-2">
-                    <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl">
-                      Good Morning, {userName} 👋
+                    <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl flex items-center gap-2.5">
+                      {smartGreeting.greeting} <span>{smartGreeting.emoji}</span>
                     </h1>
                     <p className="text-muted-foreground text-sm font-medium">
-                      Welcome back to your inclusive communication operating system.
+                      {smartGreeting.subtitle}
                     </p>
                   </div>
 
@@ -2237,33 +2248,60 @@ export default function DashboardPage() {
                 )}
 
                 {createModalType === 'event' && (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Schedule Time</label>
-                      <input
-                        type="datetime-local"
-                        value={scheduledTime}
-                        onChange={(e) => setScheduledTime(e.target.value)}
-                        className="w-full h-12 px-4 rounded-xl bg-foreground/5 border border-transparent outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-sm font-semibold text-foreground scheme-dark"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Schedule Time</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      className="w-full h-12 px-4 rounded-xl bg-foreground/5 border border-transparent outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-sm font-semibold text-foreground scheme-dark"
+                    />
+                  </div>
+                )}
+
+                {(createModalType === 'meeting' || createModalType === 'event') && (
+                  <div className="space-y-3 pt-2">
+                    <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Room Moderation Controls</label>
                     
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-foreground/3 border border-border/40">
+                    {/* Require Host Approval Toggle */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-foreground/3 border border-border/40">
                       <div>
                         <p className="text-sm font-bold text-foreground">Require Host Approval</p>
-                        <p className="text-[10px] text-muted-foreground">Guests must wait in lobby until host admits them</p>
+                        <p className="text-[10px] text-muted-foreground">Guests wait in lobby until host admits them</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setScheduledRequireApproval(!scheduledRequireApproval)}
-                        className={`w-12 h-7 rounded-full transition-colors relative flex items-center px-1 ${
+                        className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 cursor-pointer ${
                           scheduledRequireApproval ? 'bg-indigo' : 'bg-foreground/10'
                         }`}
                       >
                         <motion.div 
                           layout 
-                          className="size-5 rounded-full bg-white shadow-sm"
+                          className="size-4 rounded-full bg-white shadow-sm"
                           animate={{ x: scheduledRequireApproval ? 20 : 0 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Allow Guest Screen Share Toggle */}
+                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-foreground/3 border border-border/40">
+                      <div>
+                        <p className="text-sm font-bold text-foreground">Allow Guest Screen Sharing</p>
+                        <p className="text-[10px] text-muted-foreground">Permit non-host participants to share screen</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setScheduledAllowScreenShare(!scheduledAllowScreenShare)}
+                        className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 cursor-pointer ${
+                          scheduledAllowScreenShare ? 'bg-indigo' : 'bg-foreground/10'
+                        }`}
+                      >
+                        <motion.div 
+                          layout 
+                          className="size-4 rounded-full bg-white shadow-sm"
+                          animate={{ x: scheduledAllowScreenShare ? 20 : 0 }}
                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
                         />
                       </button>

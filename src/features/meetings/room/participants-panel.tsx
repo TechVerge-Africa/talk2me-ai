@@ -2,9 +2,10 @@
 
 import React from 'react';
 import { LocalParticipant, RemoteParticipant, Track } from 'livekit-client';
-import { X, Mic, MicOff, Video, VideoOff, Users, UserX, MonitorOff, ShieldAlert } from 'lucide-react';
+import { X, Mic, MicOff, Video, VideoOff, Users, UserX, MonitorOff, ShieldAlert, CheckCircle2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ParticipantVideo } from './video-track';
+import { ParticipantRole } from '@/types/meeting';
 
 interface ParticipantsPanelProps {
   participants: (LocalParticipant | RemoteParticipant)[];
@@ -21,10 +22,13 @@ interface ParticipantsPanelProps {
   meetingHostId?: string;
   requireApproval?: boolean;
   allowScreenShare?: boolean;
+  joinRequests?: { id: string; sender_id: string }[];
   localParticipantIdentity?: string;
   onUpdateSettings?: (requireApproval: boolean, allowScreenShare: boolean) => void;
-  onChangeParticipantRole?: (targetId: string, role: 'host' | 'cohost' | 'participant') => void;
+  onChangeParticipantRole?: (targetId: string, role: ParticipantRole) => void;
   onStopParticipantScreenShare?: (targetId: string) => void;
+  onAdmitAllRequests?: () => void;
+  onMuteAllParticipants?: () => void;
 }
 
 function getRoleBadge(p: LocalParticipant | RemoteParticipant, hostId?: string, cohosts?: Record<string, boolean>) {
@@ -56,7 +60,7 @@ function ParticipantRow({
   isAdmin?: boolean;
   localParticipantIdentity?: string;
   meetingHostId?: string;
-  onChangeParticipantRole?: (targetId: string, role: 'host' | 'cohost' | 'participant') => void;
+  onChangeParticipantRole?: (targetId: string, role: ParticipantRole) => void;
   onStopParticipantScreenShare?: (targetId: string) => void;
 }) {
   const role = getRoleBadge(p, hostId, cohosts);
@@ -67,7 +71,6 @@ function ParticipantRow({
   const camEnabled = p.isCameraEnabled;
   const screenSharing = p.isScreenShareEnabled;
 
-  const isLocalHost = localParticipantIdentity === meetingHostId;
   const showAdminControls = isAdmin && !isRowLocal;
 
   return (
@@ -101,11 +104,11 @@ function ParticipantRow({
         </div>
       </div>
 
-      {/* Admin Action dropdown (Visible to any admin to promote/demote) */}
+      {/* Admin Action dropdown */}
       {isAdmin && !isRowLocal && onChangeParticipantRole && (
         <select
           value={p.identity === meetingHostId ? 'host' : (cohosts && cohosts[p.identity] ? 'cohost' : 'participant')}
-          onChange={(e) => onChangeParticipantRole(p.identity, e.target.value as any)}
+          onChange={(e) => onChangeParticipantRole(p.identity, e.target.value as ParticipantRole)}
           className="bg-[#1e2227] text-white/80 border border-white/10 rounded-lg px-2 py-1 text-[9px] font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
         >
           <option value="participant">Participant</option>
@@ -152,7 +155,7 @@ function ParticipantRow({
           {camEnabled ? <Video className="size-3.5" /> : <VideoOff className="size-3.5" />}
         </button>
 
-        {/* Screen share stop button (Only visible if participant is sharing and current user is admin) */}
+        {/* Screen share stop button */}
         {screenSharing && showAdminControls && onStopParticipantScreenShare && (
           <button
             onClick={() => onStopParticipantScreenShare(p.identity)}
@@ -195,10 +198,13 @@ export function ParticipantsPanel({
   meetingHostId,
   requireApproval = false,
   allowScreenShare = true,
+  joinRequests = [],
   localParticipantIdentity,
   onUpdateSettings,
   onChangeParticipantRole,
   onStopParticipantScreenShare,
+  onAdmitAllRequests,
+  onMuteAllParticipants,
 }: ParticipantsPanelProps) {
   return (
     <AnimatePresence>
@@ -221,7 +227,7 @@ export function ParticipantsPanel({
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed right-0 top-0 bottom-0 z-50 w-full sm:w-[340px] bg-[#181b20] border-l border-white/5 shadow-2xl flex flex-col text-white"
+            className="fixed right-0 top-0 bottom-0 z-50 w-full sm:w-[360px] bg-[#181b20] border-l border-white/5 shadow-2xl flex flex-col text-white"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
@@ -241,6 +247,29 @@ export function ParticipantsPanel({
                 <X className="size-4" />
               </button>
             </div>
+
+            {/* Admin Action Bar (Batch Mute / Batch Admit) */}
+            {isAdmin && (
+              <div className="px-5 py-2.5 bg-[#1e2227] border-b border-white/5 flex items-center justify-between gap-2">
+                <button
+                  onClick={onMuteAllParticipants}
+                  className="flex-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <VolumeX className="size-3.5 text-red-400" />
+                  Mute All
+                </button>
+
+                {joinRequests.length > 0 && onAdmitAllRequests && (
+                  <button
+                    onClick={onAdmitAllRequests}
+                    className="flex-1 px-3 py-1.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-md cursor-pointer"
+                  >
+                    <CheckCircle2 className="size-3.5" />
+                    Admit All ({joinRequests.length})
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Admin/Host Settings Toggles */}
             {isAdmin && onUpdateSettings && (

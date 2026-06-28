@@ -16,7 +16,13 @@ dist-ssr
 .vinxi
 .tanstack/**
 .nitro
+# Environment files — NEVER commit these
 *.local
+.env
+.env.production
+.env.staging
+.env.*.local
+.env.production.local
 
 # Wrangler / Cloudflare
 .wrangler/

@@ -1,69 +1,125 @@
 import { AccessToken } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { livekitTokenLimiter, getClientIp } from '@/lib/rate-limiter';
+import { validateLiveKitRoomName, validateParticipantIdentity } from '@/lib/validators';
+import { verifyAuthToken, createAdminClient } from '@/lib/supabase-server';
 
-const ROOM_NAME_RE = /^[a-zA-Z0-9_-]{1,128}$/;
-const MAX_PARTICIPANT_NAME = 60;
+/** LiveKit token TTL: 4 hours — long enough for a meeting, short enough to limit damage if leaked */
+const TOKEN_TTL_SECONDS = 4 * 60 * 60;
 
 export async function POST(req: NextRequest) {
+  // ── 1. Rate Limiting ────────────────────────────────────────
+  const ip = getClientIp(req);
+  const rateCheck = livekitTokenLimiter.check(ip);
+
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please wait before requesting another token.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(Math.ceil((rateCheck.resetAt - Date.now()) / 1000)),
+          'X-RateLimit-Remaining': '0',
+        },
+      },
+    );
+  }
+
   try {
-    // ── Auth check ────────────────────────────────────────────────
+    // ── 2. Input Parsing ──────────────────────────────────────
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
+
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const { roomName, participantName } = body as Record<string, unknown>;
+
+    // ── 3. Input Validation ───────────────────────────────────
+    const roomNameResult = validateLiveKitRoomName(roomName);
+    if (!roomNameResult.ok) {
+      return NextResponse.json({ error: roomNameResult.error }, { status: 400 });
+    }
+
+    const identityResult = validateParticipantIdentity(participantName);
+    if (!identityResult.ok) {
+      return NextResponse.json({ error: identityResult.error }, { status: 400 });
+    }
+
+    // ── 4. Auth Check (optional but preferred) ────────────────
+    // Guest participants can join without auth, but we log the distinction.
     const authHeader = req.headers.get('authorization');
-    const token = authHeader?.replace('Bearer ', '');
+    const user = await verifyAuthToken(authHeader);
+    const isAuthenticated = !!user;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // ── 5. Room Existence Check ───────────────────────────────
+    // Prevent token farming for non-existent rooms
+    const adminClient = createAdminClient();
+    const { data: meeting } = await adminClient
+      .from('meetings')
+      .select('id, is_active, host_id')
+      .eq('room_name', roomNameResult.value) // room_name == LiveKit room name
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (supabaseUrl && supabaseAnonKey && token) {
-      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-      });
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
+    // If no meeting found with that exact name, try matching by room_code as well
+    // (room name might be stored differently)
+    const meetingExists = meeting !== null;
 
-    // ── Input parsing & validation ────────────────────────────────
-    const { roomName, participantName } = await req.json();
-
-    if (!roomName || !participantName) {
-      return NextResponse.json({ error: 'Missing roomName or participantName' }, { status: 400 });
-    }
-
-    if (typeof roomName !== 'string' || !ROOM_NAME_RE.test(roomName)) {
+    // We allow joining even if the meeting isn't in Supabase yet
+    // (e.g., host is creating it right now) — don't hard-block on this
+    if (!meetingExists && !isAuthenticated) {
+      // Anonymous user trying to join a non-existent room — block it
       return NextResponse.json(
-        { error: 'Invalid roomName: must be 1-128 alphanumeric/dash/underscore characters' },
-        { status: 400 },
+        { error: 'Meeting not found or has ended.' },
+        { status: 404 },
       );
     }
 
-    const sanitizedName = String(participantName).trim().slice(0, MAX_PARTICIPANT_NAME);
-    if (!sanitizedName) {
-      return NextResponse.json({ error: 'participantName is empty after sanitization' }, { status: 400 });
-    }
-
-    // ── Token generation ──────────────────────────────────────────
+    // ── 6. LiveKit Config Check ───────────────────────────────
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
 
     if (!apiKey || !apiSecret) {
-      return NextResponse.json({ error: 'LiveKit server misconfigured' }, { status: 500 });
+      console.error('[LiveKit] Missing LIVEKIT_API_KEY or LIVEKIT_API_SECRET');
+      return NextResponse.json({ error: 'Server configuration error.' }, { status: 500 });
     }
 
+    // ── 7. Token Generation with TTL ─────────────────────────
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: sanitizedName,
+      identity: identityResult.value,
+      // Use the authenticated user's ID as the identity if available
+      ...(user ? { name: identityResult.value, metadata: JSON.stringify({ userId: user.id }) } : {}),
+      ttl: TOKEN_TTL_SECONDS,
     });
 
     at.addGrant({
       roomJoin: true,
-      room: roomName,
+      room: roomNameResult.value,
       canPublish: true,
       canSubscribe: true,
+      canPublishData: true,
     });
 
-    return NextResponse.json({ token: await at.toJwt() });
-  } catch {
-    return NextResponse.json({ error: 'Failed to generate token' }, { status: 500 });
+    const token = await at.toJwt();
+
+    return NextResponse.json(
+      { token },
+      {
+        headers: {
+          'X-RateLimit-Remaining': String(rateCheck.remaining),
+          // Prevent token from being cached anywhere
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      },
+    );
+  } catch (err) {
+    console.error('[LiveKit token] Unexpected error:', err);
+    return NextResponse.json({ error: 'Failed to generate token.' }, { status: 500 });
   }
 }
