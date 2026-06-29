@@ -4,9 +4,9 @@
  * Triggers the Supabase database cleanup function to purge stale data.
  * This keeps the database well under the 500MB free plan limit.
  *
- * Called by Vercel Cron (configured in vercel.json) once daily as a backup.
- * Note: Sub-daily cleanup is handled natively by Supabase pg_cron inside Postgres.
- * Protected by CRON_SECRET — only Vercel's cron runner can invoke it.
+ * Cleanup is handled natively by Supabase pg_cron directly inside Postgres every 12 hours.
+ * This endpoint remains available for manual invocations or external monitoring tools.
+ * Protected by CRON_SECRET.
  *
  * To manually trigger locally:
  *   curl -X POST http://localhost:3000/api/cleanup \
