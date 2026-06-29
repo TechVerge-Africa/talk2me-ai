@@ -9,7 +9,17 @@ export default function JoinPage() {
   const [code, setCode] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const router = useRouter();
-  const valid = code.trim().length >= 4;
+
+  /** Strip non-alphanumeric, uppercase, slice to 9 chars, then join with dashes every 3 */
+  const formatRoomCode = (raw: string): string => {
+    const clean = raw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 7);
+    if (clean.length <= 1) return clean;
+    if (clean.length <= 4) return `${clean[0]}-${clean.slice(1)}`;
+    return `${clean[0]}-${clean.slice(1, 4)}-${clean.slice(4)}`;
+  };
+
+  const rawCode = code.replace(/-/g, '');
+  const valid = rawCode.length >= 4;
 
   const handleScan = (scannedText: string) => {
     let extractedCode = scannedText;
@@ -38,17 +48,19 @@ export default function JoinPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (valid) router.push(`/room/${code.trim().toUpperCase()}`);
+            if (valid) router.push(`/room/${rawCode}`);
           }}
           className="mt-10 space-y-4"
         >
           <div className="bg-card ring-1 ring-border rounded-2xl p-2">
             <input
               autoFocus
+              type="text"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="S-722-B1X"
-              className="w-full bg-transparent text-center font-semibold tracking-[0.3em] text-xl sm:text-2xl py-4 outline-none placeholder:text-muted-foreground/50"
+              onChange={(e) => setCode(formatRoomCode(e.target.value))}
+              maxLength={9}
+              placeholder="S-521-F7G"
+              className="w-full bg-transparent text-center font-semibold font-mono tracking-[0.3em] text-xl sm:text-2xl py-4 outline-none placeholder:text-muted-foreground/50"
             />
           </div>
 

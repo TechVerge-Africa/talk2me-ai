@@ -1292,12 +1292,35 @@ export default function RoomPage() {
   // NEW STATES
   const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
   const [endOptionSelected, setEndOptionSelected] = useState(false);
+  const [isValidating, setIsValidating] = useState(true);
 
   useEffect(() => {
     if (code) {
-      MeetingService.getMeetingByCode(code)
-        .then(m => setMeetingRecord(m))
-        .catch(e => console.error("Failed to load meeting details:", e));
+      setIsValidating(true);
+      const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
+      
+      MeetingService.getMeetingByCode(formattedCode)
+        .then(m => {
+          if (!m) {
+            // Also fallback check raw unformatted code in case created differently
+            return MeetingService.getMeetingByCode(code);
+          }
+          return m;
+        })
+        .then(m => {
+          if (!m) {
+            setError("Invalid meeting room link or code. This meeting does not exist or has ended.");
+          } else {
+            setMeetingRecord(m);
+          }
+        })
+        .catch(e => {
+          console.error("Failed to load meeting details:", e);
+          setError("Unable to verify meeting code. Please check your internet connection.");
+        })
+        .finally(() => {
+          setIsValidating(false);
+        });
     }
   }, [code]);
 
@@ -1325,6 +1348,33 @@ export default function RoomPage() {
     setEndOptionSelected(false);
   }, [SESSION_KEY]);
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6 bg-background">
+        <div className="size-16 rounded-2xl bg-red-500/10 grid place-items-center text-3xl">⚠️</div>
+        <h2 className="font-bold text-xl">Invalid Meeting Room</h2>
+        <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
+        <div className="flex gap-4 mt-2">
+          <Link href="/join" className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow-sm transition hover:opacity-90">
+            Enter Another Code
+          </Link>
+          <Link href="/" className="px-5 py-2.5 rounded-xl bg-card border border-border font-semibold text-sm transition hover:bg-muted">
+            Go Home
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (isValidating || authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+        <Loader2 className="size-10 animate-spin text-bridge-indigo" />
+        <p className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Verifying meeting code...</p>
+      </div>
+    );
+  }
+
   // Pre-Join Lobby Screen
   if (showPreJoin) {
     return <PreJoinLobby 
@@ -1341,18 +1391,7 @@ export default function RoomPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6 bg-background">
-        <div className="size-16 rounded-2xl bg-red-500/10 grid place-items-center text-3xl">⚠️</div>
-        <h2 className="font-bold text-xl">Connection Failed</h2>
-        <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
-        <Link href="/" className="text-sm font-bold text-bridge-indigo underline">Go Home</Link>
-      </div>
-    );
-  }
-
-  if (!token || authLoading) {
+  if (!token) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="size-10 animate-spin text-bridge-indigo" />

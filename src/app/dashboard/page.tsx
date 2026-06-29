@@ -110,10 +110,35 @@ export default function DashboardPage() {
   const [sessionCategory, setSessionCategory] = useState('General');
   const [sessionAudience, setSessionAudience] = useState('public');
   const [generatedCode, setGeneratedCode] = useState('');
+
+  /** Auto-formats a room code to the X-NNN-XXX pattern (e.g. S-521-F7G) as the user types */
+  const formatRoomCode = (raw: string): string => {
+    const clean = raw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 7);
+    if (clean.length <= 1) return clean;
+    if (clean.length <= 4) return `${clean[0]}-${clean.slice(1)}`;
+    return `${clean[0]}-${clean.slice(1, 4)}-${clean.slice(4)}`;
+  };
+  const handleRoomCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setGeneratedCode(formatRoomCode(e.target.value));
+  };
+  const joinWithCode = () => {
+    const raw = generatedCode.replace(/-/g, '').trim();
+    if (raw.length >= 4) router.push(`/room/${raw.toUpperCase()}`);
+    else alert('Please enter a valid room code.');
+  };
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [scheduledTime, setScheduledTime] = useState('');
   const [scheduledRequireApproval, setScheduledRequireApproval] = useState(false);
   const [scheduledAllowScreenShare, setScheduledAllowScreenShare] = useState(true);
+
+  // ── SHARE SHEET STATE ────────────────────────────────────────────
+  const [shareSheetMeeting, setShareSheetMeeting] = useState<{ title: string; code: string; scheduled_at?: string } | null>(null);
+
+  const openShareSheet = (meeting: { title: string; code: string; scheduled_at?: string }) => {
+    setShareSheetMeeting(meeting);
+  };
+
+  const closeShareSheet = () => setShareSheetMeeting(null);
 
   // ── ACCESSIBILITY SETTINGS STATE ───────────────────────────────────
   const [captionsEnabled, setCaptionsEnabled] = useState(true);
@@ -362,6 +387,7 @@ export default function DashboardPage() {
         setCommandPaletteOpen(false);
         setCreateModalOpen(false);
         setNotificationsOpen(false);
+        setShareSheetMeeting(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -486,9 +512,13 @@ export default function DashboardPage() {
         // Refresh meetings
         const updated = await MeetingService.getUserMeetings(user.id);
         setDbMeetings(updated);
-        
-        alert(`Successfully scheduled meeting: "${meeting.title}" for ${meeting.scheduled_at ? new Date(meeting.scheduled_at).toLocaleString() : 'N/A'}!`);
         setCreateModalOpen(false);
+        // Open share sheet instead of alert
+        openShareSheet({
+          title: meeting.title || 'Scheduled Meeting',
+          code: meeting.room_code,
+          scheduled_at: meeting.scheduled_at,
+        });
       }
     } catch (e) {
       console.error('Launch session failed:', e);
@@ -855,18 +885,15 @@ export default function DashboardPage() {
                         <div className="flex gap-1.5 mt-4">
                           <input
                             type="text"
-                            placeholder="ABC-DEF-GHI"
+                            value={generatedCode}
+                            placeholder="S-521-F7G"
+                            maxLength={9}
                             className="w-full px-2 py-1.5 rounded-lg border border-border/40 bg-foreground/5 text-[10px] uppercase font-mono text-center outline-none focus:bg-background focus:ring-1 focus:ring-cyan"
-                            onChange={(e) => setGeneratedCode(e.target.value)}
+                            onChange={handleRoomCodeChange}
+                            onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
                           />
                           <button
-                            onClick={() => {
-                              if (generatedCode.trim()) {
-                                router.push(`/room/${generatedCode.trim().toUpperCase()}`);
-                              } else {
-                                alert('Please enter a valid room code.');
-                              }
-                            }}
+                            onClick={joinWithCode}
                             className="px-3 py-1.5 rounded-lg bg-foreground text-background font-bold text-[10px] hover:opacity-90 cursor-pointer"
                           >
                             Join
@@ -979,18 +1006,28 @@ export default function DashboardPage() {
                                 <h3 className="font-bold text-sm text-foreground">{event.title}</h3>
                                 <p className="text-[11px] text-muted-foreground">{event.people}</p>
                               </div>
-                              <button
-                                onClick={() => {
-                                  if (event.type === 'Meeting') {
-                                    router.push(`/room/${event.code}`);
-                                  } else {
-                                    setCurrentView(event.code as DashboardView);
-                                  }
-                                }}
-                                className="px-4 py-2 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow transition-all self-start sm:self-auto cursor-pointer"
-                              >
-                                Join
-                              </button>
+                              <div className="flex items-center gap-2 self-start sm:self-auto">
+                                <button
+                                  onClick={() => openShareSheet({ title: event.title, code: event.code })}
+                                  className="px-3 py-2 rounded-xl border border-border/40 text-muted-foreground hover:text-foreground hover:bg-foreground/5 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                  title="Share this meeting"
+                                >
+                                  <Share2 className="size-3.5" />
+                                  Share
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (event.type === 'Meeting') {
+                                      router.push(`/room/${event.code.replace(/-/g, '')}`);
+                                    } else {
+                                      setCurrentView(event.code as DashboardView);
+                                    }
+                                  }}
+                                  className="px-4 py-2 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow transition-all cursor-pointer"
+                                >
+                                  Join
+                                </button>
+                              </div>
                             </div>
                           ))
                         )}
@@ -1085,18 +1122,15 @@ export default function DashboardPage() {
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          placeholder="ABC-DEF-GHI"
-                          className="flex-1 px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-sm uppercase tracking-wider outline-none text-center"
-                          onChange={(e) => setGeneratedCode(e.target.value)}
+                          value={generatedCode}
+                          placeholder="S-521-F7G"
+                          maxLength={9}
+                          className="flex-1 px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-sm uppercase tracking-wider outline-none text-center font-mono"
+                          onChange={handleRoomCodeChange}
+                          onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
                         />
                         <button
-                          onClick={() => {
-                            if (generatedCode.trim()) {
-                              router.push(`/room/${generatedCode.trim().toUpperCase()}`);
-                            } else {
-                              alert('Please enter a valid room code.');
-                            }
-                          }}
+                          onClick={joinWithCode}
                           className="px-4 py-2 rounded-xl bg-foreground text-background font-bold text-xs hover:opacity-90"
                         >
                           Join
@@ -1157,6 +1191,13 @@ export default function DashboardPage() {
                                 </td>
                                 <td className="p-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => openShareSheet({ title: room.name, code: room.code })}
+                                      className="p-1.5 rounded bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition cursor-pointer"
+                                      title="Share Meeting Link"
+                                    >
+                                      <Share2 className="size-4" />
+                                    </button>
                                     <button
                                       onClick={() => router.push(`/room/${room.code}`)}
                                       className="px-3 py-1.5 rounded bg-indigo text-white font-bold text-xs hover:shadow transition cursor-pointer"
@@ -2451,6 +2492,161 @@ export default function DashboardPage() {
           );
         })}
       </nav>
+
+      {/* ── SHARE SHEET MODAL ──────────────────────────────────────────── */}
+      {/* Backdrop — rendered separately so it never overlaps the sheet's close button */}
+      <AnimatePresence>
+        {shareSheetMeeting && (
+          <motion.div
+            key="share-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+            onClick={closeShareSheet}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Sheet — z-[61] ensures it always sits above the backdrop */}
+      <AnimatePresence>
+        {shareSheetMeeting && (
+          <motion.div
+            key={`share-sheet-${shareSheetMeeting.code}`}
+            initial={{ opacity: 0, y: 60, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 60, scale: 0.97 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 340 }}
+            className="fixed inset-x-0 bottom-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 z-[61] w-full sm:max-w-md pointer-events-none"
+          >
+            {/* Outer shell — flex column, capped at 90dvh, restores pointer-events for the card itself */}
+            <div className="bg-card rounded-t-3xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden pointer-events-auto">
+
+              {/* Drag handle — mobile only, always visible, not scrollable */}
+              <div className="sm:hidden flex justify-center pt-3 pb-1 flex-shrink-0">
+                <div className="w-10 h-1 rounded-full bg-border/60" />
+              </div>
+
+              {/* Header — always visible, never scrolls away */}
+              <div className="px-5 pt-4 pb-4 border-b border-border/40 flex items-start justify-between gap-3 flex-shrink-0">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="size-6 rounded-lg bg-indigo/10 grid place-items-center flex-shrink-0">
+                      <Share2 className="size-3 text-indigo" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo">Share Meeting</span>
+                  </div>
+                  <h2 className="font-black text-base leading-tight truncate">{shareSheetMeeting.title}</h2>
+                  {shareSheetMeeting.scheduled_at && (
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                      <Clock className="size-3 flex-shrink-0" />
+                      {new Date(shareSheetMeeting.scheduled_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={closeShareSheet}
+                  aria-label="Close share panel"
+                  className="relative z-10 flex items-center justify-center size-8 rounded-xl bg-foreground/8 hover:bg-foreground/15 text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+                >
+                  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Scrollable body — flex-1 + min-h-0 are required for overflow-y-auto to activate inside a flex container */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 space-y-4 pb-[max(env(safe-area-inset-bottom),16px)]">
+
+                {/* QR Code — large enough to scan comfortably */}
+                <div className="flex justify-center">
+                  <div className="bg-white rounded-2xl p-3 shadow-inner border border-border/20">
+                    <QrBlock value={roomShareUrl(shareSheetMeeting.code)} size={200} />
+                  </div>
+                </div>
+
+                {/* Meeting Link */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Meeting Link</label>
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-foreground/5 border border-border/40">
+                    <Globe className="size-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="flex-1 text-xs font-mono truncate text-foreground/80 select-all min-w-0">
+                      {roomShareUrl(shareSheetMeeting.code)}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(roomShareUrl(shareSheetMeeting.code))}
+                      className="flex-shrink-0 p-1.5 rounded-lg bg-foreground/5 hover:bg-indigo/10 hover:text-indigo text-muted-foreground transition-all"
+                      title="Copy link"
+                    >
+                      {copiedText === roomShareUrl(shareSheetMeeting.code)
+                        ? <Check className="size-3.5 text-emerald-500" />
+                        : <Copy className="size-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Room Code */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Room Code</label>
+                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-indigo/5 border border-indigo/20">
+                    <span className="flex-1 text-lg font-black font-mono tracking-widest text-indigo text-center">
+                      {shareSheetMeeting.code}
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(shareSheetMeeting.code)}
+                      className="flex-shrink-0 p-1.5 rounded-lg bg-indigo/10 hover:bg-indigo/20 text-indigo transition-all"
+                      title="Copy room code"
+                    >
+                      {copiedText === shareSheetMeeting.code
+                        ? <Check className="size-3.5 text-emerald-500" />
+                        : <Copy className="size-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className={`grid gap-2.5 ${typeof navigator !== 'undefined' && !!navigator.share ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {typeof navigator !== 'undefined' && !!navigator.share && (
+                    <button
+                      onClick={() => {
+                        navigator.share({
+                          title: `Join "${shareSheetMeeting.title}" on Talk2Me`,
+                          text: shareSheetMeeting.scheduled_at
+                            ? `You're invited to "${shareSheetMeeting.title}" scheduled for ${new Date(shareSheetMeeting.scheduled_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}. Room code: ${shareSheetMeeting.code}`
+                            : `Join my Talk2Me meeting "${shareSheetMeeting.title}". Room code: ${shareSheetMeeting.code}`,
+                          url: roomShareUrl(shareSheetMeeting.code),
+                        }).catch(() => {});
+                      }}
+                      className="py-2.5 rounded-xl bg-gradient-to-r from-indigo to-cyan text-white font-bold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-indigo/20 transition-all"
+                    >
+                      <Share2 className="size-4" />
+                      Share via...
+                    </button>
+                  )}
+                  <button
+                    onClick={() => copyToClipboard(roomShareUrl(shareSheetMeeting.code))}
+                    className={`py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                      copiedText === roomShareUrl(shareSheetMeeting.code)
+                        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                        : 'bg-foreground/[0.08] border border-border/40 hover:bg-foreground/[0.12] text-foreground'
+                    }`}
+                  >
+                    {copiedText === roomShareUrl(shareSheetMeeting.code)
+                      ? <><Check className="size-4" /> Copied!</>
+                      : <><Copy className="size-4" /> Copy Link</>}
+                  </button>
+                </div>
+
+                {/* Footer note */}
+                <p className="text-center text-[11px] text-muted-foreground leading-relaxed pb-1">
+                  Anyone with this link or code can join the meeting.
+                  {shareSheetMeeting.scheduled_at && ' The room opens at the scheduled time.'}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
