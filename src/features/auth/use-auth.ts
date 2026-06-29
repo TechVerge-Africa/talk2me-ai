@@ -59,11 +59,48 @@ export function useAuth() {
     }
   };
 
+  const resetPassword = async (email: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  };
+
+  const updateProfile = async (updates: { full_name?: string }) => {
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        full_name: updates.full_name,
+        updated_at: new Date().toISOString(),
+      });
+    if (error) {
+      throw new Error(error.message);
+    }
+    await fetchProfile(user.id);
+  };
+
   return {
     user,
     profile,
     loading,
     signInWithGoogle,
     signOut,
+    resetPassword,
+    updatePassword,
+    updateProfile,
   };
+
 }

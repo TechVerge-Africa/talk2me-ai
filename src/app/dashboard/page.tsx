@@ -91,7 +91,7 @@ interface MetricCardProps {
 }
 
 export default function DashboardPage() {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, signOut, updatePassword, updateProfile } = useAuth();
   const router = useRouter();
 
   // ── LAYOUT STATE ───────────────────────────────────────────────────
@@ -2021,20 +2021,31 @@ export default function DashboardPage() {
               {currentView === 'settings' && (
                 <div className="space-y-8 max-w-3xl">
                   <div>
-                    <h1 className="text-3xl font-black tracking-tight">System Settings</h1>
-                    <p className="text-muted-foreground text-sm">Configure authentication credentials, profile metadata, or API credentials.</p>
+                    <h1 className="text-3xl font-black tracking-tight">System & Account Settings</h1>
+                    <p className="text-muted-foreground text-sm">Configure authentication credentials, profile metadata, and accessibility preferences.</p>
                   </div>
 
+                  {/* Profile Metadata Form */}
                   <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-6">
-                    <h3 className="font-bold text-lg border-b border-border/40 pb-4">Personal Settings</h3>
+                    <h3 className="font-bold text-lg border-b border-border/40 pb-4">Profile Settings</h3>
 
-                    <div className="space-y-4">
+                    <form onSubmit={async (e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      const name = formData.get('fullName') as string;
+                      try {
+                        await updateProfile({ full_name: name });
+                        alert('Profile updated successfully!');
+                      } catch (err: unknown) {
+                        alert(err instanceof Error ? err.message : 'Failed to update profile.');
+                      }
+                    }} className="space-y-4">
                       <div className="space-y-2">
                         <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Account Email</label>
                         <input
                           type="text"
                           disabled
-                          defaultValue={user.email || ''}
+                          defaultValue={user?.email || ''}
                           className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent text-sm font-semibold opacity-60 cursor-not-allowed"
                         />
                       </div>
@@ -2043,14 +2054,85 @@ export default function DashboardPage() {
                         <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</label>
                         <input
                           type="text"
-                          defaultValue={userName}
+                          name="fullName"
+                          required
+                          defaultValue={profile?.full_name || ''}
+                          placeholder="Your full name"
                           className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-indigo transition-all outline-none text-sm font-semibold"
                         />
                       </div>
-                    </div>
+
+                      <div className="pt-2 flex justify-end">
+                        <button
+                          type="submit"
+                          className="px-6 py-2.5 rounded-xl bg-indigo text-white font-bold text-xs hover:opacity-90 transition-opacity"
+                        >
+                          Save Profile Changes
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* Security & Password Update Form */}
+                  <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-6">
+                    <h3 className="font-bold text-lg border-b border-border/40 pb-4">Security & Password</h3>
+
+                    <form onSubmit={async (e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.currentTarget);
+                      const pass = formData.get('newPassword') as string;
+                      const confirm = formData.get('confirmNewPassword') as string;
+                      if (pass !== confirm) {
+                        alert('Passwords do not match');
+                        return;
+                      }
+                      if (pass.length < 6) {
+                        alert('Password must be at least 6 characters');
+                        return;
+                      }
+                      try {
+                        await updatePassword(pass);
+                        alert('Password updated successfully!');
+                        e.currentTarget.reset();
+                      } catch (err: unknown) {
+                        alert(err instanceof Error ? err.message : 'Failed to update password.');
+                      }
+                    }} className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">New Password</label>
+                        <input
+                          type="password"
+                          name="newPassword"
+                          required
+                          placeholder="••••••••"
+                          className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-indigo transition-all outline-none text-sm font-semibold"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Confirm New Password</label>
+                        <input
+                          type="password"
+                          name="confirmNewPassword"
+                          required
+                          placeholder="••••••••"
+                          className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-indigo transition-all outline-none text-sm font-semibold"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex justify-end">
+                        <button
+                          type="submit"
+                          className="px-6 py-2.5 rounded-xl bg-indigo text-white font-bold text-xs hover:opacity-90 transition-opacity"
+                        >
+                          Update Password
+                        </button>
+                      </div>
+                    </form>
                   </div>
                 </div>
               )}
+
             </motion.div>
           </AnimatePresence>
         </main>
