@@ -126,7 +126,7 @@ GRANT EXECUTE ON FUNCTION public.cleanup_stale_meeting_data() TO service_role;
 
 -- ── 6. Schedule cleanup via pg_cron (if extension available) ──
 -- pg_cron is available on Supabase free plan.
--- Runs every 12 hours to keep DB lean.
+-- Runs every 15 minutes to keep DB lean.
 DO $$
 BEGIN
   -- Only schedule if pg_cron extension is available
@@ -135,7 +135,7 @@ BEGIN
   ) THEN
     PERFORM cron.schedule(
       'talk2me-cleanup',
-      '0 */12 * * *',
+      '*/15 * * * *',
       'SELECT public.cleanup_stale_meeting_data()'
     );
   END IF;
