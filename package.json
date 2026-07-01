@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.21",
+    "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.106.2",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
