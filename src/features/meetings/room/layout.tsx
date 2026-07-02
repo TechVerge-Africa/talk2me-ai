@@ -33,8 +33,8 @@ export function MeetingLayout({
           className={`flex-1 relative min-h-0 min-w-0 ${
             fullBleed ? 'p-0 w-full h-full' : ''
           } ${sidebar ? 'lg:flex-[2.5]' : ''}`}
-          /* Leave bottom space for dock — mobile dock is ~108px, desktop ~72px */
-          style={{ paddingBottom: 'var(--dock-h, 108px)' }}
+          /* Leave just enough bottom space for the floating dock pill (~72px) */
+          style={{ paddingBottom: 'var(--dock-h, 72px)' }}
         >
           {children}
         </div>
@@ -52,24 +52,22 @@ export function MeetingLayout({
             lg:pt-16
             rounded-t-3xl lg:rounded-none
             border-t border-white/5 lg:border-t-0 lg:border-l lg:border-white/5
-            /* On mobile, sidebar sits on top of the dock zone */
-            pb-28 lg:pb-4
+            pb-20 lg:pb-4
           ">
             {sidebar}
           </aside>
         )}
       </div>
 
-      {/* Dock — always pinned at bottom */}
+      {/* Dock — floating over video, no background, no padding surround */}
       {dock && (
         <div
           className="
             absolute bottom-0 left-0 right-0
             z-30
             pointer-events-none
-            px-3 pb-3 pt-2
-            sm:px-5 sm:pb-4
-            bg-gradient-to-t from-[#0d0f12]/95 via-[#0d0f12]/60 to-transparent
+            pb-3
+            sm:pb-4
           "
         >
           <div className="pointer-events-auto w-full">

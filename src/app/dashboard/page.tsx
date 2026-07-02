@@ -623,7 +623,7 @@ export default function DashboardPage() {
 
   return (
     <div
-      className={`min-h-screen flex bg-background text-foreground transition-all duration-300 font-sans ${
+      className={`h-screen overflow-hidden flex bg-background text-foreground transition-all duration-300 font-sans ${
         highContrast ? 'contrast-125 border-4 border-cyan' : ''
       } ${reducedMotion ? 'motion-reduce' : ''}`}
       style={{
@@ -633,7 +633,7 @@ export default function DashboardPage() {
       {/* ── LEFT SIDEBAR ────────────────────────────────────────────── */}
       <motion.aside
         animate={{ width: sidebarOpen ? '280px' : '80px' }}
-        className="hidden md:flex flex-col flex-shrink-0 bg-card/60 backdrop-blur-xl border-r border-border/40 relative z-30"
+        className="hidden md:flex flex-col flex-shrink-0 h-screen bg-card/60 backdrop-blur-xl border-r border-border/40 relative z-30"
       >
         <div className="h-16 flex items-center justify-between px-5 border-b border-border/40">
           <div className="flex items-center gap-3 overflow-hidden">
@@ -882,21 +882,21 @@ export default function DashboardPage() {
                           <h3 className="font-bold text-sm text-foreground">Join with Code</h3>
                           <p className="text-[11px] text-muted-foreground leading-normal">Enter room credentials to join a session.</p>
                         </div>
-                        <div className="flex gap-1.5 mt-4">
+                        <div className="flex flex-col gap-2 mt-4">
                           <input
                             type="text"
                             value={generatedCode}
                             placeholder="S-521-F7G"
                             maxLength={9}
-                            className="w-full px-2 py-1.5 rounded-lg border border-border/40 bg-foreground/5 text-[10px] uppercase font-mono text-center outline-none focus:bg-background focus:ring-1 focus:ring-cyan"
+                            className="w-full px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-xs uppercase font-mono text-center outline-none focus:bg-background focus:ring-1 focus:ring-cyan transition-all"
                             onChange={handleRoomCodeChange}
                             onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
                           />
                           <button
                             onClick={joinWithCode}
-                            className="px-3 py-1.5 rounded-lg bg-foreground text-background font-bold text-[10px] hover:opacity-90 cursor-pointer"
+                            className="w-full py-2 px-3 rounded-xl bg-foreground text-background font-bold text-xs hover:opacity-90 transition-all cursor-pointer"
                           >
-                            Join
+                            Join Meeting
                           </button>
                         </div>
                       </div>
@@ -1119,21 +1119,21 @@ export default function DashboardPage() {
                         <h3 className="font-black text-lg mb-1">Join with Code</h3>
                         <p className="text-xs text-muted-foreground leading-relaxed">Enter a 9-letter code to instantly connect to an ongoing secured meeting room.</p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
                         <input
                           type="text"
                           value={generatedCode}
                           placeholder="S-521-F7G"
                           maxLength={9}
-                          className="flex-1 px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-sm uppercase tracking-wider outline-none text-center font-mono"
+                          className="w-full px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-sm uppercase tracking-wider outline-none text-center font-mono focus:bg-background focus:ring-1 focus:ring-cyan transition-all"
                           onChange={handleRoomCodeChange}
                           onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
                         />
                         <button
                           onClick={joinWithCode}
-                          className="px-4 py-2 rounded-xl bg-foreground text-background font-bold text-xs hover:opacity-90"
+                          className="w-full py-3 rounded-xl bg-foreground text-background font-bold text-sm hover:opacity-90 transition-all cursor-pointer"
                         >
-                          Join
+                          Join Meeting
                         </button>
                       </div>
                     </div>
