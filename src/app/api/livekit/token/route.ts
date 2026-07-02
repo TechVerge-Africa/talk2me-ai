@@ -4,6 +4,9 @@ import { livekitTokenLimiter, getClientIp } from '@/lib/rate-limiter';
 import { validateLiveKitRoomName, validateParticipantIdentity } from '@/lib/validators';
 import { verifyAuthToken, createAdminClient } from '@/lib/supabase-server';
 
+export const runtime = 'edge';
+
+
 /** LiveKit token TTL: 4 hours — long enough for a meeting, short enough to limit damage if leaked */
 const TOKEN_TTL_SECONDS = 4 * 60 * 60;
 

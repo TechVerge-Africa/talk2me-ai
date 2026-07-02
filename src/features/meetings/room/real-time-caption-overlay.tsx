@@ -36,7 +36,12 @@ export function RealTimeCaptionOverlay({ captions, speakerName = null, size = 'm
   };
 
   return (
-    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40">
+    <div 
+      className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-40"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       <div className="bg-black/60 backdrop-blur-md border border-white/5 rounded-full shadow-2xl flex items-center justify-center text-center">
         <div className={`flex-1 ${sizeClasses[size]}`}>
           <p className="text-white font-medium leading-relaxed tracking-wide">

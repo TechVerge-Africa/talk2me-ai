@@ -658,6 +658,13 @@ function RoomContent({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [roomMode, setRoomMode] = useState<'call' | 'onthego'>('call');
 
+  // Auto-disable camera when entering On-the-Go / Low-Bandwidth Mode to save bandwidth
+  useEffect(() => {
+    if (roomMode === 'onthego' && camOn) {
+      toggleCam().catch(err => console.error("Failed to disable camera in On-the-Go mode:", err));
+    }
+  }, [roomMode, camOn, toggleCam]);
+
   useEffect(() => {
     const onFsChange = () => {
       if (!document.fullscreenElement && viewMode === 'fullscreen') {
