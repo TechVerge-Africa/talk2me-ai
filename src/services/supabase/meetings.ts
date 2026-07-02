@@ -61,6 +61,50 @@ export const MeetingService = {
   },
 
   /**
+   * Fetches a meeting by room code regardless of active status (for host re-entry checks)
+   */
+  async getMeetingByCodeAny(code: string): Promise<Meeting | null> {
+    const { data, error } = await supabase
+      .from('meetings')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at')
+      .eq('room_code', code)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw new AppError(
+        'Unable to look up meeting. Please try again.',
+        'MEETING_FETCH_FAILED',
+        { cause: error },
+      );
+    }
+
+    if (!data) return null;
+    return toMeeting(data);
+  },
+
+  /**
+   * Reactivates an ended meeting (host only)
+   */
+  async reactivateMeeting(meetingId: string): Promise<void> {
+    const { error } = await supabase
+      .from('meetings')
+      .update({ is_active: true, ended_at: null })
+      .eq('id', meetingId);
+
+    if (error) {
+      throw new AppError(
+        'Failed to reactivate the meeting.',
+        'MEETING_REACTIVATE_FAILED',
+        { cause: error },
+      );
+    }
+  },
+
+
+  /**
    * Fetches an active meeting by its room code
    */
   async getMeetingByCode(code: string): Promise<Meeting | null> {
@@ -85,6 +129,7 @@ export const MeetingService = {
 
     return toMeeting(data);
   },
+
 
   /**
    * Marks a meeting as ended

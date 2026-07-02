@@ -7,6 +7,7 @@ interface MeetingLayoutProps {
   dock?: React.ReactNode;
   isDeafMode?: boolean;
   fullBleed?: boolean;
+  topbarVisible?: boolean;
 }
 
 export function MeetingLayout({ 
@@ -15,7 +16,8 @@ export function MeetingLayout({
   topbar, 
   dock, 
   isDeafMode,
-  fullBleed = false
+  fullBleed = false,
+  topbarVisible = true,
 }: MeetingLayoutProps) {
   return (
     <main className={`fixed inset-0 flex flex-col bg-[#121417] text-white overflow-hidden ${sidebar ? 'layout-has-sidebar' : ''}`}>
@@ -27,14 +29,12 @@ export function MeetingLayout({
       )}
       
       {/* Content area — fills between topbar and dock */}
-      <div className={`flex-1 flex flex-col lg:flex-row relative min-h-0 ${fullBleed ? '' : 'pt-16'}`}>
+      <div className={`flex-1 flex flex-col lg:flex-row relative min-h-0 ${!fullBleed && topbarVisible ? 'pt-16' : ''} transition-all duration-300`}>
         {/* Main video / stage area */}
         <div
           className={`flex-1 relative min-h-0 min-w-0 ${
             fullBleed ? 'p-0 w-full h-full' : ''
           } ${sidebar ? 'lg:flex-[2.5]' : ''}`}
-          /* Leave just enough bottom space for the floating dock pill (~72px) */
-          style={{ paddingBottom: 'var(--dock-h, 72px)' }}
         >
           {children}
         </div>

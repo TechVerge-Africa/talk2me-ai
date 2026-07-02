@@ -248,15 +248,19 @@ function PreJoinLobby({
 function LeftMeetingScreen({
   code,
   isHost,
+  didEndMeeting,
   onRejoin,
+  onReopen,
 }: {
   code: string;
   isHost: boolean;
+  didEndMeeting: boolean;
   onRejoin: () => void;
+  onReopen: () => void;
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  const [duration] = useState(() => Math.floor(Math.random() * 30) + 10); // mock duration
+  const [duration] = useState(() => Math.floor(Math.random() * 30) + 10);
   const [randomParticipants] = useState(() => Math.floor(Math.random() * 5) + 2);
 
   return (
@@ -275,13 +279,13 @@ function LeftMeetingScreen({
         </div>
 
         <h1 className="text-3xl font-bold tracking-tight mb-2">
-          {isHost ? 'You ended the session' : 'You left the meeting'}
+          {didEndMeeting ? 'You ended the session' : 'You left the meeting'}
         </h1>
         <p className="text-muted-foreground text-sm">
-          {isHost
-            ? 'The meeting has ended. You can start a new one anytime.'
+          {didEndMeeting
+            ? 'The meeting has been ended. You can reopen it or start a new one.'
             : `Meeting code: `}
-          {!isHost && <span className="font-mono font-bold text-foreground">{code}</span>}
+          {!didEndMeeting && <span className="font-mono font-bold text-foreground">{code}</span>}
         </p>
 
         {/* Stats row for host */}
@@ -300,15 +304,25 @@ function LeftMeetingScreen({
 
         {/* Actions */}
         <div className="mt-8 flex flex-col gap-3">
-          {/* Rejoin button — always possible */}
-          <button
-            onClick={onRejoin}
-            className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
-            style={{ backgroundColor: '#4f46e5' }}
-          >
-            <RotateCcw className="size-5" />
-            Rejoin Meeting
-          </button>
+          {/* Host who ended: offer Reopen. Host who left / participant: offer Rejoin */}
+          {didEndMeeting ? (
+            <button
+              onClick={onReopen}
+              className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
+            >
+              <RotateCcw className="size-5" />
+              Reopen &amp; Rejoin
+            </button>
+          ) : (
+            <button
+              onClick={onRejoin}
+              className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
+              style={{ backgroundColor: '#4f46e5' }}
+            >
+              <RotateCcw className="size-5" />
+              Rejoin Meeting
+            </button>
+          )}
 
           {isHost && (
             <button
@@ -763,6 +777,15 @@ function RoomContent({
               </div>
             )}
           </div>
+
+          {/* Hide topbar button */}
+          <button
+            onClick={() => setShowTopbar(false)}
+            title="Hide top bar"
+            className="p-1.5 rounded-lg text-white/30 hover:text-white/80 hover:bg-white/5 transition-all touch-manipulation"
+          >
+            <EyeOff className="size-4" />
+          </button>
         </div>
       </div>
     </div>
@@ -1055,7 +1078,7 @@ function RoomContent({
           roomCode={code}
         />
       )}
-      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'}
+      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar}
         dock={
           <ControlDock
             code={code}
@@ -1302,50 +1325,57 @@ export default function RoomPage() {
   const [isValidating, setIsValidating] = useState(true);
 
   useEffect(() => {
-    if (code) {
-      setIsValidating(true);
-      const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
-      
-      MeetingService.getMeetingByCode(formattedCode)
-        .then(m => {
-          if (!m) {
-            // Also fallback check raw unformatted code in case created differently
-            return MeetingService.getMeetingByCode(code);
-          }
-          return m;
-        })
-        .then(m => {
-          if (!m) {
-            setError("Invalid meeting room link or code. This meeting does not exist or has ended.");
-          } else {
-            setMeetingRecord(m);
-          }
-        })
-        .catch(e => {
-          console.error("Failed to load meeting details:", e);
-          setError("Unable to verify meeting code. Please check your internet connection.");
-        })
-        .finally(() => {
-          setIsValidating(false);
-        });
-    }
-  }, [code]);
+    // Wait for auth to finish loading so we know if the user is signed in
+    if (authLoading) return;
+    if (!code) return;
+
+    setIsValidating(true);
+    const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
+
+    // Fast path: look for an active meeting (works for everyone)
+    MeetingService.getMeetingByCode(formattedCode)
+      .then(async (m) => {
+        if (m) return m;
+        const mRaw = await MeetingService.getMeetingByCode(code);
+        if (mRaw) return mRaw;
+
+        // Active meeting not found — check if an ended one exists
+        const anyFormatted = await MeetingService.getMeetingByCodeAny(formattedCode);
+        const any = anyFormatted ?? await MeetingService.getMeetingByCodeAny(code);
+
+        if (!any) {
+          setError('Invalid meeting room link or code. This meeting does not exist.');
+          return null;
+        }
+
+        // Meeting is ended — only the host (signed-in user whose id matches) may re-enter
+        if (user && any.host_id === user.id) {
+          await MeetingService.reactivateMeeting(any.id);
+          return { ...any, status: 'active' as const };
+        }
+
+        // Everyone else is blocked
+        setError('This meeting has ended. Only the host can reopen it.');
+        return null;
+      })
+      .then(m => { if (m) setMeetingRecord(m); })
+      .catch(e => {
+        console.error('Failed to load meeting details:', e);
+        setError('Unable to verify meeting code. Please check your internet connection.');
+      })
+      .finally(() => setIsValidating(false));
+  }, [code, user, authLoading]);
 
   const handleLeave = useCallback((endForAll: boolean = false) => {
     if (endForAll && meetingRecord) {
       MeetingService.endMeeting(meetingRecord.id).catch(console.error);
     }
-    // Clear session token so a rejoin shows the pre-join lobby again
     try { sessionStorage.removeItem(SESSION_KEY); } catch {}
     setToken(null);
     hasFetchedToken.current = false;
-    if (user) {
-      router.push('/dashboard');
-    } else {
-      setHasLeft(true);
-      setEndOptionSelected(endForAll);
-    }
-  }, [meetingRecord, user, router, SESSION_KEY]);
+    setHasLeft(true);
+    setEndOptionSelected(endForAll);
+  }, [meetingRecord, SESSION_KEY]);
 
   const handleRejoin = useCallback(() => {
     try { sessionStorage.removeItem(SESSION_KEY); } catch {}
@@ -1354,6 +1384,23 @@ export default function RoomPage() {
     setHasLeft(false);
     setEndOptionSelected(false);
   }, [SESSION_KEY]);
+
+  // Host-only: reactivate the ended meeting then go to pre-join
+  const handleReopen = useCallback(async () => {
+    if (meetingRecord) {
+      try {
+        await MeetingService.reactivateMeeting(meetingRecord.id);
+        setMeetingRecord(prev => prev ? { ...prev, status: 'active' } : prev);
+      } catch (e) {
+        console.error('Failed to reactivate meeting:', e);
+      }
+    }
+    try { sessionStorage.removeItem(SESSION_KEY); } catch {}
+    hasFetchedToken.current = false;
+    setShowPreJoin(true);
+    setHasLeft(false);
+    setEndOptionSelected(false);
+  }, [meetingRecord, SESSION_KEY]);
 
   if (error) {
     return (
@@ -1394,7 +1441,13 @@ export default function RoomPage() {
   // Left screen
   if (hasLeft) {
     return (
-      <LeftMeetingScreen code={code} isHost={isHost && endOptionSelected} onRejoin={handleRejoin} />
+      <LeftMeetingScreen
+        code={code}
+        isHost={isHost}
+        didEndMeeting={isHost && endOptionSelected}
+        onRejoin={handleRejoin}
+        onReopen={handleReopen}
+      />
     );
   }
 

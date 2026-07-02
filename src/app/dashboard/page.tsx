@@ -97,7 +97,17 @@ export default function DashboardPage() {
   // ── LAYOUT STATE ───────────────────────────────────────────────────
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<DashboardView>('home');
+  const VALID_VIEWS: DashboardView[] = ['home','meetings','streams','events','messages','ai-workspace','recordings','notes','accessibility','analytics','organizations','settings'];
+  const [currentView, setCurrentViewRaw] = useState<DashboardView>(() => {
+    try {
+      const saved = localStorage.getItem('t2_dashboard_view') as DashboardView;
+      return saved && VALID_VIEWS.includes(saved) ? saved : 'home';
+    } catch { return 'home'; }
+  });
+  const setCurrentView = (view: DashboardView) => {
+    try { localStorage.setItem('t2_dashboard_view', view); } catch {}
+    setCurrentViewRaw(view);
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
