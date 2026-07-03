@@ -1254,7 +1254,7 @@ export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
   const code = params.code as string;
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
 
   const SESSION_KEY = `t2_session_${code}`;
 
