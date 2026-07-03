@@ -1268,6 +1268,11 @@ export default function RoomPage() {
   const [showPreJoin, setShowPreJoin] = useState(false);
   const hasFetchedToken = useRef(false);
 
+  // NEW STATES
+  const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
+  const [endOptionSelected, setEndOptionSelected] = useState(false);
+  const [isValidating, setIsValidating] = useState(true);
+
   // A user is a host if they're signed in
   const isHost = !!user;
 
@@ -1326,11 +1331,6 @@ export default function RoomPage() {
       setShowPreJoin(true);
     }, 0);
   }, [authLoading, SESSION_KEY]);
-
-  // NEW STATES
-  const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
-  const [endOptionSelected, setEndOptionSelected] = useState(false);
-  const [isValidating, setIsValidating] = useState(true);
 
   useEffect(() => {
     // Wait for auth to finish loading so we know if the user is signed in
