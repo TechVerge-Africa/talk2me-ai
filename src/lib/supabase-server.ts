@@ -11,8 +11,8 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
 if (!supabaseUrl || !serviceRoleKey) {
   // This will surface at build time during static analysis
@@ -50,7 +50,7 @@ export async function verifyAuthToken(bearerToken: string | null) {
   if (!token) return null;
 
   // Use anon key client with the user's token for proper auth verification
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
   if (!supabaseUrl || !anonKey) return null;
 
   const client = createClient(supabaseUrl, anonKey, {
