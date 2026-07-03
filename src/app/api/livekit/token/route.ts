@@ -63,12 +63,16 @@ export async function POST(req: NextRequest) {
     // ── 5. Room Existence Check ───────────────────────────────
     // Prevent token farming for non-existent rooms
     const adminClient = createAdminClient();
-    const { data: meeting } = await adminClient
+    const { data: meeting, error: dbError } = await adminClient
       .from('meetings')
       .select('id, is_active, host_id')
-      .or(`room_name.eq."${roomNameResult.value}",room_code.eq."${roomNameResult.value}"`)
+      .eq('room_code', roomNameResult.value)
       .eq('is_active', true)
       .maybeSingle();
+
+    if (dbError) {
+      console.error('[LiveKit Token API] Database error when checking meeting:', dbError);
+    }
 
     // If no meeting found with that exact name, try matching by room_code as well
     // (room name might be stored differently)

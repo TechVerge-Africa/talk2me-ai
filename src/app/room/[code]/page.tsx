@@ -1293,7 +1293,8 @@ export default function RoomPage() {
     if (!username) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const t = await generateToken(code, username, session?.access_token);
+      const actualRoomCode = meetingRecord?.room_code || code;
+      const t = await generateToken(actualRoomCode, username, session?.access_token);
       // Persist token to sessionStorage so page refresh reconnects without the lobby
       try { sessionStorage.setItem(SESSION_KEY, t); } catch {}
       setToken(t);
@@ -1303,7 +1304,7 @@ export default function RoomPage() {
       console.error('Failed to generate LiveKit token:', e);
       setError('Could not connect to the room. Please check your connection.');
     }
-  }, [code, user, SESSION_KEY]);
+  }, [code, user, SESSION_KEY, meetingRecord?.room_code]);
 
   
 
