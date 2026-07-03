@@ -9,7 +9,7 @@ import { generateId } from '@/lib/ids';
 import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
 import { ParticipantRole, ParticipantStatus } from '@/types/meeting';
 
-export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void) {
+export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void, isAppAdmin?: boolean) {
   const room = useRoomContext();
 
   // Read initial mic/cam preferences saved by the pre-join lobby
@@ -36,7 +36,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const [meetingHostId, setMeetingHostId] = useState<string>(hostId || '');
   const [allowScreenShare, setAllowScreenShare] = useState(true);
 
-  const isAdmin = room?.localParticipant?.identity === meetingHostId || !!cohosts[room?.localParticipant?.identity || ''];
+  const isAdmin = room?.localParticipant?.identity === meetingHostId || !!cohosts[room?.localParticipant?.identity || ''] || !!isAppAdmin;
 
   const addReaction = useCallback((senderId: string, emoji: string) => {
     const reaction = {
@@ -66,9 +66,9 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             
             // Check if local participant is host
             const isLocalHost = room?.localParticipant?.identity === meeting.host_id;
-            const initialStatus: ParticipantStatus = (isLocalHost || !reqApproval) ? 'admitted' : 'waiting';
+            const initialStatus: ParticipantStatus = (isLocalHost || isAppAdmin || !reqApproval) ? 'admitted' : 'waiting';
             
-            if (!isLocalHost && reqApproval) {
+            if (!isLocalHost && !isAppAdmin && reqApproval) {
               setIsAdmitted(false);
             } else {
               setIsAdmitted(true);

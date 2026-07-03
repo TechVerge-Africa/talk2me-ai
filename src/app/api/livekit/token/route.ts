@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     const { data: meeting } = await adminClient
       .from('meetings')
       .select('id, is_active, host_id')
-      .eq('room_name', roomNameResult.value) // room_name == LiveKit room name
+      .or(`room_name.eq."${roomNameResult.value}",room_code.eq."${roomNameResult.value}"`)
       .eq('is_active', true)
       .maybeSingle();
 

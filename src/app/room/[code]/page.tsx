@@ -518,12 +518,14 @@ function RoomContent({
   onLeave,
   hostIdentity,
   meetingId,
+  isAppAdmin,
 }: {
   code: string;
   isHost: boolean;
   onLeave: (endForAll?: boolean) => void;
   hostIdentity?: string;
   meetingId?: string;
+  isAppAdmin?: boolean;
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode,
@@ -533,7 +535,7 @@ function RoomContent({
 
     isAdmitted, joinRequests, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
     approveJoinRequest, denyJoinRequest, admitAllJoinRequests, muteAllParticipants, updateSettings, changeParticipantRole, stopParticipantScreenShare
-  } = useMeeting(code, hostIdentity, () => onLeave(false));
+  } = useMeeting(code, hostIdentity, () => onLeave(false), isAppAdmin);
 
   const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -567,11 +569,16 @@ function RoomContent({
     content: string;
   } | null>(null);
 
+  const lastProcessedMessageIdRef = useRef<string | null>(null);
+
   // Track unread messages and notifications
   useEffect(() => {
     if (messages.length === 0) return;
     const lastMessage = messages[messages.length - 1];
     
+    if (lastProcessedMessageIdRef.current === lastMessage.id) return;
+    lastProcessedMessageIdRef.current = lastMessage.id;
+
     // Don't count or notify for our own messages
     const isMe = lastMessage.sender_id === localParticipant?.identity;
     if (isMe) return;
@@ -1471,7 +1478,7 @@ export default function RoomPage() {
       options={roomOptions}
     >
       <RoomAudioRenderer />
-      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} meetingId={meetingRecord?.id} />
+      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} meetingId={meetingRecord?.id} isAppAdmin={profile?.role === 'admin'} />
     </LiveKitRoom>
   );
 }
