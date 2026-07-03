@@ -244,26 +244,53 @@ export const MeetingService = {
     role?: ParticipantRole;
     status?: ParticipantStatus;
   }): Promise<MeetingParticipant> {
-    const { data, error } = await supabase
-      .from('meeting_participants')
-      .upsert({
-        meeting_id: params.meeting_id,
-        identity: params.identity,
-        display_name: params.display_name,
-        user_id: params.user_id || null,
-        role: params.role || 'participant',
-        status: params.status || 'waiting',
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'meeting_id,identity' })
-      .select()
-      .single();
+    const payload = {
+      meeting_id: params.meeting_id,
+      identity: params.identity,
+      display_name: params.display_name,
+      user_id: params.user_id || null,
+      role: params.role || 'participant',
+      status: params.status || 'waiting',
+      updated_at: new Date().toISOString(),
+    };
 
-    if (error) {
-      console.error('Error joining meeting participant:', error);
-      throw new AppError('Failed to register participant state', 'PARTICIPANT_JOIN_FAILED', { cause: error });
+    // 1. Try to insert (works for anon & auth users if row doesn't exist)
+    const { data: insertData, error: insertError } = await supabase
+      .from('meeting_participants')
+      .insert([payload])
+      .select()
+      .maybeSingle();
+
+    if (insertError) {
+      // 23505 = unique_violation
+      if (insertError.code === '23505') {
+        // 2. Try to update (works for auth users)
+        const { data: updateData, error: updateError } = await supabase
+          .from('meeting_participants')
+          .update(payload)
+          .eq('meeting_id', params.meeting_id)
+          .eq('identity', params.identity)
+          .select()
+          .maybeSingle();
+
+        if (updateError || !updateData) {
+          // 3. If update fails due to RLS (anon user), just fetch existing row
+          const { data: existingData, error: fetchError } = await supabase
+            .from('meeting_participants')
+            .select('*')
+            .eq('meeting_id', params.meeting_id)
+            .eq('identity', params.identity)
+            .single();
+            
+          if (fetchError) throw fetchError;
+          return existingData as MeetingParticipant;
+        }
+        return updateData as MeetingParticipant;
+      }
+      throw insertError;
     }
 
-    return data as MeetingParticipant;
+    return insertData as MeetingParticipant;
   },
 
   /**
