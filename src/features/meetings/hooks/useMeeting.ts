@@ -8,9 +8,11 @@ import { supabase } from '@/services/supabase/client';
 import { generateId } from '@/lib/ids';
 import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
 import { ParticipantRole, ParticipantStatus } from '@/types/meeting';
+import { useAuth } from '@/features/auth/use-auth';
 
 export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void, isAppAdmin?: boolean) {
   const room = useRoomContext();
+  const { user } = useAuth();
 
   // Read initial mic/cam preferences saved by the pre-join lobby
   const [micOn, setMicOn] = useState(() => {
@@ -74,7 +76,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
               setIsAdmitted(true);
             }
 
-            if (room?.localParticipant) {
+            if (room?.localParticipant && room.localParticipant.identity) {
               const localIdentity = room.localParticipant.identity;
               const displayName = localStorage.getItem('t2_display_name') || localIdentity;
               const role: ParticipantRole = isLocalHost ? 'host' : 'participant';
@@ -84,7 +86,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
                 identity: localIdentity,
                 display_name: displayName,
                 role,
-                status: initialStatus
+                status: initialStatus,
+                user_id: user?.id || undefined,
               }).catch(e => console.warn('Supabase join participant fallback:', e));
             }
           }
@@ -94,11 +97,11 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       }
     }
     if (room) loadSettingsAndRegister();
-  }, [room, roomCode]);
+  }, [room, roomCode, room?.localParticipant?.identity, user?.id, isAppAdmin]);
 
   // ─── SUPABASE REALTIME SUBSCRIPTION FOR PARTICIPANTS ────────────────────
   useEffect(() => {
-    if (!meetingDbId || !room?.localParticipant) return;
+    if (!meetingDbId || !room?.localParticipant || !room.localParticipant.identity) return;
 
     const channel = supabase
       .channel(`meeting_participants_${meetingDbId}`)
@@ -159,7 +162,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [meetingDbId, room, isAdmitted, onLeave]);
+  }, [meetingDbId, room, room?.localParticipant?.identity, isAdmitted, onLeave]);
 
   // ─── PERSISTENT CHAT: LOAD HISTORY + REALTIME SUBSCRIPTION ─────────────
   useEffect(() => {
@@ -241,11 +244,11 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       setMicOn(false);
       setCamOn(false);
     }
-  }, [isAdmitted, room]);
+  }, [isAdmitted, room, room?.localParticipant]);
 
   // Guest lobby polling: periodically re-publish join requests to host
   useEffect(() => {
-    if (!isAdmitted && room?.localParticipant) {
+    if (!isAdmitted && room?.localParticipant && room.localParticipant.identity) {
       const sendJoinRequest = () => {
         publishRoomData(room.localParticipant, {
           type: 'join_request',
@@ -257,7 +260,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             meeting_id: meetingDbId,
             identity: room.localParticipant.identity,
             display_name: localStorage.getItem('t2_display_name') || room.localParticipant.identity,
-            status: 'waiting'
+            status: 'waiting',
+            user_id: user?.id || undefined,
           }).catch(() => {});
         }
       };
@@ -266,7 +270,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       const interval = setInterval(sendJoinRequest, 5000);
       return () => clearInterval(interval);
     }
-  }, [isAdmitted, room, meetingDbId]);
+  }, [isAdmitted, room, room?.localParticipant?.identity, meetingDbId, user?.id]);
 
   useEffect(() => {
     if (!room) return;
