@@ -9,12 +9,12 @@ import { useAuth } from "@/features/auth/use-auth";
 import { supabase } from "@/services/supabase/client";
 
 const NAV_ITEMS = [
-  { label: "Product",     href: "#product"     },
-  { label: "Solutions",   href: "#solutions"   },
-  { label: "Accessibility", href: "#accessibility" },
-  { label: "Pricing",     href: "#pricing"     },
-  { label: "Developers",  href: "#developers"  },
-  { label: "Resources",   href: "#resources"   },
+  { label: "Product",       href: "/#product" },
+  { label: "Solutions",     href: "/#solutions" },
+  { label: "Accessibility", href: "/#accessibility" },
+  { label: "Pricing",       href: "/#pricing" },
+  { label: "Developers",    href: "/developers" },
+  { label: "Resources",     href: "/resources" },
 ];
 
 /* ─── Desktop Navbar ───────────────────────────────────────────── */
