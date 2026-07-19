@@ -5,8 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, Search, ChevronDown, Phone, MessageSquare } from 'lucide-react';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, Search, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
+import { VoiceWaveVisualizer } from '@/components/ui/voice-wave-visualizer';
 
 import { MeetingLayout } from '@/features/meetings/room/layout';
 import { ControlDock } from '@/features/meetings/room/controls';
@@ -46,11 +49,30 @@ function PreJoinLobby({
   const [micOn, setMicOn] = useState(() => {
     try { return localStorage.getItem('t2_pref_mic') !== 'false'; } catch { return true; }
   });
+  const [aiNoiseOn, setAiNoiseOn] = useState(() => {
+    try { return localStorage.getItem('t2_pref_ai_noise') === 'true'; } catch { return false; }
+  });
   const [audioLevel, setAudioLevel] = useState(0);
+  const [noiseReduction, setNoiseReduction] = useState(0);
   const [mediaAvailable, setMediaAvailable] = useState(true);
+
+  // Microphone recording test drive states
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedBuffer, setRecordedBuffer] = useState<AudioBuffer | null>(null);
+  const [isPlayingTest, setIsPlayingTest] = useState(false);
+  const [testAiOn, setTestAiOn] = useState(true);
+  const [recordingCountdown, setRecordingCountdown] = useState(5);
+
   const audioStreamRef = useRef<MediaStream | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  const lobbyProcessorRef = useRef<RNNoiseTrackProcessor | null>(null);
+  const lobbyCtxRef = useRef<AudioContext | null>(null);
+
+  const testSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const testProcessorRef = useRef<RNNoiseTrackProcessor | null>(null);
+  const testCtxRef = useRef<AudioContext | null>(null);
 
   // Check if mediaDevices API is available (requires HTTPS)
   useEffect(() => {
@@ -66,29 +88,60 @@ function PreJoinLobby({
   useEffect(() => {
     try { localStorage.setItem('t2_pref_mic', String(micOn)); } catch {}
   }, [micOn]);
+  useEffect(() => {
+    try { localStorage.setItem('t2_pref_ai_noise', String(aiNoiseOn)); } catch {}
+  }, [aiNoiseOn]);
 
   useEffect(() => {
     let mounted = true;
     async function setupAudio() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            autoGainControl: true,
+            noiseSuppression: !aiNoiseOn,
+          }
+        });
         if (!mounted) {
           stream.getTracks().forEach(t => t.stop());
           return;
         }
         audioStreamRef.current = stream;
-        const ctx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
-        const src = ctx.createMediaStreamSource(stream);
+        
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        lobbyCtxRef.current = ctx;
+        
+        let finalNode: AudioNode = ctx.createMediaStreamSource(stream);
+        
+        if (aiNoiseOn) {
+          const processor = new RNNoiseTrackProcessor((metrics) => {
+            if (mounted) {
+              setNoiseReduction(Math.round(metrics.reductionRatio * 100));
+            }
+          });
+          lobbyProcessorRef.current = processor;
+          
+          await processor.init({ audioContext: ctx, track: stream.getAudioTracks()[0] });
+          
+          if (processor.processedTrack && mounted) {
+            const processedStream = new MediaStream([processor.processedTrack]);
+            finalNode = ctx.createMediaStreamSource(processedStream);
+          }
+        } else {
+          setNoiseReduction(0);
+        }
+
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
-        src.connect(analyser);
+        finalNode.connect(analyser);
         analyserRef.current = analyser;
 
         const bufferLength = analyser.fftSize;
         const data = new Uint8Array(bufferLength);
         let smooth = 0;
         const tick = () => {
-          if (!analyserRef.current) return;
+          if (!mounted || !analyserRef.current) return;
           // use time-domain data for amplitude (RMS) — more sensitive for voice
           analyserRef.current.getByteTimeDomainData(data);
           let sumSq = 0;
@@ -107,10 +160,16 @@ function PreJoinLobby({
         tick();
       } catch (err) {
         // ignore audio permission errors here — user can still join
+        console.warn('Lobby audio preview error:', err);
       }
     }
 
-    if (micOn) setupAudio();
+    if (micOn) {
+      setupAudio();
+    } else {
+      setAudioLevel(0);
+      setNoiseReduction(0);
+    }
 
     return () => {
       mounted = false;
@@ -118,9 +177,125 @@ function PreJoinLobby({
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach(t => t.stop());
       }
+      if (lobbyProcessorRef.current) {
+        lobbyProcessorRef.current.destroy().catch(console.error);
+        lobbyProcessorRef.current = null;
+      }
+      if (lobbyCtxRef.current) {
+        lobbyCtxRef.current.close().catch(console.error);
+        lobbyCtxRef.current = null;
+      }
       analyserRef.current = null;
     };
-  }, [micOn]);
+  }, [micOn, aiNoiseOn]);
+
+  const startTestRecording = async () => {
+    try {
+      setIsRecording(true);
+      setRecordedBuffer(null);
+      setRecordingCountdown(5);
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const arrayBuffer = await blob.arrayBuffer();
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        setRecordedBuffer(audioBuffer);
+        setIsRecording(false);
+        stream.getTracks().forEach(t => t.stop());
+      };
+      
+      mediaRecorder.start();
+      
+      let timeLeft = 5;
+      const interval = setInterval(() => {
+        timeLeft -= 1;
+        setRecordingCountdown(timeLeft);
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          mediaRecorder.stop();
+        }
+      }, 1000);
+    } catch (e) {
+      console.error('Failed to record test sample:', e);
+      setIsRecording(false);
+    }
+  };
+
+  const playTestSample = async () => {
+    if (!recordedBuffer) return;
+    
+    if (isPlayingTest) {
+      stopTestPlayback();
+      return;
+    }
+    
+    try {
+      setIsPlayingTest(true);
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      testCtxRef.current = ctx;
+      
+      const source = ctx.createBufferSource();
+      source.buffer = recordedBuffer;
+      testSourceRef.current = source;
+      
+      if (testAiOn) {
+        const processor = new RNNoiseTrackProcessor();
+        testProcessorRef.current = processor;
+        
+        await ctx.audioWorklet.addModule('/worklets/rnnoise-worklet.js');
+        const workletNode = new AudioWorkletNode(ctx, 'rnnoise-worklet-processor');
+        
+        // Connect BufferSource -> RNNoise -> Context Destination
+        source.connect(workletNode);
+        workletNode.connect(ctx.destination);
+      } else {
+        source.connect(ctx.destination);
+      }
+      
+      source.onended = () => {
+        setIsPlayingTest(false);
+      };
+      
+      source.start(0);
+    } catch (e) {
+      console.error('Failed to play test sample:', e);
+      setIsPlayingTest(false);
+    }
+  };
+
+  const stopTestPlayback = () => {
+    if (testSourceRef.current) {
+      try { testSourceRef.current.stop(); } catch {}
+      testSourceRef.current = null;
+    }
+    if (testCtxRef.current) {
+      try { testCtxRef.current.close(); } catch {}
+      testCtxRef.current = null;
+    }
+    setIsPlayingTest(false);
+  };
+
+  const toggleTestAi = (enabled: boolean) => {
+    setTestAiOn(enabled);
+    if (testProcessorRef.current) {
+      testProcessorRef.current.setEnabled(enabled);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopTestPlayback();
+    };
+  }, []);
 
   // make speaking detection sensitive — lower threshold
   const isSpeaking = audioLevel > 0.03;
@@ -129,9 +304,9 @@ function PreJoinLobby({
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6">
       <motion.div 
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-3xl p-6 rounded-[24px] glass-card border border-border relative overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-6"
+        className="w-full max-w-4xl p-6 rounded-[24px] glass-card border border-border relative overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-8"
       >
-        <div className={`relative rounded-lg overflow-hidden h-64 sm:h-80 md:h-auto ${isSpeaking ? 'ring-4 ring-emerald-400/20 shadow-[0_0_40px_rgba(16,185,129,0.12)]' : ''}`}>
+        <div className={`relative rounded-2xl overflow-hidden h-64 md:h-auto flex flex-col min-h-[320px] border border-white/5 ${isSpeaking ? 'ring-4 ring-emerald-400/20 shadow-[0_0_40px_rgba(16,185,129,0.12)]' : ''}`}>
           <CameraPreview camOn={camOn} />
           {isSpeaking && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-start justify-end p-4">
@@ -144,62 +319,169 @@ function PreJoinLobby({
               </div>
             </div>
           )}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 md:left-3 md:-translate-x-0 flex items-center gap-2 z-30">
-            <button
-              onClick={() => setCamOn(v => !v)}
-              aria-label="Toggle camera"
-              className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
-                camOn ? 'bg-black/50 hover:bg-black/70' : 'bg-bridge-cyan/80 hover:bg-bridge-cyan shadow-lg'
-              }`}
-            >
-              {camOn ? <Video className="size-4" /> : <VideoOff className="size-4" />}
-              <span className="text-xs hidden sm:inline">{camOn ? 'Video On' : 'Enable Camera'}</span>
-            </button>
-            <button
-              onClick={() => setMicOn(v => !v)}
-              aria-label="Toggle microphone"
-              className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
-                micOn ? 'bg-black/50 hover:bg-black/70' : 'bg-bridge-indigo/80 hover:bg-bridge-indigo shadow-lg'
-              }`}
-            >
-              {micOn ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-              <span className="text-xs hidden sm:inline">{micOn ? 'Mic On' : 'Enable Mic'}</span>
-            </button>
+          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between z-30">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCamOn(v => !v)}
+                aria-label="Toggle camera"
+                className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
+                  camOn ? 'bg-black/50 hover:bg-black/70' : 'bg-bridge-cyan/80 hover:bg-bridge-cyan shadow-lg'
+                }`}
+              >
+                {camOn ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+                <span className="text-xs hidden sm:inline">{camOn ? 'Video On' : 'Enable Camera'}</span>
+              </button>
+              <button
+                onClick={() => setMicOn(v => !v)}
+                aria-label="Toggle microphone"
+                className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
+                  micOn ? 'bg-black/50 hover:bg-black/70' : 'bg-bridge-indigo/80 hover:bg-bridge-indigo shadow-lg'
+                }`}
+              >
+                {micOn ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+                <span className="text-xs hidden sm:inline">{micOn ? 'Mic On' : 'Enable Mic'}</span>
+              </button>
+            </div>
+            
+            {micOn && (
+              <button
+                onClick={() => setAiNoiseOn(v => !v)}
+                aria-label="Toggle AI Noise Shield"
+                className={`px-3.5 py-2.5 rounded-full backdrop-blur text-white flex items-center gap-2 touch-manipulation text-sm font-bold transition-all ${
+                  aiNoiseOn 
+                    ? 'bg-gradient-to-r from-emerald-505 to-cyan-500 hover:opacity-95 shadow-lg shadow-emerald-500/25 border border-emerald-400/20 bg-emerald-500' 
+                    : 'bg-black/50 hover:bg-black/70'
+                }`}
+              >
+                {aiNoiseOn ? <Shield className="size-4 text-white animate-pulse" /> : <ShieldOff className="size-4 text-white/50" />}
+                <span className="text-xs">{aiNoiseOn ? 'AI Shield Active' : 'AI Shield Off'}</span>
+              </button>
+            )}
           </div>
           <div className="absolute top-4 left-4 z-30">
             <div className="px-3 py-1.5 rounded-full bg-black/40 text-white text-[10px] font-bold">Preview</div>
           </div>
-
-        
         </div>
 
-        <div className="flex flex-col justify-center p-4">
+        <div className="flex flex-col justify-center p-2">
           <h2 className="text-2xl font-bold tracking-tight mb-2">Join Meeting</h2>
           <p className="text-muted-foreground text-sm mb-4">{isHost ? "You're joining as the Host." : "Please enter your name to join."}</p>
 
-          {!micOn && !camOn && (
-            <div className="mb-3 text-sm text-muted-foreground text-center">Tap the controls below to enable your camera and microphone.</div>
-          )}
-
-          <div className="mb-4">
-            <div className="w-full h-3 bg-muted/40 rounded-full overflow-hidden mb-2">
-              <div
-                style={{ width: `${Math.min(100, Math.round(audioLevel * 100))}%` }}
-                className={`h-full transition-all ${isSpeaking ? 'bg-gradient-to-r from-emerald-400 via-bridge-cyan to-bridge-indigo' : 'bg-bridge-cyan'}`}
-              />
-            </div>
+          <div className="mb-6 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="text-[10px] text-muted-foreground">Microphone level</div>
-              {isSpeaking ? (
-                <div className="text-[11px] font-bold text-emerald-500 flex items-center gap-2">
-                  <span className="relative w-3 h-3">
-                    <span className="absolute inset-0 rounded-full bg-emerald-400/40 animate-orb-pulse" />
-                    <span className="relative inline-block w-2 h-2 rounded-full bg-emerald-400 shadow-2xl" />
-                  </span>
-                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-bridge-cyan">Speaking</span>
-                </div>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Lobby Audio Shield</span>
+              {aiNoiseOn && noiseReduction > 0 && isSpeaking ? (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9 }} 
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold flex items-center gap-1.5 shadow-sm"
+                >
+                  <Shield className="size-3 text-emerald-400" />
+                  <span>AI Denoising: {noiseReduction}%</span>
+                </motion.div>
               ) : null}
             </div>
+            
+            <VoiceWaveVisualizer audioLevel={audioLevel} aiOn={aiNoiseOn} isSpeaking={isSpeaking} />
+          </div>
+
+          {/* Interactive AI Mic Check Widget */}
+          <div className="mb-6 p-4 rounded-2xl bg-card border border-border relative overflow-hidden">
+            <div className="absolute -right-6 -bottom-6 size-24 rounded-full bg-bridge-indigo/5 blur-xl pointer-events-none" />
+            <h3 className="text-xs font-bold text-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#6366f1]" />
+              AI Mic Test Drive
+            </h3>
+            
+            {!recordedBuffer && !isRecording ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Record a short clip to hear exactly how the AI Voice Isolation cleans your voice.
+                </p>
+                <button
+                  type="button"
+                  onClick={startTestRecording}
+                  className="mt-1.5 w-full py-2.5 rounded-xl border border-dashed border-bridge-indigo/40 hover:border-bridge-indigo hover:bg-bridge-indigo/5 text-bridge-indigo text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Mic className="size-3.5" />
+                  Record 5s Sample
+                </button>
+              </div>
+            ) : isRecording ? (
+              <div className="flex flex-col items-center justify-center py-2.5 gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="size-2.5 rounded-full bg-red-500 animate-ping" />
+                  <span className="text-xs font-bold text-red-500">Recording... Speak now</span>
+                </div>
+                <div className="text-2xl font-mono font-bold text-foreground">{recordingCountdown}s</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <button
+                    type="button"
+                    onClick={playTestSample}
+                    className={`flex-1 py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer ${
+                      isPlayingTest ? 'bg-red-500 hover:bg-red-600' : 'bg-[#4f46e5] hover:bg-[#4f46e5]/90'
+                    }`}
+                  >
+                    {isPlayingTest ? (
+                      <>
+                        <Square className="size-3.5 fill-white" />
+                        Stop Playback
+                      </>
+                    ) : (
+                      <>
+                        <Play className="size-3.5 fill-white" />
+                        Listen To Sample
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={startTestRecording}
+                    title="Retake recording"
+                    disabled={isPlayingTest}
+                    className="p-2.5 rounded-xl border border-border hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="size-3.5" />
+                  </button>
+                </div>
+                
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/50 border border-border/50">
+                  <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                    {testAiOn ? (
+                      <Shield className="size-3 text-emerald-400 fill-emerald-400/10" />
+                    ) : (
+                      <ShieldOff className="size-3 text-white/40" />
+                    )}
+                    AI Voice Isolation
+                  </span>
+                  
+                  <div className="flex items-center gap-1 bg-[#121417] p-0.5 rounded-lg border border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => toggleTestAi(false)}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                        !testAiOn ? 'bg-white/10 text-white font-bold' : 'text-white/40 hover:text-white/70'
+                      }`}
+                    >
+                      Raw
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleTestAi(true)}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                        testAiOn ? 'bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/10' : 'text-white/40 hover:text-white/70'
+                      }`}
+                    >
+                      AI Active
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <form onSubmit={e => {
@@ -210,6 +492,7 @@ function PreJoinLobby({
             try {
               localStorage.setItem('t2_pref_mic', String(micOn));
               localStorage.setItem('t2_pref_cam', String(camOn));
+              localStorage.setItem('t2_pref_ai_noise', String(aiNoiseOn));
               if (name.trim()) localStorage.setItem('t2_display_name', name.trim());
             } catch {}
             onJoin(joinName);
@@ -528,7 +811,7 @@ function RoomContent({
   isAppAdmin?: boolean;
 }) {
   const {
-    micOn, camOn, screenShareOn, isDeafMode,
+    micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
     captions, messages, participants,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
@@ -1106,6 +1389,9 @@ function RoomContent({
             onLeave={(endForAll) => onLeave(endForAll)}
             isHost={isHost}
             unreadCount={unreadCount}
+            aiNoiseOn={aiNoiseShieldOn}
+            noiseReductionLevel={noiseReductionLevel}
+            onToggleAiNoise={toggleAiNoiseShield}
           />
         }
       >

@@ -1,6 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
-import { RoomEvent, RemoteParticipant, LocalParticipant, TranscriptionSegment } from 'livekit-client';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { RoomEvent, RemoteParticipant, LocalParticipant, TranscriptionSegment, LocalAudioTrack, Track } from 'livekit-client';
 import { useRoomContext } from '@livekit/components-react';
+import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
 import { Message } from '@/types/message';
 import { TranscriptService } from '@/services/supabase/transcripts';
 import { MeetingService } from '@/services/supabase/meetings';
@@ -23,6 +24,10 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   });
   const [screenShareOn, setScreenShareOn] = useState(false);
   const [isDeafMode, setIsDeafMode] = useState(false);
+  const [aiNoiseShieldOn, setAiNoiseShieldOn] = useState(() => {
+    try { return localStorage.getItem('t2_pref_ai_noise') === 'true'; } catch { return false; }
+  });
+  const [noiseReductionLevel, setNoiseReductionLevel] = useState(0);
   const [participants, setParticipants] = useState<(RemoteParticipant | LocalParticipant)[]>([]);
   const [captions, setCaptions] = useState<Message[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -216,6 +221,94 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmitted, roomCode]);
+
+  // Apply saved lobby prefs to real LiveKit tracks on room connect
+  const processorRef = useRef<RNNoiseTrackProcessor | null>(null);
+
+  // Apply/remove the processor based on aiNoiseShieldOn and local track state
+  useEffect(() => {
+    if (!room?.localParticipant) return;
+
+    const updateProcessor = async () => {
+      const publication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      const track = publication?.track as LocalAudioTrack | undefined;
+
+      if (!track) return;
+
+      if (aiNoiseShieldOn) {
+        if (!processorRef.current) {
+          processorRef.current = new RNNoiseTrackProcessor((metrics) => {
+            setNoiseReductionLevel(Math.round(metrics.reductionRatio * 100));
+          });
+        }
+
+        // Restart track with noiseSuppression: false to avoid double processing
+        const currentConstraints = track.mediaStreamTrack.getConstraints();
+        if (currentConstraints.noiseSuppression !== false) {
+          try {
+            await track.restartTrack({
+              echoCancellation: true,
+              autoGainControl: true,
+              noiseSuppression: false,
+            });
+          } catch (e) {
+            console.warn('Failed to restart track with disabled noise suppression:', e);
+          }
+        }
+
+        // Apply the processor if not already applied
+        if ((track as any).processor !== processorRef.current) {
+          try {
+            await track.setProcessor(processorRef.current);
+          } catch (e) {
+            console.error('Failed to set RNNoise processor:', e);
+          }
+        }
+      } else {
+        // Turn off processor
+        if ((track as any).processor) {
+          try {
+            await track.stopProcessor();
+          } catch (e) {
+            console.error('Failed to stop processor:', e);
+          }
+        }
+
+        // Restore native noise suppression
+        const currentConstraints = track.mediaStreamTrack.getConstraints();
+        if (currentConstraints.noiseSuppression !== true) {
+          try {
+            await track.restartTrack({
+              echoCancellation: true,
+              autoGainControl: true,
+              noiseSuppression: true,
+            });
+          } catch (e) {
+            console.warn('Failed to restore native noise suppression:', e);
+          }
+        }
+        setNoiseReductionLevel(0);
+      }
+    };
+
+    updateProcessor();
+
+    const handleTrackPublished = (pub: any) => {
+      if (pub.source === Track.Source.Microphone) {
+        updateProcessor();
+      }
+    };
+
+    room.on(RoomEvent.LocalTrackPublished, handleTrackPublished);
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, handleTrackPublished);
+      // Clean up processor if unmounting hook
+      if (processorRef.current) {
+        processorRef.current.destroy().catch(console.error);
+        processorRef.current = null;
+      }
+    };
+  }, [room, aiNoiseShieldOn, room?.localParticipant]);
 
   // Apply saved lobby prefs to real LiveKit tracks on room connect
   useEffect(() => {
@@ -519,6 +612,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
 
   const toggleDeafMode = useCallback(() => setIsDeafMode(v => !v), []);
 
+  const toggleAiNoiseShield = useCallback(() => {
+    setAiNoiseShieldOn((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('t2_pref_ai_noise', String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const sendMessage = useCallback((content: string, recipientId?: string) => {
     if (!room?.localParticipant) return;
     if (!isAdmitted) return;
@@ -677,6 +778,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     camOn,
     screenShareOn,
     isDeafMode,
+    aiNoiseShieldOn,
+    noiseReductionLevel,
     participants,
     captions,
     messages,
@@ -686,6 +789,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     toggleCam,
     toggleScreenShare,
     toggleDeafMode,
+    toggleAiNoiseShield,
     toggleRaiseHand,
     sendReaction,
     sendMessage,

@@ -4,7 +4,7 @@ import {
   Mic, MicOff, Video, VideoOff, Type,
   Smile, PhoneOff, Hand, Ear, EarOff,
   MonitorUp, Users, MessageSquare, Sparkles,
-  Copy, Check, MoreHorizontal, X
+  Copy, Check, MoreHorizontal, X, Shield, ShieldOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -33,6 +33,9 @@ interface ControlDockProps {
   participantCount?: number;
   participantsOpen?: boolean;
   unreadCount?: number;
+  aiNoiseOn?: boolean;
+  noiseReductionLevel?: number;
+  onToggleAiNoise?: () => void;
 }
 
 export function ControlDock({
@@ -46,6 +49,9 @@ export function ControlDock({
   onToggleChat,
   captionsOn, onToggleCaptions,
   unreadCount = 0,
+  aiNoiseOn = false,
+  noiseReductionLevel = 0,
+  onToggleAiNoise,
 }: ControlDockProps) {
   const [copied, setCopied] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -277,6 +283,24 @@ export function ControlDock({
                   </div>
                   <span className="text-[11px] text-white/70 font-medium">People</span>
                 </button>
+
+                {/* AI Noise Shield */}
+                {micOn && onToggleAiNoise && (
+                  <button
+                    onClick={() => {
+                      onToggleAiNoise();
+                    }}
+                    aria-label={aiNoiseOn ? "Disable AI Noise Shield" : "Enable AI Noise Shield"}
+                    className="flex flex-col items-center gap-2 text-center group cursor-pointer"
+                  >
+                    <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${aiNoiseOn ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-[#2d3139]/80 text-white/95 group-active:scale-95'}`}>
+                      {aiNoiseOn ? <Shield className="size-5 animate-pulse" /> : <ShieldOff className="size-5 text-white/50" />}
+                    </div>
+                    <span className="text-[11px] text-white/70 font-medium">
+                      {aiNoiseOn ? `AI Shield: ${noiseReductionLevel}%` : "AI Shield Off"}
+                    </span>
+                  </button>
+                )}
               </div>
 
               {/* Divider */}
@@ -338,6 +362,17 @@ export function ControlDock({
             className={micOn ? idleBtn : offBtn}>
             {micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}
           </button>
+          
+          {micOn && onToggleAiNoise && (
+            <button
+              onClick={onToggleAiNoise}
+              title={aiNoiseOn ? `AI Noise Shield Active (${noiseReductionLevel}% reduced)` : "Enable AI Noise Shield"}
+              aria-label="Toggle AI Noise Shield"
+              className={aiNoiseOn ? activeBtn("bg-gradient-to-r from-emerald-500 to-cyan-500 hover:opacity-95 shadow-lg border border-emerald-400/20 bg-emerald-500") : idleBtn}
+            >
+              {aiNoiseOn ? <Shield className="size-5 text-white animate-pulse" /> : <ShieldOff className="size-5 text-white/50" />}
+            </button>
+          )}
           <button onClick={onToggleCam} title={camOn ? "Stop Video" : "Start Video"}
             aria-label={camOn ? "Disable Camera" : "Enable Camera"}
             className={camOn ? idleBtn : offBtn}>
