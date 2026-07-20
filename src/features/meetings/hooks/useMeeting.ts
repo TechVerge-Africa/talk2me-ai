@@ -169,57 +169,19 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     };
   }, [meetingDbId, room, room?.localParticipant?.identity, isAdmitted, onLeave]);
 
-  // ─── PERSISTENT CHAT: LOAD HISTORY + REALTIME SUBSCRIPTION ─────────────
+  // ─── PERSISTENT CHAT: LOAD HISTORY ON INITIAL JOIN ─────────────────────
   useEffect(() => {
     if (!isAdmitted) return;
 
-    let chatChannel: ReturnType<typeof supabase.channel> | null = null;
-
-    async function loadAndSubscribeChatHistory() {
-      // 1) Load all existing messages for this room from Supabase
+    async function loadChatHistory() {
+      // Load existing messages for this room from Supabase for late-joiners
       const history = await MeetingService.getMeetingMessages(roomCode);
       if (history.length > 0) {
-        setMessages(() => history);
+        setMessages(history);
       }
-
-      // 2) Subscribe to Supabase Realtime for new messages written by others
-      chatChannel = supabase
-        .channel(`meeting_messages_${roomCode}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'meeting_messages',
-            filter: `room_code=eq.${roomCode}`,
-          },
-          (payload) => {
-            const row = payload.new as any;
-            // Avoid duplicates if the message was sent by the local participant
-            // (those are already in state from setMessages in sendMessage)
-            setMessages(prev => {
-              if (prev.some(m => m.id === row.id)) return prev;
-              return [...prev, {
-                id: row.id,
-                meeting_id: row.room_code,
-                sender_id: row.sender_id,
-                recipient_id: row.recipient_id || undefined,
-                content: row.content,
-                type: row.type || 'chat',
-                timestamp: row.created_at,
-              }];
-            });
-          }
-        )
-        .subscribe();
     }
 
-    loadAndSubscribeChatHistory();
-
-    return () => {
-      if (chatChannel) supabase.removeChannel(chatChannel);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadChatHistory();
   }, [isAdmitted, roomCode]);
 
   // Apply saved lobby prefs to real LiveKit tracks on room connect
@@ -339,29 +301,23 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
   }, [isAdmitted, room, room?.localParticipant]);
 
-  // Guest lobby polling: periodically re-publish join requests to host
+  // Guest lobby handshake: publish join request via LiveKit Data Channel on entry
   useEffect(() => {
     if (!isAdmitted && room?.localParticipant && room.localParticipant.identity) {
-      const sendJoinRequest = () => {
-        publishRoomData(room.localParticipant, {
-          type: 'join_request',
-          sender_id: room.localParticipant.identity,
-        }, { reliable: true });
+      publishRoomData(room.localParticipant, {
+        type: 'join_request',
+        sender_id: room.localParticipant.identity,
+      }, { reliable: true });
 
-        if (meetingDbId) {
-          MeetingService.joinMeetingParticipant({
-            meeting_id: meetingDbId,
-            identity: room.localParticipant.identity,
-            display_name: localStorage.getItem('t2_display_name') || room.localParticipant.identity,
-            status: 'waiting',
-            user_id: user?.id || undefined,
-          }).catch(() => {});
-        }
-      };
-
-      sendJoinRequest();
-      const interval = setInterval(sendJoinRequest, 5000);
-      return () => clearInterval(interval);
+      if (meetingDbId) {
+        MeetingService.joinMeetingParticipant({
+          meeting_id: meetingDbId,
+          identity: room.localParticipant.identity,
+          display_name: localStorage.getItem('t2_display_name') || room.localParticipant.identity,
+          status: 'waiting',
+          user_id: user?.id || undefined,
+        }).catch(() => {});
+      }
     }
   }, [isAdmitted, room, room?.localParticipant?.identity, meetingDbId, user?.id]);
 

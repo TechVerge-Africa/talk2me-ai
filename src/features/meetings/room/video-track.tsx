@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Track, LocalParticipant, RemoteParticipant } from 'livekit-client';
-import { useTracks, isTrackReference, VideoTrack as LiveKitVideoTrack } from '@livekit/components-react';
+import { useTracks, isTrackReference, VideoTrack as LiveKitVideoTrack, TrackReferenceOrPlaceholder } from '@livekit/components-react';
 import { Mic, MicOff } from 'lucide-react';
 
 interface ParticipantVideoProps {
@@ -13,6 +13,7 @@ interface ParticipantVideoProps {
   raised?: boolean;
   reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[];
   isMain?: boolean;
+  trackRef?: TrackReferenceOrPlaceholder;
 }
 
 // Renders a single video tile for a participant
@@ -23,10 +24,12 @@ export function ParticipantVideo({
   mirrored, 
   raised, 
   reactions,
-  isMain = false
+  isMain = false,
+  trackRef: externalTrackRef,
 }: ParticipantVideoProps) {
-  const tracks = useTracks([source]);
-  const trackRef = tracks.find(t => t.participant.identity === participant.identity);
+  // Only query all tracks if externalTrackRef was not provided by parent
+  const internalTracks = useTracks(externalTrackRef ? [] : [source]);
+  const trackRef = externalTrackRef ?? internalTracks.find(t => t.participant.identity === participant.identity);
 
   const initials = participant.identity.slice(0, 2).toUpperCase();
   const isSpeaking = participant.isSpeaking;

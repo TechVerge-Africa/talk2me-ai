@@ -1567,12 +1567,13 @@ export default function RoomPage() {
     dynacast: true,
     publishDefaults: {
       videoSimulcastLayers: [
+        VideoPresets.h720,
         VideoPresets.h360,
         VideoPresets.h180,
       ],
       videoEncode: {
-        maxBitrate: 400_000,
-        maxFramerate: 24,
+        maxBitrate: 1_500_000,
+        maxFramerate: 30,
       },
     },
   }), []);
