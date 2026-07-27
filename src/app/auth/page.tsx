@@ -120,35 +120,46 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="min-h-screen relative flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-background">
-      <AiWaveBackground className="opacity-30" />
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+    >
+      <AiWaveBackground className="opacity-20 pointer-events-none" />
       
       <div className="relative w-full max-w-xl my-auto">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-6 sm:p-14 rounded-3xl sm:rounded-[48px] shadow-2xl border-white/10 bg-card/40 backdrop-blur-2xl relative"
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ type: "spring", damping: 25, stiffness: 300 }}
+          className="glass-card p-6 sm:p-12 rounded-3xl sm:rounded-[40px] shadow-2xl border-white/10 bg-card/95 backdrop-blur-2xl relative"
         >
           {/* Close button returning home or previous page */}
           <button
             onClick={handleClose}
             type="button"
             className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2.5 sm:p-3 rounded-full bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-all duration-200 cursor-pointer z-20"
-            title="Close and return"
-            aria-label="Close authentication modal"
+            title="Close pop-up"
+            aria-label="Close authentication pop-up"
           >
             <X className="size-5" />
           </button>
 
           {/* Header */}
-          <div className="text-center mb-6 sm:mb-10 pt-2 sm:pt-0">
-            <motion.div
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              className="size-12 sm:size-16 rounded-2xl sm:rounded-[24px] bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg"
-            >
-              <LogIn className="size-6 sm:size-8 text-white" />
-            </motion.div>
+          <div className="text-center mb-6 sm:mb-8 pt-2 sm:pt-0">
+            <Link href="/" className="inline-block mb-4">
+              <img
+                src="/assets/logo-light.png"
+                alt="Talk2Me Logo"
+                className="dark:hidden h-10 w-auto object-contain mx-auto"
+              />
+              <img
+                src="/assets/logo-dark.png"
+                alt="Talk2Me Logo"
+                className="hidden dark:block h-10 w-auto object-contain mx-auto"
+              />
+            </Link>
             <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-2">
               {isForgotPassword ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
             </h1>
@@ -368,13 +379,12 @@ export default function AuthPage() {
             )}
           </div>
 
-
         </motion.div>
 
         {/* Ambient Glow */}
         <div className="absolute -top-20 -right-20 size-[400px] bg-bridge-cyan/5 blur-[120px] rounded-full pointer-events-none" />
         <div className="absolute -bottom-20 -left-20 size-[400px] bg-bridge-indigo/5 blur-[120px] rounded-full pointer-events-none" />
       </div>
-    </main>
+    </div>
   );
 }

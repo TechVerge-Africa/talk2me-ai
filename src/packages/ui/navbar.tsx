@@ -230,9 +230,9 @@ export function Navbar() {
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  // Hide completely inside meeting rooms — just like Google Meet / Zoom
+  // Hide completely inside meeting rooms, auth, join, and create pages — clean focused single-purpose views
   // This return must come AFTER all hooks above
-  const isExcluded = pathname?.startsWith('/room/') || pathname?.startsWith('/dashboard');
+  const isExcluded = pathname?.startsWith('/room/') || pathname?.startsWith('/dashboard') || pathname?.startsWith('/auth') || pathname?.startsWith('/join') || pathname?.startsWith('/create');
   if (isExcluded) return null;
 
   return (
