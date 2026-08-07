@@ -22,7 +22,8 @@ export function RealTimeCaptionOverlay({ captions, size = 'md' }: Props) {
 
     const timer = setTimeout(() => {
       setIsIdle(true);
-    }, 6000);
+    }, 12000);
+
 
     return () => clearTimeout(timer);
   }, [latestCaption?.id, latestCaption?.content]);

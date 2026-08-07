@@ -311,28 +311,27 @@ export function useWebSpeechSTT({
       recognition.onend = () => {
         setIsListening(false);
         setInterimText('');
+        recognitionRef.current = null;
 
         if (!isIntentionalStopRef.current && enabled && !usingFallback) {
-          const isSilence = lastErrorWasSilenceRef.current;
-          const delay = isSilence ? 150 : Math.min(1000 * Math.pow(1.5, retryCountRef.current), 5000);
-          if (!isSilence) {
-            retryCountRef.current += 1;
-          } else {
-            retryCountRef.current = 0;
+          retryCountRef.current += 1;
+          
+          // If native speech recognition keeps stopping abruptly (> 3 retries), fall back to Groq Whisper STT
+          if (retryCountRef.current > 3) {
+            console.warn('[WebSpeechSTT] Native STT keep ending abruptly. Switching to Groq Whisper Fallback STT...');
+            startFallbackRecorder();
+            return;
           }
 
           clearRetryTimer();
           retryTimerRef.current = setTimeout(() => {
             if (!isIntentionalStopRef.current) {
-              try {
-                recognition.start();
-              } catch {
-                startListening();
-              }
+              startListening();
             }
-          }, delay);
+          }, 100);
         }
       };
+
 
       recognitionRef.current = recognition;
       recognition.start();
