@@ -8,14 +8,10 @@ import {
   BookOpen, 
   Menu, 
   X, 
-  Check, 
-  Copy, 
   ChevronRight, 
   Terminal, 
   Radio, 
-  Keyboard, 
   ShieldCheck, 
-  HeartHandshake,
   Code
 } from 'lucide-react';
 import { GradientBackground } from '@/components/ui/gradient-background';
@@ -23,7 +19,7 @@ import { GradientBackground } from '@/components/ui/gradient-background';
 type DocSection = {
   id: string;
   title: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ className?: string }>;
   items: {
     slug: string;
     title: string;
@@ -246,7 +242,7 @@ function App() {
         To allow clients to securely connect to video rooms, you must generate a secure JSON Web Token (JWT) session token using your server credentials.
       </p>
       <div className="p-5 rounded-2xl bg-slate-900 border border-white/10 font-mono text-xs text-white/80 space-y-2">
-        <p className="text-cyan">// Example JSON payload sent to room token generator</p>
+        <p className="text-cyan">Example JSON payload sent to room token generator:</p>
         <pre>{`{
   "apiKey": "t2_api_key_sample",
   "roomName": "custom-room-code",

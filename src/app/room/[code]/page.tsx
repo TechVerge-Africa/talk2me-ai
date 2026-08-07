@@ -54,7 +54,6 @@ function PreJoinLobby({
   });
   const [audioLevel, setAudioLevel] = useState(0);
   const [noiseReduction, setNoiseReduction] = useState(0);
-  const [mediaAvailable, setMediaAvailable] = useState(true);
 
   // Microphone recording test drive states
   const [isRecording, setIsRecording] = useState(false);
@@ -74,12 +73,7 @@ function PreJoinLobby({
   const testProcessorRef = useRef<RNNoiseTrackProcessor | null>(null);
   const testCtxRef = useRef<AudioContext | null>(null);
 
-  // Check if mediaDevices API is available (requires HTTPS)
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setTimeout(() => setMediaAvailable(false), 0);
-    }
-  }, []);
+
 
   // Persist cam/mic prefs whenever they change
   useEffect(() => {
@@ -109,7 +103,7 @@ function PreJoinLobby({
         }
         audioStreamRef.current = stream;
         
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
         lobbyCtxRef.current = ctx;
         
         let finalNode: AudioNode = ctx.createMediaStreamSource(stream);
@@ -167,8 +161,10 @@ function PreJoinLobby({
     if (micOn) {
       setupAudio();
     } else {
-      setAudioLevel(0);
-      setNoiseReduction(0);
+      queueMicrotask(() => {
+        setAudioLevel(0);
+        setNoiseReduction(0);
+      });
     }
 
     return () => {
@@ -206,7 +202,7 @@ function PreJoinLobby({
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
         const arrayBuffer = await blob.arrayBuffer();
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
         const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
         setRecordedBuffer(audioBuffer);
         setIsRecording(false);
@@ -240,7 +236,7 @@ function PreJoinLobby({
     
     try {
       setIsPlayingTest(true);
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       testCtxRef.current = ctx;
       
       const source = ctx.createBufferSource();
@@ -800,7 +796,7 @@ function RoomContent({
   isHost,
   onLeave,
   hostIdentity,
-  meetingId,
+  meetingId: _meetingId,
   isAppAdmin,
 }: {
   code: string;
@@ -812,7 +808,7 @@ function RoomContent({
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
-    captions, messages, participants,
+    captions, messages, participants, sttStatus,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
 
@@ -821,14 +817,24 @@ function RoomContent({
   } = useMeeting(code, hostIdentity, () => onLeave(false), isAppAdmin);
 
   const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
-  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [transcriptOpen, setTranscriptOpen] = useState(() => {
+    try { return localStorage.getItem('t2_pref_captions') !== 'false'; } catch { return true; }
+  });
+
+  const handleToggleCaptions = useCallback(() => {
+    setTranscriptOpen(prev => {
+      const next = !prev;
+      try { localStorage.setItem('t2_pref_captions', String(next)); } catch {}
+      return next;
+    });
+  }, []);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'captions' | 'chat'>('captions');
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [codeCopied, setCodeCopied] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [admissionPopup, setAdmissionPopup] = useState(true);
+  const [_admissionPopup, _setAdmissionPopup] = useState(true);
   const [isEnteringDoor, setIsEnteringDoor] = useState(false);
   const prevAdmittedRef = useRef(isAdmitted);
 
@@ -843,7 +849,7 @@ function RoomContent({
   const hasScreenShare = screenTracks.length > 0;
   const activeSpeaker = useActiveSpeaker(participants);
   const localParticipant = participants.find(p => p instanceof LocalParticipant) as LocalParticipant | undefined;
-  const stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
+  const _stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeNotification, setActiveNotification] = useState<{
@@ -941,8 +947,8 @@ function RoomContent({
   };
 
   // Recording and network indicators (placeholders)
-  const [recordingOn, setRecordingOn] = useState(false);
-  const [networkQuality, setNetworkQuality] = useState<'good' | 'ok' | 'poor'>('good');
+  const [recordingOn, _setRecordingOn] = useState(false);
+  const [networkQuality, _setNetworkQuality] = useState<'good' | 'ok' | 'poor'>('good');
 
   const [displayName, setDisplayName] = useState<string | null>(() => {
     try { return localStorage.getItem('t2_display_name'); } catch { return null; }
@@ -959,7 +965,7 @@ function RoomContent({
   const [viewMode, setViewMode] = useState<'grid' | 'speaker' | 'focus' | 'fullscreen'>('grid');
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [showTopbar, setShowTopbar] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [_mobileMenuOpen, _setMobileMenuOpen] = useState(false);
   const [roomMode, setRoomMode] = useState<'call' | 'onthego'>('call');
 
   // Auto-disable camera when entering On-the-Go / Low-Bandwidth Mode to save bandwidth
@@ -988,7 +994,7 @@ function RoomContent({
     }
   };
 
-  const exitFullscreen = async () => {
+  const _exitFullscreen = async () => {
     if (document.fullscreenElement) {
       await document.exitFullscreen();
     }
@@ -1108,7 +1114,7 @@ function RoomContent({
       </div>
       <div className="flex-1 overflow-hidden">
         {activeTab === 'captions'
-          ? <CaptionList captions={captions} size={captionSize} />
+          ? <CaptionList captions={captions} size={captionSize} sttStatus={sttStatus} />
           : <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
         }
       </div>
@@ -1384,7 +1390,7 @@ function RoomContent({
             onToggleChat={() => { setActiveTab('chat'); setChatModalOpen(v => !v); }}
             onEmergency={() => setEmojiOpen(v => !v)}
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
-            captionsOn={transcriptOpen} onToggleCaptions={() => setTranscriptOpen(v => !v)}
+            captionsOn={transcriptOpen} onToggleCaptions={handleToggleCaptions}
             onShare={shareRoom}
             onLeave={(endForAll) => onLeave(endForAll)}
             isHost={isHost}
@@ -1399,7 +1405,7 @@ function RoomContent({
         <div className="w-full h-full min-h-0 relative">
           {mainStage}
           {/* Show captions only when transcript/captions are turned on */}
-          {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} speakerName={activeSpeaker?.identity} size={captionSize} />}
+          {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} size={captionSize} />}
           
           {/* Floating Message Notification popup */}
           <AnimatePresence>
@@ -1517,15 +1523,20 @@ function RoomContent({
       {/* Mobile Chat Modal */}
       {chatModalOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setChatModalOpen(false)} />
-          <div className="relative w-full sm:w-[560px] h-[60vh] sm:h-[70vh] rounded-2xl bg-background shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between p-3 border-b border-border">
-              <div className="text-sm font-bold">Chat</div>
-              <button onClick={() => setChatModalOpen(false)} className="size-8 rounded-md bg-muted/30 grid place-items-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setChatModalOpen(false)} />
+          <div className="relative w-full sm:w-[560px] h-[60vh] sm:h-[70vh] rounded-2xl bg-[#1c1f24] border border-white/10 text-white shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-3.5 border-b border-white/10 bg-[#121417]">
+              <div className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Meeting Chat</span>
+              </div>
+              <button 
+                onClick={() => setChatModalOpen(false)} 
+                className="size-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white grid place-items-center transition-all cursor-pointer"
+              >
                 ✕
               </button>
             </div>
-            <div className="p-4 h-[calc(100%-56px)]">
+            <div className="p-3 sm:p-4 h-[calc(100%-56px)] flex-1 overflow-hidden bg-[#1c1f24]">
               <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
             </div>
           </div>
@@ -1538,7 +1549,6 @@ function RoomContent({
 // ─── Outer page — handles token fetch, auth role, leave/rejoin ───────
 export default function RoomPage() {
   const params = useParams();
-  const router = useRouter();
   const code = params.code as string;
   const { user, profile, loading: authLoading } = useAuth();
 
@@ -1578,6 +1588,7 @@ export default function RoomPage() {
     },
   }), []);
 
+  const targetRoomCode = meetingRecord?.room_code;
   const fetchToken = useCallback(async (customName?: string) => {
     if (!code) return;
     const username = customName || user?.email?.split('@')[0]
@@ -1585,7 +1596,7 @@ export default function RoomPage() {
     if (!username) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const actualRoomCode = meetingRecord?.room_code || code;
+      const actualRoomCode = targetRoomCode || code;
       const t = await generateToken(actualRoomCode, username, session?.access_token);
       // Persist token to sessionStorage so page refresh reconnects without the lobby
       try { sessionStorage.setItem(SESSION_KEY, t); } catch {}
@@ -1596,7 +1607,7 @@ export default function RoomPage() {
       console.error('Failed to generate LiveKit token:', e);
       setError('Could not connect to the room. Please check your connection.');
     }
-  }, [code, user, SESSION_KEY, meetingRecord?.room_code]);
+  }, [code, user, SESSION_KEY, targetRoomCode]);
 
   
 
@@ -1624,7 +1635,9 @@ export default function RoomPage() {
     if (authLoading) return;
     if (!code) return;
 
-    setIsValidating(true);
+    queueMicrotask(() => {
+      setIsValidating(true);
+    });
     const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
 
     // Fast path: look for an active meeting (works for everyone)

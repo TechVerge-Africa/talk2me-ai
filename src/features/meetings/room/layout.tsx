@@ -15,7 +15,6 @@ export function MeetingLayout({
   sidebar, 
   topbar, 
   dock, 
-  isDeafMode,
   fullBleed = false,
   topbarVisible = true,
 }: MeetingLayoutProps) {

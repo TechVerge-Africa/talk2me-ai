@@ -46,7 +46,6 @@ function ParticipantRow({
   onKickRequest,
   raisedHands,
   isAdmin,
-  localParticipantIdentity,
   meetingHostId,
   onChangeParticipantRole,
   onStopParticipantScreenShare,

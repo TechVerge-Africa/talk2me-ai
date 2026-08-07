@@ -3,7 +3,7 @@
 import React from 'react';
 import { RemoteParticipant, Track } from 'livekit-client';
 import { ParticipantVideo } from './video-track';
-import { Maximize2, Minimize2, UserRound } from 'lucide-react';
+import { Maximize2 } from 'lucide-react';
 
 interface Props {
   interpreter?: RemoteParticipant;

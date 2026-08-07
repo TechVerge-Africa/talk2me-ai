@@ -13,13 +13,13 @@ export default function JoinPage() {
   const [showScanner, setShowScanner] = useState(false);
   const router = useRouter();
 
-  const handleClose = () => {
+  const handleClose = React.useCallback(() => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
     } else {
       router.push('/');
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -29,7 +29,7 @@ export default function JoinPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleClose]);
 
   /** Strip non-alphanumeric, uppercase, slice to 7 chars, then format */
   const formatRoomCode = (raw: string): string => {

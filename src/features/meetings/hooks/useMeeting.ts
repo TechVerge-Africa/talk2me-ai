@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { RoomEvent, RemoteParticipant, LocalParticipant, TranscriptionSegment, LocalAudioTrack, Track } from 'livekit-client';
+import { RoomEvent, RemoteParticipant, LocalParticipant, Participant, TranscriptionSegment, LocalAudioTrack, Track } from 'livekit-client';
 import { useRoomContext } from '@livekit/components-react';
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
 import { Message } from '@/types/message';
@@ -10,6 +10,7 @@ import { generateId } from '@/lib/ids';
 import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
 import { ParticipantRole, ParticipantStatus } from '@/types/meeting';
 import { useAuth } from '@/features/auth/use-auth';
+import { useWebSpeechSTT } from '@/hooks/useWebSpeechSTT';
 
 export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void, isAppAdmin?: boolean) {
   const room = useRoomContext();
@@ -119,7 +120,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
           filter: `meeting_id=eq.${meetingDbId}`,
         },
         (payload) => {
-          const newRow = payload.new as any;
+          const newRow = payload.new as Record<string, any> | null;
           if (!newRow) return;
 
           const localIdentity = room.localParticipant.identity;
@@ -177,7 +178,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       // Load existing messages for this room from Supabase for late-joiners
       const history = await MeetingService.getMeetingMessages(roomCode);
       if (history.length > 0) {
-        setMessages(history);
+        setMessages(history as unknown as Message[]);
       }
     }
 
@@ -219,7 +220,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         }
 
         // Apply the processor if not already applied
-        if ((track as any).processor !== processorRef.current) {
+        const trackWithProc = track as unknown as { processor?: unknown };
+        if (trackWithProc.processor !== processorRef.current) {
           try {
             await track.setProcessor(processorRef.current);
           } catch (e) {
@@ -228,7 +230,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         }
       } else {
         // Turn off processor
-        if ((track as any).processor) {
+        const trackWithProc = track as unknown as { processor?: unknown };
+        if (trackWithProc.processor) {
           try {
             await track.stopProcessor();
           } catch (e) {
@@ -255,7 +258,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
 
     updateProcessor();
 
-    const handleTrackPublished = (pub: any) => {
+    const handleTrackPublished = (pub: { source: Track.Source }) => {
       if (pub.source === Track.Source.Microphone) {
         updateProcessor();
       }
@@ -296,10 +299,12 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     if (!isAdmitted && room?.localParticipant) {
       room.localParticipant.setMicrophoneEnabled(false);
       room.localParticipant.setCameraEnabled(false);
-      setMicOn(false);
-      setCamOn(false);
+      queueMicrotask(() => {
+        setMicOn(false);
+        setCamOn(false);
+      });
     }
-  }, [isAdmitted, room, room?.localParticipant]);
+  }, [isAdmitted, room]);
 
   // Guest lobby handshake: publish join request via LiveKit Data Channel on entry
   useEffect(() => {
@@ -321,16 +326,45 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
   }, [isAdmitted, room, room?.localParticipant?.identity, meetingDbId, user?.id]);
 
+  // Dynamic handlers reference to keep room event listeners effect stable
+  const handlersRef = useRef({
+    addReaction,
+    meetingHostId,
+    cohosts,
+    onLeave,
+    roomCode,
+  });
+
+  useEffect(() => {
+    handlersRef.current = {
+      addReaction,
+      meetingHostId,
+      cohosts,
+      onLeave,
+      roomCode,
+    };
+  }, [addReaction, meetingHostId, cohosts, onLeave, roomCode]);
+
   useEffect(() => {
     if (!room) return;
 
     const updateParticipants = () => {
-      setParticipants(getAllParticipants(room) as (RemoteParticipant | LocalParticipant)[]);
+      queueMicrotask(() => {
+        if (!room) return;
+        const newParticipants = getAllParticipants(room) as (RemoteParticipant | LocalParticipant)[];
+        setParticipants(prev => {
+          if (prev.length === newParticipants.length && prev.every((p, i) => p.identity === newParticipants[i]?.identity)) {
+            return prev;
+          }
+          return newParticipants;
+        });
+      });
     };
 
-    const handleTranscription = (segments: TranscriptionSegment[], participant: any) => {
+    const handleTranscription = (segments: TranscriptionSegment[], participant?: Participant) => {
       const text = segments.map(s => s.text).join(' ');
-      if (!text.trim()) return;
+      if (!text.trim() || !participant) return;
+      const isFinal = segments.every(s => s.final);
 
       const newCaption: Message = {
         id: generateId('cap'),
@@ -339,9 +373,16 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         content: text,
         type: 'caption',
         timestamp: new Date().toISOString(),
+        is_final: isFinal,
       };
 
-      setCaptions(prev => [...prev.slice(-50), newCaption]);
+      setCaptions(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.sender_id === participant.identity && !last.is_final) {
+          return [...prev.slice(0, -1), newCaption];
+        }
+        return [...prev.slice(-50), newCaption];
+      });
 
       if (segments.every(s => s.final)) {
         TranscriptService.saveTranscript({
@@ -361,12 +402,29 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg.type === 'chat') {
           setMessages(prev => [...prev, msg]);
+        } else if (msg.type === 'caption') {
+          const newCap: Message = {
+            id: msg.id || generateId('cap'),
+            meeting_id: roomCode,
+            sender_id: msg.sender_id,
+            content: msg.content,
+            type: 'caption',
+            timestamp: msg.timestamp || new Date().toISOString(),
+            is_final: !!msg.is_final,
+          };
+          setCaptions(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.sender_id === msg.sender_id && !last.is_final) {
+              return [...prev.slice(0, -1), newCap];
+            }
+            return [...prev.slice(-50), newCap];
+          });
         } else if (msg.type === 'raise_hand') {
           setRaisedHands(prev => ({ ...prev, [msg.sender_id]: !!msg.raised }));
         } else if (msg.type === 'reaction') {
-          addReaction(msg.sender_id, msg.emoji);
+          handlersRef.current.addReaction(msg.sender_id, msg.emoji);
         } else if (msg.type === 'mute_request') {
-          const isSenderAdmin = msg.sender_id === meetingHostId || cohosts[msg.sender_id];
+          const isSenderAdmin = msg.sender_id === handlersRef.current.meetingHostId || handlersRef.current.cohosts[msg.sender_id];
           if (room.localParticipant.identity === msg.target_id && isSenderAdmin) {
             if (msg.source === 'mic') {
               room.localParticipant.setMicrophoneEnabled(false);
@@ -377,7 +435,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             }
           }
         } else if (msg.type === 'unmute_request') {
-          const isSenderAdmin = msg.sender_id === meetingHostId || cohosts[msg.sender_id];
+          const isSenderAdmin = msg.sender_id === handlersRef.current.meetingHostId || handlersRef.current.cohosts[msg.sender_id];
           if (room.localParticipant.identity === msg.target_id && isSenderAdmin) {
             if (window.confirm(`The host/co-host is requesting you to unmute your ${msg.source === 'mic' ? 'microphone' : 'camera'}. Allow?`)) {
               if (msg.source === 'mic') {
@@ -390,14 +448,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             }
           }
         } else if (msg.type === 'kick_request') {
-          const isSenderAdmin = msg.sender_id === meetingHostId || cohosts[msg.sender_id];
+          const isSenderAdmin = msg.sender_id === handlersRef.current.meetingHostId || handlersRef.current.cohosts[msg.sender_id];
           if (room.localParticipant.identity === msg.target_id && isSenderAdmin) {
             alert('You have been removed from the meeting by the host.');
             room.disconnect();
-            if (onLeave) onLeave();
+            if (handlersRef.current.onLeave) handlersRef.current.onLeave();
           }
         } else if (msg.type === 'join_request') {
-          const isLocalAdmin = room.localParticipant.identity === meetingHostId || cohosts[room.localParticipant.identity];
+          const isLocalAdmin = room.localParticipant.identity === handlersRef.current.meetingHostId || handlersRef.current.cohosts[room.localParticipant.identity];
           if (isLocalAdmin) {
             setJoinRequests(prev => {
               if (prev.some(r => r.sender_id === msg.sender_id)) return prev;
@@ -411,7 +469,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             } else {
               alert('The host has denied your request to join the meeting.');
               room.disconnect();
-              if (onLeave) onLeave();
+              if (handlersRef.current.onLeave) handlersRef.current.onLeave();
             }
           }
         } else if (msg.type === 'settings_update') {
@@ -425,7 +483,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             setAllowScreenShare(msg.allow_screen_share);
           }
         } else if (msg.type === 'role_update') {
-          const isSenderAdmin = msg.sender_id === meetingHostId || !!cohosts[msg.sender_id];
+          const isSenderAdmin = msg.sender_id === handlersRef.current.meetingHostId || !!handlersRef.current.cohosts[msg.sender_id];
           if (isSenderAdmin) {
             if (msg.role === 'host') {
               setMeetingHostId(msg.target_id);
@@ -437,18 +495,18 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             }
           }
         } else if (msg.type === 'stop_screenshare_request') {
-          const isSenderAdmin = msg.sender_id === meetingHostId || cohosts[msg.sender_id];
+          const isSenderAdmin = msg.sender_id === handlersRef.current.meetingHostId || handlersRef.current.cohosts[msg.sender_id];
           if (room.localParticipant.identity === msg.target_id && isSenderAdmin) {
             room.localParticipant.setScreenShareEnabled(false);
             setScreenShareOn(false);
             alert('Your screen share was stopped by the host.');
           }
         } else if (msg.type === 'meeting_ended') {
-          const isSenderHost = msg.sender_id === meetingHostId;
+          const isSenderHost = msg.sender_id === handlersRef.current.meetingHostId;
           if (isSenderHost) {
             alert('The host has ended this meeting.');
             room.disconnect();
-            if (onLeave) onLeave();
+            if (handlersRef.current.onLeave) handlersRef.current.onLeave();
           }
         }
       } catch (e) {
@@ -463,7 +521,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     room.on(RoomEvent.TrackUnsubscribed, updateParticipants);
     room.on(RoomEvent.DataReceived, handleData);
 
-    const handleDisconnected = (reason?: any) => {
+    const handleDisconnected = (reason?: unknown) => {
       console.warn('LiveKit room disconnected', reason);
     };
     const handleReconnecting = () => {
@@ -497,7 +555,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         console.warn('Error removing room event listeners:', e);
       }
     };
-  }, [room, roomCode, addReaction, meetingHostId, cohosts, onLeave]);
+  }, [room]);
 
   const toggleRaiseHand = useCallback((senderId?: string) => {
     if (!room?.localParticipant) return;
@@ -522,15 +580,17 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   }, [room, addReaction]);
 
   const toggleMic = useCallback(async () => {
-    if (!room?.localParticipant) return;
     if (!isAdmitted) return;
-    try {
-      const enabled = !micOn;
-      await room.localParticipant.setMicrophoneEnabled(enabled);
-      setMicOn(enabled);
-      try { localStorage.setItem('t2_pref_mic', String(enabled)); } catch {}
-    } catch (e) {
-      console.error('Failed to toggle microphone:', e);
+    const nextState = !micOn;
+    setMicOn(nextState);
+    try { localStorage.setItem('t2_pref_mic', String(nextState)); } catch {}
+
+    if (room?.localParticipant) {
+      try {
+        await room.localParticipant.setMicrophoneEnabled(nextState);
+      } catch (e) {
+        console.error('Failed to toggle microphone:', e);
+      }
     }
   }, [room, micOn, isAdmitted]);
 
@@ -728,6 +788,57 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }, { reliable: true });
   }, [room]);
 
+  // Local Web Speech STT Integration
+  const handleLocalWebSpeech = useCallback((text: string, isFinal: boolean) => {
+    const senderId = room?.localParticipant?.identity || 'me';
+
+    const newCap: Message = {
+      id: generateId('cap'),
+      meeting_id: roomCode,
+      sender_id: senderId,
+      content: text,
+      type: 'caption',
+      timestamp: new Date().toISOString(),
+      is_final: isFinal,
+    };
+
+    setCaptions(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.sender_id === senderId && !last.is_final) {
+        return [...prev.slice(0, -1), newCap];
+      }
+      return [...prev.slice(-50), newCap];
+    });
+
+    if (room?.localParticipant) {
+      publishRoomData(room.localParticipant, {
+        type: 'caption',
+        id: newCap.id,
+        sender_id: senderId,
+        content: text,
+        is_final: isFinal,
+        timestamp: newCap.timestamp,
+      }, { reliable: false });
+    }
+
+    if (isFinal) {
+      TranscriptService.saveTranscript({
+        meeting_id: roomCode,
+        user_id: senderId,
+        content: text,
+        start_time: Date.now() - 3000,
+        end_time: Date.now(),
+      }).catch(err => console.error('Failed to save WebSpeech transcript:', err));
+    }
+  }, [room, roomCode]);
+
+  const stt = useWebSpeechSTT({
+    enabled: isAdmitted && micOn,
+    language: 'en-US',
+    engine: 'webspeech',
+    onTranscript: handleLocalWebSpeech,
+  });
+
   return {
     roomCode,
     micOn,
@@ -739,6 +850,13 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     participants,
     captions,
     messages,
+    sttStatus: {
+      isSupported: stt.isSupported,
+      isListening: stt.isListening,
+      currentLanguage: stt.currentLanguage,
+      setLanguage: stt.setLanguage,
+      error: stt.error,
+    },
     raisedHands,
     reactions,
     toggleMic,

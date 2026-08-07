@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { WifiOff, RefreshCw, Home } from "lucide-react";
 import { motion } from "framer-motion";
@@ -8,23 +8,6 @@ import { GradientBackground } from "@/components/ui/gradient-background";
 
 export default function OfflinePage() {
   const [isReconnecting, setIsReconnecting] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setIsOnline(navigator.onLine);
-      const handleOnline = () => setIsOnline(true);
-      const handleOffline = () => setIsOnline(false);
-
-      window.addEventListener("online", handleOnline);
-      window.addEventListener("offline", handleOffline);
-
-      return () => {
-        window.removeEventListener("online", handleOnline);
-        window.removeEventListener("offline", handleOffline);
-      };
-    }
-  }, []);
 
   const handleRetry = () => {
     setIsReconnecting(true);
@@ -67,7 +50,7 @@ export default function OfflinePage() {
         </h1>
         
         <p className="text-sm text-muted-foreground leading-relaxed mb-8 max-w-sm">
-          It looks like you're offline. Talk2Me is waiting to reconnect so you can resume secure, accessible communication.
+          It looks like you&apos;re offline. Talk2Me is waiting to reconnect so you can resume secure, accessible communication.
         </p>
 
         {/* Status indicator */}

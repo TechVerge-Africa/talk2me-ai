@@ -16,13 +16,13 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState(false);
   const router = useRouter();
 
-  const handleClose = () => {
+  const handleClose = React.useCallback(() => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
     } else {
       router.push('/');
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -32,7 +32,7 @@ export default function ResetPasswordPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleClose]);
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();

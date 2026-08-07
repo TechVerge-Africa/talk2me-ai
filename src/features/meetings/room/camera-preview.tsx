@@ -75,8 +75,9 @@ export function CameraPreview({
         setPermState("granted");
         setErrorMsg(null);
         return; // success — stop cascade
-      } catch (err: any) {
-        const name = err?.name ?? "";
+      } catch (err: unknown) {
+        const errorObj = err as { name?: string };
+        const name = errorObj?.name ?? "";
         // Hard stops — no point retrying with looser constraints
         if (name === "NotAllowedError" || name === "PermissionDeniedError") {
           setPermState("denied");
@@ -107,20 +108,22 @@ export function CameraPreview({
   useEffect(() => {
     let active = true;
     if (camOn) {
-      startCamera().then(() => {
+      void (async () => {
+        await startCamera();
         if (!active) stopStream();
-      });
+      })();
     } else {
       stopStream();
-      setPermState("idle");
-      setErrorMsg(null);
+      queueMicrotask(() => {
+        setPermState("idle");
+        setErrorMsg(null);
+      });
     }
     return () => {
       active = false;
       stopStream();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camOn]);
+  }, [camOn, startCamera, stopStream]);
 
   // ─── Render helpers ───────────────────────────────────────────────
   const isBlocked = permState === "denied" || permState === "unavailable" || permState === "error";
@@ -179,7 +182,7 @@ export function CameraPreview({
           {permState === "denied" && (
             <div className="mt-1 text-white/35 text-[10px] leading-relaxed max-w-[240px]">
               <p className="font-bold text-white/50 mb-1">How to fix:</p>
-              <p>🔒 Click the padlock/camera icon in your browser's address bar and allow camera access, then refresh.</p>
+              <p>🔒 Click the padlock/camera icon in your browser&apos;s address bar and allow camera access, then refresh.</p>
             </div>
           )}
         </div>
@@ -222,7 +225,7 @@ export function CameraPreview({
       {detectedPhrase && camOn && permState === "granted" && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-full max-w-[80%] z-20">
           <div className="bg-white/95 backdrop-blur px-6 py-4 rounded-2xl shadow-bridge ring-1 ring-black/5 animate-caption-in text-center">
-            <p className="text-lg font-bold text-bridge-indigo tracking-tight leading-tight">"{detectedPhrase}"</p>
+            <p className="text-lg font-bold text-bridge-indigo tracking-tight leading-tight">&quot;{detectedPhrase}&quot;</p>
           </div>
         </div>
       )}

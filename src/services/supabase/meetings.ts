@@ -2,10 +2,10 @@ import { supabase } from './client';
 import { generateRoomCode } from '@/packages/shared/rooms';
 import { Meeting, MeetingParticipant, ParticipantRole, ParticipantStatus } from '@/types/meeting';
 import { AppError } from '@/services/errors';
-import { validateMeetingTitle, validateDisplayName, sanitizeText } from '@/lib/validators';
 
 /** Map a Supabase meetings row to the application Meeting model. */
-function toMeeting(row: Record<string, any>): Meeting {
+function toMeeting(row: Record<string, unknown>): Meeting {
+  const settings = row.settings as Record<string, unknown> | undefined;
   return {
     id: row.id as string,
     title: row.room_name as string,
@@ -15,10 +15,10 @@ function toMeeting(row: Record<string, any>): Meeting {
     created_at: row.created_at as string,
     scheduled_at: row.scheduled_at as string | undefined,
     status: row.is_active ? 'active' : 'ended',
-    settings: row.settings ? {
-      require_approval: !!(row.settings as any).require_approval,
-      allow_screen_share: typeof (row.settings as any).allow_screen_share === 'boolean' ? !!(row.settings as any).allow_screen_share : true,
-      sign_language_enabled: !!(row.settings as any).sign_language_enabled,
+    settings: settings ? {
+      require_approval: !!settings.require_approval,
+      allow_screen_share: typeof settings.allow_screen_share === 'boolean' ? !!settings.allow_screen_share : true,
+      sign_language_enabled: !!settings.sign_language_enabled,
     } : undefined,
   };
 }
@@ -372,7 +372,7 @@ export const MeetingService = {
   /**
    * Fetches persistent chat history for a meeting room
    */
-  async getMeetingMessages(roomCode: string, limit = 100): Promise<any[]> {
+  async getMeetingMessages(roomCode: string, limit = 100): Promise<Record<string, unknown>[]> {
     const { data, error } = await supabase
       .from('meeting_messages')
       .select('id, room_code, sender_id, recipient_id, content, type, created_at')

@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 import { 
   Code2, 
   Key, 
-  Cpu, 
   Shield, 
   ArrowRight, 
   Check, 

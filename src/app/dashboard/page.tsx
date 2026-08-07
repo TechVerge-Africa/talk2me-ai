@@ -32,28 +32,16 @@ import {
   Shield,
   Activity,
   Sparkles,
-  Maximize2,
-  Minimize2,
-  PlusCircle,
   LogOut,
   Share2,
   Send,
-  Info,
   Lock,
-  Eye,
-  HeartPulse,
   Clock,
   Globe,
-  Sun,
-  Moon,
   Languages,
-  ArrowRight,
-  User,
-  Sliders,
   Play,
   Volume2,
   VolumeX,
-  PlusSquare,
   Trash2
 } from 'lucide-react';
 
@@ -81,14 +69,7 @@ type DashboardView =
   | 'organizations'
   | 'settings';
 
-interface MetricCardProps {
-  title: string;
-  value: string;
-  subtext: string;
-  icon: React.ComponentType<any>;
-  trend?: string;
-  trendType?: 'positive' | 'negative' | 'neutral';
-}
+
 
 export default function DashboardPage() {
   const { user, profile, loading: authLoading, signOut, updatePassword, updateProfile } = useAuth();
@@ -153,13 +134,13 @@ export default function DashboardPage() {
   // ── ACCESSIBILITY SETTINGS STATE ───────────────────────────────────
   const [captionsEnabled, setCaptionsEnabled] = useState(true);
   const [translationLanguage, setTranslationLanguage] = useState('en');
-  const [textToSpeech, setTextToSpeech] = useState(false);
-  const [speechToText, setSpeechToText] = useState(true);
+  const [_textToSpeech, _setTextToSpeech] = useState(false);
+  const [_speechToText, _setSpeechToText] = useState(true);
   const [signLanguageMode, setSignLanguageMode] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
   const [fontScale, setFontScale] = useState<100 | 115 | 130>(100);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [keyboardNav, setKeyboardNav] = useState(false);
+  const [_keyboardNav, _setKeyboardNav] = useState(false);
 
   // ── DYNAMIC NOTIFICATIONS & ACTIVITY DATA ───────────────────────────
   const [unreadNotifications, setUnreadNotifications] = useState<Record<string, boolean>>({});
@@ -226,7 +207,7 @@ export default function DashboardPage() {
     '[AI Mod] Ambient audio profile adjusted for speech clarity'
   ]);
   const [pollActive, setPollActive] = useState(true);
-  const [pollQuestion, setPollQuestion] = useState('How do you prefer to view translation tracks?');
+  const [pollQuestion, _setPollQuestion] = useState('How do you prefer to view translation tracks?');
   const [pollOptions, setPollOptions] = useState([
     { id: 1, text: 'Burned-in Captions', votes: 45 },
     { id: 2, text: 'Visual Sign Panel', votes: 78 },
@@ -312,10 +293,12 @@ export default function DashboardPage() {
   }, [profiles]);
 
   useEffect(() => {
-    if (displayChats.length > 0 && !selectedChatId) {
-      setSelectedChatId(displayChats[0].id);
+    if (displayChats.length > 0) {
+      queueMicrotask(() => {
+        setSelectedChatId((prev) => (prev ? prev : displayChats[0].id));
+      });
     }
-  }, [displayChats, selectedChatId]);
+  }, [displayChats]);
 
   const activeChat = useMemo(() => {
     return displayChats.find(c => c.id === selectedChatId) || displayChats[0];
@@ -611,7 +594,7 @@ export default function DashboardPage() {
   interface NavItem {
     view: DashboardView;
     label: string;
-    icon: React.ComponentType<any>;
+    icon: React.ComponentType<{ className?: string }>;
     highlight?: boolean;
   }
 
@@ -983,7 +966,7 @@ export default function DashboardPage() {
                     {/* Left: Schedule list */}
                     <div className="lg:col-span-2 space-y-4">
                       <div className="flex justify-between items-center">
-                        <h2 className="text-lg font-bold tracking-tight">Today's Schedule</h2>
+                        <h2 className="text-lg font-bold tracking-tight">Today&apos;s Schedule</h2>
                         <button
                           onClick={() => setCurrentView('events')}
                           className="text-xs font-bold text-indigo hover:underline"
@@ -1388,7 +1371,7 @@ export default function DashboardPage() {
                               <span className="text-[9px] text-muted-foreground uppercase font-bold">Auto Scroll ON</span>
                             </div>
                             <p className="text-white text-sm sm:text-base font-medium leading-relaxed tracking-wide italic">
-                              "{activeCaptionText}"
+                              &quot;{activeCaptionText}&quot;
                             </p>
                           </div>
 
@@ -1672,10 +1655,15 @@ export default function DashboardPage() {
                                 className={`p-3 rounded-2xl max-w-xs md:max-w-sm ${
                                   msg.sender === 'me'
                                     ? 'bg-indigo text-white self-end ml-auto'
-                                    : 'bg-foreground/5 text-foreground self-start mr-auto'
+                                    : 'bg-foreground/5 text-foreground self-start mr-auto border border-border/30'
                                 }`}
                               >
-                                <p className="text-xs">{msg.text}</p>
+                                {msg.sender !== 'me' && (
+                                  <span className="text-[10px] font-bold text-indigo dark:text-indigo-400 block mb-1">
+                                    {activeChat.name}
+                                  </span>
+                                )}
+                                <p className="text-xs leading-relaxed">{msg.text}</p>
                                 <span className="text-[8px] opacity-60 block text-right mt-1">{msg.time}</span>
                               </div>
                             ))
@@ -1749,7 +1737,7 @@ export default function DashboardPage() {
                           <h4 className="font-bold text-xs uppercase tracking-wider text-cyan">Proactive Suggestions</h4>
                         </div>
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                          "Based on the last team sync, I suggest scheduling a 15-minute verification call with Elena to approve the new layout."
+                          &quot;Based on the last team sync, I suggest scheduling a 15-minute verification call with Elena to approve the new layout.&quot;
                         </p>
                         <button className="text-xs font-bold text-indigo hover:underline">Draft invite →</button>
                       </div>
@@ -1971,7 +1959,7 @@ export default function DashboardPage() {
                         ].map((item) => (
                           <button
                             key={item.scale}
-                            onClick={() => setFontScale(item.scale as any)}
+                            onClick={() => setFontScale(item.scale as 100 | 115 | 130)}
                             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
                               fontScale === item.scale
                                 ? 'bg-cyan border-cyan text-slate-950 shadow-md'
@@ -2573,7 +2561,7 @@ export default function DashboardPage() {
           return (
             <button
               key={item.view}
-              onClick={() => setCurrentView(item.view as any)}
+              onClick={() => setCurrentView(item.view as DashboardView)}
               className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 rounded-xl transition-all ${
                 isActive ? 'text-indigo font-bold scale-105' : 'text-muted-foreground'
               }`}

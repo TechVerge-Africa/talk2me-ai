@@ -8,8 +8,6 @@
 const HTML_TAG_RE = /<[^>]*>/g;
 const NULL_BYTE_RE = /\0/g;
 const SCRIPT_RE = /javascript\s*:/gi;
-const SQL_INJECT_RE = /(['";\\]|--|\b(DROP|DELETE|INSERT|UPDATE|SELECT|UNION|EXEC|XP_)\b)/gi;
-const CONTROL_CHARS_RE = /[\u0000-\u001F\u007F-\u009F]/g;
 
 /** Strip all HTML tags from a string */
 function stripHtml(value: string): string {

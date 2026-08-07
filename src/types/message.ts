@@ -7,6 +7,8 @@ export interface Message {
   type: 'chat' | 'caption' | 'system';
   timestamp: string;
   confidence?: number;
+  is_final?: boolean;
+  is_interim?: boolean;
 }
 
 export interface AISummary {

@@ -61,6 +61,6 @@ export async function POST(req: NextRequest) {
 }
 
 // Also handle GET for health checks from monitoring tools
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   return NextResponse.json({ status: 'ok', endpoint: 'cleanup-cron' });
 }

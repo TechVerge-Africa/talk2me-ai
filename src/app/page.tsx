@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/features/auth/use-auth';
 import { motion, type Variants } from "framer-motion";
-import { ArrowRight, Phone, Users, Radio, Zap, Globe, BarChart3, Quote, Check } from "lucide-react";
+import { ArrowRight, Phone, Users, Radio, Quote, Check } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
 import { GradientBackground } from "@/components/ui/gradient-background";
 
@@ -189,7 +189,7 @@ export function CommunicationModesSection() {
               desc: "Stream to unlimited viewers globally with adaptive bitrate, regional CDN, and accessibility overlays.",
               features: ["Multi-platform delivery", "Instant captions", "Interactive engagement tools"]
             }
-          ].map((item, i) => (
+          ].map((item) => (
             <motion.div
               key={item.title}
               variants={fadeInUp}
@@ -333,7 +333,7 @@ export function AILayerSection() {
               title: "Cultural Intelligence",
               desc: "Understands regional dialects, idioms, and cultural references across 45+ languages."
             }
-          ].map((item, i) => (
+          ].map((item) => (
             <motion.div
               key={item.title}
               variants={fadeInUp}
@@ -454,7 +454,7 @@ export function ComparisonSection() {
                 { feature: "Multi-language Support", talk2me: true, traditional: false, other: false },
                 { feature: "Cost Per Session", talk2me: "Free-5$", traditional: "$150-300", other: "$0-50" },
                 { feature: "Sign Context Recognition", talk2me: true, traditional: true, other: false }
-              ].map((row, i) => (
+              ].map((row) => (
                 <tr key={row.feature} className="border-b border-border/20">
                   <td className="py-4 px-4 font-semibold">{row.feature}</td>
                   <td className="py-4 px-4 text-center">

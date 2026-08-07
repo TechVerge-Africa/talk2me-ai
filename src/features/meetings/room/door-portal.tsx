@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Unlock, DoorClosed, Sparkles, Shield, User, Clock, ArrowRight } from 'lucide-react';
+import { Lock, Unlock, Sparkles, Clock } from 'lucide-react';
 
 interface MeetingDoorPortalProps {
   isWaiting: boolean; // True when standing in lobby waiting for host admission

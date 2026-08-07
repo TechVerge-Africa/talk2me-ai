@@ -1,5 +1,10 @@
 import { Track, TrackProcessor } from 'livekit-client';
 
+export interface RNNoiseOptions {
+  audioContext: AudioContext;
+  track: MediaStreamTrack;
+}
+
 export class RNNoiseTrackProcessor implements TrackProcessor<Track.Kind.Audio> {
   name = 'rnnoise-voice-isolation';
   
@@ -27,6 +32,7 @@ export class RNNoiseTrackProcessor implements TrackProcessor<Track.Kind.Audio> {
     this.onMetricsCallback = onMetrics;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async init(opts: any): Promise<void> {
     this.audioContext = opts.audioContext;
     this.track = opts.track;
@@ -72,6 +78,7 @@ export class RNNoiseTrackProcessor implements TrackProcessor<Track.Kind.Audio> {
     this.processedTrack = this.destinationNode.stream.getAudioTracks()[0];
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async restart(opts: any): Promise<void> {
     await this.destroy();
     await this.init(opts);

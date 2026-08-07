@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowRight, ExternalLink, LogIn } from "lucide-react";
+import { Menu, X, ArrowRight, LogIn } from "lucide-react";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/features/auth/use-auth";
@@ -18,8 +18,7 @@ const NAV_ITEMS = [
 ];
 
 /* ─── Desktop Navbar ───────────────────────────────────────────── */
-function DesktopNav({ scrolled }: { scrolled: boolean }) {
-  const pathname = usePathname();
+function DesktopNav({ scrolled: _scrolled }: { scrolled: boolean }) {
   const { user, loading } = useAuth();
   
   const handleSignOut = async () => {

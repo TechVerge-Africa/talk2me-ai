@@ -59,7 +59,7 @@ export function ChatPanel({
       if (!isNaN(d.getTime())) {
         return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
       }
-    } catch (_) {}
+    } catch {}
     const now = new Date();
     const mm = String(now.getHours()).padStart(2, "0");
     const ss = String(now.getMinutes()).padStart(2, "0");
@@ -67,20 +67,20 @@ export function ChatPanel({
   };
 
   return (
-    <div className="h-full flex flex-col justify-between relative">
+    <div className="h-full flex flex-col justify-between relative bg-[#1c1f24] text-white p-3 sm:p-4 rounded-2xl border border-white/5 shadow-inner">
       {/* Messages list */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1 no-scrollbar pb-2">
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-25 text-center px-4 py-8">
-            <p className="text-xs text-white">No messages yet. Start the conversation.</p>
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-8">
+            <p className="text-xs text-white/70 font-medium">No messages yet. Start the conversation.</p>
           </div>
         ) : (
           <>
             {/* History header — shown so late joiners know they're seeing past messages */}
-            <div className="flex items-center gap-2 py-2 px-1 sticky top-0 z-10">
-              <div className="flex-1 h-px bg-white/8" />
-              <span className="text-[9px] uppercase font-black tracking-widest text-white/25 whitespace-nowrap">Chat history</span>
-              <div className="flex-1 h-px bg-white/8" />
+            <div className="flex items-center gap-2 py-2 px-1 sticky top-0 z-10 bg-[#1c1f24]/90 backdrop-blur-sm">
+              <div className="flex-1 h-px bg-white/10" />
+              <span className="text-[9px] uppercase font-black tracking-widest text-white/50 whitespace-nowrap">Chat history</span>
+              <div className="flex-1 h-px bg-white/10" />
             </div>
             {messages.map((msg) => {
             const isMe =
@@ -96,8 +96,12 @@ export function ChatPanel({
                 className={`flex flex-col ${isMe ? "items-end" : "items-start"} animate-in fade-in duration-200`}
               >
                 <div className="flex items-center gap-2 mb-1 px-1 text-[11px]">
-                  <span className="font-bold text-white/80 flex items-center gap-1.5">
-                    {isMe ? "You" : msg.sender_id}
+                  <span className="font-bold flex items-center gap-1.5">
+                    {isMe ? (
+                      <span className="text-cyan-400 font-extrabold">You</span>
+                    ) : (
+                      <span className="text-blue-400 font-bold max-w-[180px] truncate">{msg.sender_id}</span>
+                    )}
                     {isDM && (
                       <span className="inline-flex items-center gap-1 text-[9px] text-purple-300 font-bold bg-purple-500/20 border border-purple-500/35 px-2 py-0.5 rounded-full shadow-sm">
                         <Lock className="size-2.5 text-purple-300/80" />
@@ -105,7 +109,7 @@ export function ChatPanel({
                       </span>
                     )}
                   </span>
-                  <span className="text-white/40 text-[10px]">
+                  <span className="text-white/60 text-[10px] font-medium">
                     {formatTime(msg.timestamp)}
                   </span>
                 </div>
@@ -113,10 +117,10 @@ export function ChatPanel({
                   className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] leading-relaxed border shadow-md transition-all ${
                     isMe
                       ? `bg-[#2d3139] text-white rounded-tr-none ${
-                          isDM ? "border-purple-500/40 shadow-purple-500/5" : "border-white/5"
+                          isDM ? "border-purple-500/40 shadow-purple-500/5" : "border-white/10"
                         }`
                       : `bg-[#1e2227] text-white rounded-tl-none ${
-                          isDM ? "border-purple-500/40 shadow-purple-500/5" : "border-white/5"
+                          isDM ? "border-purple-500/40 shadow-purple-500/5" : "border-white/10"
                         }`
                   }`}
                 >

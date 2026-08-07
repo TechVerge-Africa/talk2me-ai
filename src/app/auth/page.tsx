@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Loader2, ShieldCheck, Sparkles, LogIn, Eye, EyeOff, X } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, X } from 'lucide-react';
 
 // Google icon SVG as a component
 function GoogleIcon({ className }: { className?: string }) {
@@ -51,13 +51,13 @@ export default function AuthPage() {
     }
   };
 
-  const handleClose = () => {
+  const handleClose = React.useCallback(() => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
     } else {
       router.push('/');
     }
-  };
+  }, [router]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -67,7 +67,7 @@ export default function AuthPage() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [handleClose]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -26,7 +26,7 @@ export function QrScanner({
           scannerRef.current.clear();
         }
       },
-      (error) => {
+      (_error) => {
         // console.warn(error);
       }
     );
@@ -54,7 +54,7 @@ export function QrScanner({
         <div id="qr-reader" className="overflow-hidden rounded-2xl border-0 !p-0" />
         
         <div className="text-center text-sm text-muted-foreground">
-          Point your camera at the host's QR code.
+          Point your camera at the host&apos;s QR code.
         </div>
       </div>
     </div>

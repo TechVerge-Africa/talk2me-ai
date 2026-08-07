@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import {
   Mic, MicOff, Video, VideoOff, Type,
   Smile, PhoneOff, Hand, Ear, EarOff,
-  MonitorUp, Users, MessageSquare, Sparkles,
+  MonitorUp, Users, MessageSquare,
   Copy, Check, MoreHorizontal, X, Shield, ShieldOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";

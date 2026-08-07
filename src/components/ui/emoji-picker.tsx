@@ -74,7 +74,7 @@ export function EmojiPicker({ onSelect, onClose, initialQuery = '' }: EmojiPicke
         ))}
       </div>
 
-      <div className="mt-3 text-xs text-muted-foreground">Tip: search by part of emoji name (like 'heart' or 'smile').</div>
+      <div className="mt-3 text-xs text-muted-foreground">Tip: search by part of emoji name (like &apos;heart&apos; or &apos;smile&apos;).</div>
     </div>
   );
 }
