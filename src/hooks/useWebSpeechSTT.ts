@@ -134,7 +134,14 @@ export function useWebSpeechSTT({
     }
   }, [clearChunkTimer]);
 
-  const lastErrorWasSilenceRef = useRef<boolean>(false);
+  const isTranscribingRef = useRef<boolean>(false);
+
+  // Common Whisper silence hallucinations to filter out when silent audio is processed
+  const isSilenceHallucination = (text: string): boolean => {
+    const lower = text.toLowerCase().trim().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "");
+    const hallucinations = ['thank you', 'subtitles by', 'mbc news', 'music', 'silence', 'thanks for watching', 'subscribe', 'bye'];
+    return hallucinations.some(h => lower === h || lower.startsWith(h));
+  };
 
   // MediaRecorder Fallback for Firefox & Brave
   const startFallbackRecorder = useCallback(async () => {
@@ -148,7 +155,8 @@ export function useWebSpeechSTT({
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = async (e) => {
-        if (e.data && e.data.size > 1000) {
+        if (e.data && e.data.size > 1000 && !isTranscribingRef.current) {
+          isTranscribingRef.current = true;
           const formData = new FormData();
           formData.append('file', e.data, 'audio.webm');
 
@@ -160,11 +168,15 @@ export function useWebSpeechSTT({
             const data = await res.json();
             if (data.text) {
               const trimmed = data.text.trim();
-              setFinalText(trimmed);
-              onTranscript?.(trimmed, true);
+              if (trimmed.length > 0 && !isSilenceHallucination(trimmed)) {
+                setFinalText(trimmed);
+                onTranscript?.(trimmed, true);
+              }
             }
           } catch (err) {
             console.warn('[FallbackSTT] Transcribe chunk error:', err);
+          } finally {
+            isTranscribingRef.current = false;
           }
         }
       };
@@ -172,7 +184,7 @@ export function useWebSpeechSTT({
       recorder.start();
       setIsListening(true);
 
-      // Request audio slice every 2.5 seconds for low-latency server transcription
+      // Request audio slice every 3.0 seconds for optimal accuracy and smooth low-latency STT
       clearChunkTimer();
       chunkTimerRef.current = setInterval(() => {
         if (recorder.state === 'recording') {
@@ -180,9 +192,10 @@ export function useWebSpeechSTT({
             recorder.requestData();
           } catch {}
         }
-      }, 2500);
+      }, 3000);
 
     } catch (err) {
+
       console.error('[FallbackSTT] Mic access error:', err);
       setError('Microphone permission denied or unavailable.');
     }
