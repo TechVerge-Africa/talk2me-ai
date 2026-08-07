@@ -135,6 +135,8 @@ export function useWebSpeechSTT({
   }, [clearChunkTimer]);
 
   const isTranscribingRef = useRef<boolean>(false);
+  const lastErrorWasSilenceRef = useRef<boolean>(false);
+
 
   // Common Whisper silence hallucinations to filter out when silent audio is processed
   const isSilenceHallucination = (text: string): boolean => {
