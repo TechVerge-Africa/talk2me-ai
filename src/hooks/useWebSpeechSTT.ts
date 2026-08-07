@@ -213,11 +213,12 @@ export function useWebSpeechSTT({
       window.mozSpeechRecognition ||
       window.msSpeechRecognition;
 
-    // If native Web Speech API is absent (Firefox / default Brave), use MediaRecorder fallback
-    if (!SpeechRecognitionClass) {
+    // If engine is explicitly 'groq' or native Web Speech API is absent (Firefox / default Brave), use MediaRecorder fallback
+    if (engine === 'groq' || !SpeechRecognitionClass) {
       startFallbackRecorder();
       return;
     }
+
 
     if (recognitionRef.current) {
       try {
@@ -324,7 +325,8 @@ export function useWebSpeechSTT({
       console.warn('[WebSpeechSTT] Native STT failed to start. Using fallback STT...', err);
       startFallbackRecorder();
     }
-  }, [currentLanguage, enabled, onError, onTranscript, clearRetryTimer, startFallbackRecorder, usingFallback]);
+  }, [currentLanguage, enabled, engine, onError, onTranscript, clearRetryTimer, startFallbackRecorder, usingFallback]);
+
 
   const toggleListening = useCallback(() => {
     if (isListening) {
