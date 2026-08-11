@@ -52,11 +52,7 @@ export default function AuthPage() {
   };
 
   const handleClose = React.useCallback(() => {
-    if (typeof window !== 'undefined' && window.history.length > 1) {
-      router.back();
-    } else {
-      router.push('/');
-    }
+    router.push('/');
   }, [router]);
 
   React.useEffect(() => {
