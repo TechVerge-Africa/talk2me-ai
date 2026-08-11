@@ -10,12 +10,10 @@ import { supabase } from "@/services/supabase/client";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_ITEMS = [
-  { label: "Product",       href: "/#product" },
-  { label: "Solutions",     href: "/#solutions" },
-  { label: "Accessibility", href: "/#accessibility" },
-  { label: "Pricing",       href: "/#pricing" },
-  { label: "Developers",    href: "/developers" },
-  { label: "Resources",     href: "/resources" },
+  { label: "Product",      href: "/#product" },
+  { label: "How It Works", href: "/#how-it-works" },
+  { label: "Use Cases",    href: "/#use-cases" },
+  { label: "Pricing",      href: "/#pricing" },
 ];
 
 /* ─── Desktop Navbar ───────────────────────────────────────────── */
@@ -51,7 +49,7 @@ function DesktopNav({ scrolled: _scrolled }: { scrolled: boolean }) {
 
       {/* Navigation Links — Fixed in the center */}
       <div className="flex-1 flex justify-center">
-        <nav className="flex items-center p-1.5 rounded-2xl bg-foreground/[0.03] border border-border/50 backdrop-blur-sm">
+        <nav className="flex items-center p-1.5 rounded-2xl bg-foreground/[0.03] border border-border/50 backdrop-blur-sm gap-1">
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.label}
@@ -60,7 +58,7 @@ function DesktopNav({ scrolled: _scrolled }: { scrolled: boolean }) {
             >
               {item.label}
               <motion.span 
-                 className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                 className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 bg-cyan-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                  layoutId="nav-glow"
               />
             </Link>
@@ -74,22 +72,36 @@ function DesktopNav({ scrolled: _scrolled }: { scrolled: boolean }) {
         {!loading && (
           <>
             {user ? (
-              <div className="flex items-center gap-4">
-                <div className="flex flex-col items-end leading-none">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-cyan opacity-70">Authenticated</span>
-                  <button onClick={handleSignOut} className="text-[10px] font-bold text-muted-foreground hover:text-red-500 transition-colors uppercase mt-1">Sign Out</button>
-                </div>
-                <div className="size-10 rounded-xl bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg">
-                   {user.email?.slice(0, 2).toUpperCase()}
-                </div>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/dashboard"
+                  className="px-5 py-2.5 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md"
+                >
+                  Dashboard →
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="text-xs font-bold text-slate-500 hover:text-red-500 transition-colors uppercase px-2"
+                >
+                  Sign Out
+                </button>
               </div>
             ) : (
-              <Link
-                href="/auth"
-                className="px-6 py-2.5 text-xs font-black uppercase tracking-widest text-foreground hover:bg-foreground/10 rounded-xl transition-all border border-border"
-              >
-                Log In
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/auth"
+                  className="px-5 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition-all"
+                >
+                  Log in
+                </Link>
+
+                <Link
+                  href="/auth"
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-md active:scale-95 flex items-center gap-1.5"
+                >
+                  Get Started
+                </Link>
+              </div>
             )}
           </>
         )}
@@ -195,14 +207,22 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
                     </button>
                   </div>
                 ) : (
-                  <Link
-                    href="/auth"
-                    onClick={onClose}
-                    className="flex items-center justify-center gap-3 w-full py-5 text-lg font-bold rounded-3xl bg-card ring-1 ring-border shadow-sm"
-                  >
-                    <LogIn className="size-5" />
-                    Log In
-                  </Link>
+                  <div className="flex flex-col gap-3">
+                    <Link
+                      href="/auth"
+                      onClick={onClose}
+                      className="flex items-center justify-center gap-2 w-full py-4 text-base font-bold rounded-2xl bg-indigo-600 text-white shadow-md text-center"
+                    >
+                      Get Started <ArrowRight className="size-5" />
+                    </Link>
+                    <Link
+                      href="/auth"
+                      onClick={onClose}
+                      className="flex items-center justify-center gap-2 w-full py-3.5 text-base font-bold rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-center"
+                    >
+                      Log in
+                    </Link>
+                  </div>
                 )
               )}
             </div>

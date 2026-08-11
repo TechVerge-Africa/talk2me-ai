@@ -38,7 +38,7 @@ const HERO_FEATURES = [
 // ━━━ SECTION 1: Hero ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function HeroSection() {
   return (
-    <section className="relative w-full overflow-hidden pt-16 pb-12 sm:pt-24 sm:pb-16 lg:pt-28 lg:pb-20">
+    <section id="product" className="relative w-full overflow-hidden pt-16 pb-12 sm:pt-24 sm:pb-16 lg:pt-28 lg:pb-20">
       {/* Animated background elements */}
       <GradientBackground />
 
@@ -83,7 +83,7 @@ export function HeroSection() {
             </Link>
 
             <Link
-              href="#product"
+              href="#how-it-works"
               className="group flex items-center justify-center gap-2 px-8 py-4 border-2 border-slate-300 dark:border-white/15 text-slate-900 dark:text-white font-bold text-base rounded-2xl hover:border-indigo-500/50 hover:bg-slate-100 dark:hover:bg-white/10 transition-all sm:flex-1"
             >
               See How It Works
@@ -93,6 +93,7 @@ export function HeroSection() {
 
           {/* 3 Core Pillar Feature Cards (Meet, Chat, AI) */}
           <motion.div 
+            id="how-it-works"
             variants={fadeInUp}
             className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl pt-8"
           >
@@ -121,7 +122,7 @@ export function HeroSection() {
 // ━━━ SECTION 2: Final CTA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function FinalCTASection() {
   return (
-    <section className="px-5 py-20 lg:py-28 relative overflow-hidden max-w-6xl mx-auto w-full">
+    <section id="pricing" className="px-5 py-20 lg:py-28 relative overflow-hidden max-w-6xl mx-auto w-full">
       <div className="relative rounded-3xl sm:rounded-[40px] p-8 sm:p-14 lg:p-20 bg-gradient-to-br from-indigo-700 via-indigo-600 to-cyan-600 dark:from-indigo-950 dark:via-slate-900 dark:to-cyan-950 border border-white/10 shadow-2xl overflow-hidden text-center flex flex-col items-center">
         {/* Subtle dot pattern background */}
         <div className="absolute inset-0 opacity-15 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:24px_24px] bg-[radial-gradient(circle,rgba(255,255,255,0.2)_1px,transparent_1px)] pointer-events-none" />
