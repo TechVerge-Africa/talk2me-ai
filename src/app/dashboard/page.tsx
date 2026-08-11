@@ -22,7 +22,8 @@ import {
   LogOut,
   ExternalLink,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Menu
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
@@ -227,8 +228,9 @@ export default function DashboardPage() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
-  // ── INSTANT MEETING LAUNCHING STATE ────────────────────────────────
+  // ── INSTANT MEETING LAUNCHING & MOBILE DRAWER STATE ────────────────
   const [isLaunchingMeeting, setIsLaunchingMeeting] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // ── WORKSPACE STATE ────────────────────────────────────────────────
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
@@ -254,6 +256,7 @@ export default function DashboardPage() {
 
   const selectWorkspace = (id: string | null) => {
     setActiveWorkspaceId(id);
+    setMobileNavOpen(false);
     try {
       if (id) localStorage.setItem('t2_active_workspace_v1', id);
       else localStorage.removeItem('t2_active_workspace_v1');
@@ -526,17 +529,17 @@ export default function DashboardPage() {
         <GradientBackground />
 
         {/* Global Header */}
-        <header className="relative z-10 w-full border-b border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl px-6 py-4 flex items-center justify-between">
+        <header className="relative z-10 w-full border-b border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl px-4 sm:px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center group flex-shrink-0">
             <img
               src="/assets/logo-light.png"
               alt="Talk2Me Logo"
-              className="dark:hidden block h-10 w-auto object-contain"
+              className="dark:hidden block h-9 w-auto object-contain"
             />
             <img
               src="/assets/logo-dark.png"
               alt="Talk2Me Logo"
-              className="hidden dark:block h-10 w-auto object-contain"
+              className="hidden dark:block h-9 w-auto object-contain"
             />
           </Link>
 
@@ -568,7 +571,7 @@ export default function DashboardPage() {
         </header>
 
         {/* Main Home Dashboard Body */}
-        <main className="relative z-10 flex-1 max-w-6xl mx-auto px-5 sm:px-8 py-10 w-full flex flex-col gap-10">
+        <main className="relative z-10 flex-1 max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 w-full flex flex-col gap-8 sm:gap-10">
           {/* Greeting Section */}
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
@@ -940,7 +943,15 @@ export default function DashboardPage() {
     <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col relative overflow-hidden transition-colors duration-200">
       {/* Workspace Header */}
       <header className="relative z-20 w-full border-b border-slate-200 dark:border-white/10 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl px-4 sm:px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 transition-colors"
+            title="Open workspace sidebar"
+          >
+            <Menu className="size-5" />
+          </button>
+
           <button
             onClick={() => selectWorkspace(null)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 transition-all"
@@ -949,18 +960,18 @@ export default function DashboardPage() {
             <ChevronLeft className="size-4" /> Home
           </button>
 
-          <div className="h-5 w-[1px] bg-slate-200 dark:bg-white/10" />
+          <div className="h-5 w-[1px] bg-slate-200 dark:bg-white/10 hidden sm:block" />
 
-          <div className="flex items-center gap-2">
-            <span className="text-xl">{activeWorkspace.icon}</span>
-            <span className="font-bold text-lg text-slate-900 dark:text-white truncate max-w-[200px] sm:max-w-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl flex-shrink-0">{activeWorkspace.icon}</span>
+            <span className="font-bold text-base sm:text-lg text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-xs">
               {activeWorkspace.name}
             </span>
           </div>
         </div>
 
         {/* Global Search & User Bar */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400">
             <Search className="size-3.5" />
             <span>Search workspace...</span>
@@ -981,9 +992,9 @@ export default function DashboardPage() {
       </header>
 
       {/* Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Workspace Sidebar */}
-        <aside className="w-64 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl flex flex-col justify-between p-4 flex-shrink-0">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* DESKTOP SIDEBAR */}
+        <aside className="hidden lg:flex w-64 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl flex-col justify-between p-4 flex-shrink-0">
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3">
@@ -1052,15 +1063,110 @@ export default function DashboardPage() {
           </div>
         </aside>
 
+        {/* MOBILE SIDEBAR DRAWER */}
+        <AnimatePresence>
+          {mobileNavOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md lg:hidden flex"
+              onClick={() => setMobileNavOpen(false)}
+            >
+              <motion.aside
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-72 bg-white dark:bg-slate-900 h-full p-5 flex flex-col justify-between border-r border-slate-200 dark:border-white/10 shadow-2xl text-slate-900 dark:text-white"
+              >
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">{activeWorkspace.icon}</span>
+                      <span className="font-bold text-base truncate">{activeWorkspace.name}</span>
+                    </div>
+                    <button
+                      onClick={() => setMobileNavOpen(false)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+
+                  {/* Navigation Items */}
+                  <nav className="flex flex-col gap-1.5">
+                    {[
+                      { id: 'overview', label: '🏠 Workspace Overview', tab: 'overview' },
+                      { id: 'meetings', label: '🎥 Meetings & Transcripts', tab: 'meetings' },
+                      { id: 'chat', label: '💬 Team Chat', tab: 'chat' },
+                      { id: 'ask-ai', label: '✨ Ask AI', tab: 'ask-ai', highlight: true }
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setActiveTab(item.tab as WorkspaceTab);
+                          if (item.tab !== 'meetings') setSelectedMeetingId(null);
+                          setMobileNavOpen(false);
+                        }}
+                        className={`flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold transition-all ${
+                          activeTab === item.tab
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {item.highlight && activeTab !== item.tab && (
+                          <span className="size-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse" />
+                        )}
+                      </button>
+                    ))}
+                  </nav>
+
+                  {/* Members Section */}
+                  <div className="flex flex-col gap-2 pt-4 border-t border-slate-200 dark:border-white/10">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3">
+                      Teammates ({activeWorkspace.members.length})
+                    </span>
+                    <div className="flex flex-col gap-1">
+                      {activeWorkspace.members.map((m) => (
+                        <div key={m.email} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300">
+                          <div className={`size-6 rounded-full ${m.avatarBg} grid place-items-center text-[10px] font-bold text-white`}>
+                            {m.name.slice(0, 2)}
+                          </div>
+                          <span className="truncate">{m.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 dark:border-white/10">
+                  <button
+                    onClick={() => {
+                      setActiveTab('settings');
+                      setMobileNavOpen(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 w-full"
+                  >
+                    <Settings className="size-4" /> Settings
+                  </button>
+                </div>
+              </motion.aside>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-6 sm:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-white">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-white">
           {/* TAB 1: WORKSPACE OVERVIEW */}
           {activeTab === 'overview' && (
-            <div className="max-w-4xl flex flex-col gap-8">
+            <div className="max-w-4xl flex flex-col gap-6 sm:gap-8">
               {/* Header greeting */}
               <div className="flex flex-col gap-1">
-                <h1 className="text-3xl font-black text-slate-900 dark:text-white">Good morning, {userFirstName}</h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Good morning, {userFirstName}</h1>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                   Here is what's happening in <strong className="text-slate-900 dark:text-white">{activeWorkspace.name}</strong>.
                 </p>
               </div>
@@ -1094,21 +1200,21 @@ export default function DashboardPage() {
 
               {/* Upcoming Meetings */}
               <div className="flex flex-col gap-4">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Upcoming Meetings</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">Upcoming Meetings</h2>
                 {activeWorkspace.upcomingMeetings.length > 0 ? (
                   <div className="flex flex-col gap-3">
                     {activeWorkspace.upcomingMeetings.map((m) => (
                       <div
                         key={m.id}
-                        className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex items-center justify-between gap-4 shadow-sm dark:shadow-md"
+                        className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex items-center justify-between gap-4 shadow-sm dark:shadow-md"
                       >
-                        <div className="flex flex-col gap-1">
-                          <h3 className="font-bold text-base text-slate-900 dark:text-white">{m.title}</h3>
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white truncate">{m.title}</h3>
                           <span className="text-xs text-indigo-600 dark:text-cyan-400 font-medium">{m.dateStr} · {m.participants} participants</span>
                         </div>
                         <button
                           onClick={() => router.push(`/room/${m.roomCode}`)}
-                          className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all"
+                          className="px-4 sm:px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex-shrink-0"
                         >
                           Join
                         </button>
@@ -1124,7 +1230,7 @@ export default function DashboardPage() {
 
               {/* Recent Conversations */}
               <div className="flex flex-col gap-4">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Recent Conversations</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white tracking-tight">Recent Conversations</h2>
                 <div className="flex flex-col gap-3">
                   {activeWorkspace.pastMeetings.map((pm) => (
                     <div
@@ -1133,22 +1239,22 @@ export default function DashboardPage() {
                         setSelectedMeetingId(pm.id);
                         setActiveTab('meetings');
                       }}
-                      className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900/80 cursor-pointer transition-all flex items-center justify-between gap-4 group shadow-sm"
+                      className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900/80 cursor-pointer transition-all flex items-center justify-between gap-4 group shadow-sm"
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="size-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 grid place-items-center">
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="size-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 grid place-items-center flex-shrink-0">
                           <Video className="size-5" />
                         </div>
-                        <div className="flex flex-col">
-                          <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        <div className="flex flex-col min-w-0">
+                          <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
                             {pm.title}
                           </h3>
-                          <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                             {pm.dateStr}
                           </span>
                         </div>
                       </div>
-                      <ChevronRight className="size-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors" />
+                      <ChevronRight className="size-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors flex-shrink-0" />
                     </div>
                   ))}
 
@@ -1157,20 +1263,20 @@ export default function DashboardPage() {
                       setActiveTab('chat');
                       setSelectedChannel('# Product');
                     }}
-                    className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900/80 cursor-pointer transition-all flex items-center justify-between gap-4 group shadow-sm"
+                    className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900/80 cursor-pointer transition-all flex items-center justify-between gap-4 group shadow-sm"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="size-10 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 grid place-items-center">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="size-10 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 grid place-items-center flex-shrink-0">
                         <MessageSquare className="size-5" />
                       </div>
-                      <div className="flex flex-col">
-                        <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                      <div className="flex flex-col min-w-0">
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors truncate">
                           # Product Discussion
                         </h3>
-                        <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Yesterday · 8 messages</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">Yesterday · 8 messages</span>
                       </div>
                     </div>
-                    <ChevronRight className="size-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors" />
+                    <ChevronRight className="size-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors flex-shrink-0" />
                   </div>
                 </div>
               </div>
@@ -1184,7 +1290,7 @@ export default function DashboardPage() {
                 <>
                   <div className="flex items-center justify-between">
                     <div>
-                      <h1 className="text-3xl font-black text-slate-900 dark:text-white">Meetings</h1>
+                      <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Meetings</h1>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Recorded & transcribed workspace meeting history.</p>
                     </div>
 
@@ -1204,14 +1310,14 @@ export default function DashboardPage() {
                       <div
                         key={pm.id}
                         onClick={() => setSelectedMeetingId(pm.id)}
-                        className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 cursor-pointer transition-all flex items-center justify-between gap-4 shadow-sm"
+                        className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 cursor-pointer transition-all flex items-center justify-between gap-4 shadow-sm"
                       >
-                        <div className="flex flex-col gap-1">
-                          <h3 className="font-bold text-base text-slate-900 dark:text-white">{pm.title}</h3>
-                          <span className="text-xs text-slate-500 dark:text-slate-400">{pm.dateStr}</span>
+                        <div className="flex flex-col gap-1 min-w-0">
+                          <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white truncate">{pm.title}</h3>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{pm.dateStr}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                          View Summary & Transcript <ChevronRight className="size-4" />
+                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+                          <span className="hidden sm:inline">View Summary</span> <ChevronRight className="size-4" />
                         </div>
                       </div>
                     ))}
@@ -1229,17 +1335,17 @@ export default function DashboardPage() {
                     </button>
 
                     <div className="flex flex-col gap-2 border-b border-slate-200 dark:border-white/10 pb-6">
-                      <h1 className="text-3xl font-black text-slate-900 dark:text-white">{currentPastMeeting.title}</h1>
+                      <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">{currentPastMeeting.title}</h1>
                       <span className="text-xs text-slate-500 dark:text-slate-400">{currentPastMeeting.dateStr}</span>
                     </div>
 
-                    {/* Sub-tabs: Summary / Transcript / Chat */}
+                    {/* Sub-tabs: Summary / Transcript */}
                     <div className="flex border-b border-slate-200 dark:border-white/10 gap-6">
                       {(['summary', 'transcript'] as const).map((t) => (
                         <button
                           key={t}
                           onClick={() => setMeetingDetailTab(t)}
-                          className={`pb-3 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 ${
+                          className={`pb-3 text-xs sm:text-sm font-bold uppercase tracking-wider transition-colors border-b-2 ${
                             meetingDetailTab === t
                               ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400'
                               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -1253,7 +1359,7 @@ export default function DashboardPage() {
                     {/* SUMMARY SUB-TAB */}
                     {meetingDetailTab === 'summary' && (
                       <div className="flex flex-col gap-6">
-                        <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                        <div className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
                           <h3 className="text-xs font-bold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Key Decisions</h3>
                           <ul className="list-disc list-inside text-sm text-slate-700 dark:text-slate-200 space-y-2">
                             {currentPastMeeting.decisions.map((d, i) => (
@@ -1262,7 +1368,7 @@ export default function DashboardPage() {
                           </ul>
                         </div>
 
-                        <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                        <div className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
                           <h3 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Action Items</h3>
                           <div className="flex flex-col gap-2">
                             {currentPastMeeting.actionItems.map((act, i) => (
@@ -1277,12 +1383,12 @@ export default function DashboardPage() {
                         </div>
 
                         {/* ASK ABOUT THIS MEETING */}
-                        <div className="p-6 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col gap-4 shadow-sm">
+                        <div className="p-5 sm:p-6 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col gap-4 shadow-sm">
                           <h3 className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
                             Ask about this meeting
                           </h3>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                             <input
                               type="text"
                               value={meetingAiQuery}
@@ -1309,7 +1415,7 @@ export default function DashboardPage() {
 
                     {/* TRANSCRIPT SUB-TAB */}
                     {meetingDetailTab === 'transcript' && (
-                      <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                      <div className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
                         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Full Meeting Transcript</h3>
                         <div className="flex flex-col gap-3">
                           {currentPastMeeting.transcript.map((t, i) => (
@@ -1329,9 +1435,9 @@ export default function DashboardPage() {
 
           {/* TAB 3: WORKSPACE CHAT WITH @TALK2ME */}
           {activeTab === 'chat' && (
-            <div className="flex-1 flex rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 overflow-hidden max-h-[75vh] shadow-sm dark:shadow-xl">
-              {/* Channel / DM list */}
-              <div className="w-56 border-r border-slate-200 dark:border-white/10 p-4 flex flex-col gap-4 bg-slate-50 dark:bg-slate-900/80">
+            <div className="flex-1 flex flex-col md:flex-row rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 overflow-hidden max-h-[78vh] shadow-sm dark:shadow-xl">
+              {/* Desktop Channel Sidebar */}
+              <div className="hidden md:flex w-56 border-r border-slate-200 dark:border-white/10 p-4 flex-col gap-4 bg-slate-50 dark:bg-slate-900/80">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Channels</span>
                   <div className="flex flex-col gap-1 mt-2">
@@ -1371,13 +1477,30 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* Mobile Channels Horizontal Pill Scroll */}
+              <div className="md:hidden flex items-center gap-2 p-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/80 overflow-x-auto">
+                {activeWorkspace.channels.concat(activeWorkspace.directMessages).map((ch) => (
+                  <button
+                    key={ch}
+                    onClick={() => setSelectedChannel(ch)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0 transition-colors ${
+                      selectedChannel === ch
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {ch}
+                  </button>
+                ))}
+              </div>
+
               {/* Messages Thread */}
               <div className="flex-1 flex flex-col justify-between">
-                <div className="p-4 border-b border-slate-200 dark:border-white/10 font-bold text-sm text-slate-900 dark:text-white">
+                <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-white/10 font-bold text-sm text-slate-900 dark:text-white">
                   {selectedChannel}
                 </div>
 
-                <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+                <div className="flex-1 p-3 sm:p-4 overflow-y-auto flex flex-col gap-3 sm:gap-4">
                   {(activeWorkspace.channelMessages[selectedChannel] || []).map((msg, i) => (
                     <div
                       key={i}
@@ -1399,13 +1522,13 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Input with @Talk2Me prompt */}
-                <div className="p-4 border-t border-slate-200 dark:border-white/10 flex items-center gap-2">
+                <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-white/10 flex items-center gap-2">
                   <input
                     type="text"
                     value={chatInputText}
                     onChange={(e) => setChatInputText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                    placeholder="Message or type @Talk2Me to ask AI inline..."
+                    placeholder="Message or type @Talk2Me..."
                     className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                   />
                   <button
@@ -1423,10 +1546,10 @@ export default function DashboardPage() {
           {activeTab === 'ask-ai' && (
             <div className="max-w-4xl flex flex-col gap-6">
               <div>
-                <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
                   ✨ Talk2Me AI
                 </h1>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
                   Ask Talk2Me about your workspace — Get answers from your meetings and conversations.
                 </p>
               </div>
@@ -1436,7 +1559,7 @@ export default function DashboardPage() {
                 {activeWorkspace.aiWorkspaceChat.map((msg, i) => (
                   <div
                     key={i}
-                    className={`p-6 rounded-2xl border ${
+                    className={`p-4 sm:p-6 rounded-2xl border ${
                       msg.sender === 'user'
                         ? 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10'
                         : 'bg-white dark:bg-slate-900/90 border-indigo-200 dark:border-indigo-500/40 shadow-md dark:shadow-xl'
@@ -1446,7 +1569,7 @@ export default function DashboardPage() {
                       <span>{msg.sender === 'user' ? 'You' : 'Talk2Me AI'}</span>
                       <span>{msg.time}</span>
                     </div>
-                    <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">{msg.text}</p>
+                    <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">{msg.text}</p>
 
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/10 flex flex-wrap items-center gap-2">
@@ -1482,11 +1605,11 @@ export default function DashboardPage() {
                   onChange={(e) => setAskAiInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendAskAi()}
                   placeholder="What are the biggest blockers for our product launch?"
-                  className="flex-1 px-4 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 shadow-sm"
+                  className="flex-1 px-4 py-3.5 sm:py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs sm:text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 shadow-sm"
                 />
                 <button
                   onClick={() => handleSendAskAi()}
-                  className="px-6 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg"
+                  className="px-5 sm:px-6 py-3.5 sm:py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg flex-shrink-0"
                 >
                   Ask AI
                 </button>
@@ -1497,9 +1620,9 @@ export default function DashboardPage() {
           {/* TAB 5: WORKSPACE SETTINGS */}
           {activeTab === 'settings' && (
             <div className="max-w-2xl flex flex-col gap-6">
-              <h1 className="text-3xl font-black text-slate-900 dark:text-white">Workspace Settings</h1>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Workspace Settings</h1>
 
-              <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+              <div className="p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
                     Workspace Name
@@ -1513,7 +1636,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
                     Workspace ID / Invite Code
                   </label>
                   <div className="flex items-center gap-2">
@@ -1538,6 +1661,39 @@ export default function DashboardPage() {
             </div>
           )}
         </main>
+
+        {/* MOBILE STICKY BOTTOM TAB NAVIGATION BAR */}
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 px-3 py-2 flex items-center justify-around shadow-2xl">
+          {[
+            { id: 'overview', label: 'Overview', icon: '🏠' },
+            { id: 'meetings', label: 'Meetings', icon: '🎥' },
+            { id: 'chat', label: 'Chat', icon: '💬' },
+            { id: 'ask-ai', label: 'Ask AI', icon: '✨' },
+            { id: 'settings', label: 'Settings', icon: '⚙' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id as WorkspaceTab);
+                if (tab.id !== 'meetings') setSelectedMeetingId(null);
+              }}
+              className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-xs font-bold transition-all relative ${
+                activeTab === tab.id
+                  ? 'text-indigo-600 dark:text-cyan-400 scale-105'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span className="text-base">{tab.icon}</span>
+              <span className="text-[10px] tracking-tight">{tab.label}</span>
+              {activeTab === tab.id && (
+                <motion.span
+                  layoutId="active-mobile-tab"
+                  className="absolute -bottom-1 size-1 rounded-full bg-indigo-600 dark:bg-cyan-400"
+                />
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
