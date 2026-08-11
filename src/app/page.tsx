@@ -55,13 +55,15 @@ export function HeroSection() {
               variants={fadeInUp} 
               className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black tracking-tighter text-balance leading-[1.02]"
             >
-              <span className="block text-foreground">Meetings end.</span>
-              <span className="bg-gradient-to-r from-indigo via-indigo to-cyan bg-clip-text text-transparent">Communication doesn&apos;t.</span>
+              <span className="block text-slate-900 dark:text-white">Meetings end.</span>
+              <span className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 dark:from-indigo-400 dark:via-cyan-300 dark:to-cyan-400 bg-clip-text text-transparent drop-shadow-sm">
+                Communication doesn&apos;t.
+              </span>
             </motion.h1>
 
             <motion.p 
               variants={fadeInUp} 
-              className="text-lg sm:text-xl text-muted-foreground text-pretty leading-relaxed font-medium max-w-2xl"
+              className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 text-pretty leading-relaxed font-medium max-w-2xl"
             >
               Talk2Me brings meetings, chat, and AI together so your conversations can continue wherever they need to go.
             </motion.p>
@@ -74,7 +76,7 @@ export function HeroSection() {
           >
             <Link
               href="/auth"
-              className="group flex items-center justify-center gap-2 px-8 py-4 bg-indigo text-white font-bold text-base rounded-2xl hover:shadow-xl transition-all active:scale-95 sm:flex-1"
+              className="group flex items-center justify-center gap-2 px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-base rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition-all active:scale-95 sm:flex-1"
             >
               Try Talk2Me Free
               <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
@@ -82,7 +84,7 @@ export function HeroSection() {
 
             <Link
               href="#product"
-              className="group flex items-center justify-center gap-2 px-8 py-4 border-2 border-foreground/20 text-foreground font-bold text-base rounded-2xl hover:border-indigo/50 hover:bg-indigo/8 transition-all sm:flex-1"
+              className="group flex items-center justify-center gap-2 px-8 py-4 border-2 border-slate-300 dark:border-white/15 text-slate-900 dark:text-white font-bold text-base rounded-2xl hover:border-indigo-500/50 hover:bg-slate-100 dark:hover:bg-white/10 transition-all sm:flex-1"
             >
               See How It Works
               <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
@@ -98,14 +100,14 @@ export function HeroSection() {
               <motion.div 
                 key={label}
                 variants={fadeInUp}
-                className="group flex flex-col items-center text-center gap-3 p-6 rounded-2xl border border-border/40 bg-white/40 dark:bg-white/5 backdrop-blur-md hover:border-cyan/40 hover:bg-white/60 dark:hover:bg-white/12 transition-all duration-300 shadow-sm"
+                className="group flex flex-col items-center text-center gap-3 p-6 sm:p-8 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl hover:border-cyan-500/50 dark:hover:border-cyan-400/40 hover:bg-white dark:hover:bg-slate-900/90 transition-all duration-300 shadow-md dark:shadow-2xl"
               >
-                <div className="w-12 h-12 rounded-xl bg-indigo/20 grid place-items-center group-hover:bg-indigo/30 transition-colors mb-1">
-                  <Icon className="size-6 text-indigo" />
+                <div className="size-13 rounded-2xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-cyan-400 grid place-items-center group-hover:scale-110 transition-transform mb-1 shadow-sm">
+                  <Icon className="size-6" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base lg:text-lg text-foreground mb-1">{label}</h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">{desc}</p>
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1.5">{label}</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{desc}</p>
                 </div>
               </motion.div>
             ))}
@@ -119,45 +121,46 @@ export function HeroSection() {
 // ━━━ SECTION 2: Final CTA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function FinalCTASection() {
   return (
-    <section className="px-5 py-24 lg:py-32 bg-gradient-to-br from-indigo via-indigo to-cyan relative overflow-hidden">
-      <div className="absolute inset-0 opacity-10 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:24px_24px] bg-[radial-gradient(circle,rgba(255,255,255,0.1)_1px,transparent_1px)]" />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        className="relative max-w-4xl mx-auto text-center flex flex-col items-center"
-      >
-        <h2 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white mb-8 text-balance leading-[1.1]">
-          Keep your conversations going.
-        </h2>
-        <p className="text-xl text-white/80 max-w-2xl mb-12">
-          Join teams using Talk2Me to bring meetings, chat, and AI together without losing momentum.
-        </p>
-        
-        <div className="flex flex-col sm:flex-row gap-6 items-center justify-center mb-12">
-          <Link
-            href="/auth"
-            className="group relative px-10 py-6 bg-white text-indigo rounded-2xl font-bold text-lg transition-all hover:scale-105 active:scale-95 shadow-2xl"
-          >
-            <span className="flex items-center gap-3">
-              Try Talk2Me Free
-              <ArrowRight className="size-6 group-hover:translate-x-1 transition-transform" />
-            </span>
-          </Link>
-          
-          <Link
-            href="/auth"
-            className="px-10 py-6 rounded-2xl font-bold text-lg text-white border-2 border-white/30 hover:border-white/60 transition-all"
-          >
-            See How It Works
-          </Link>
-        </div>
+    <section className="px-5 py-20 lg:py-28 relative overflow-hidden max-w-6xl mx-auto w-full">
+      <div className="relative rounded-3xl sm:rounded-[40px] p-8 sm:p-14 lg:p-20 bg-gradient-to-br from-indigo-700 via-indigo-600 to-cyan-600 dark:from-indigo-950 dark:via-slate-900 dark:to-cyan-950 border border-white/10 shadow-2xl overflow-hidden text-center flex flex-col items-center">
+        {/* Subtle dot pattern background */}
+        <div className="absolute inset-0 opacity-15 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:24px_24px] bg-[radial-gradient(circle,rgba(255,255,255,0.2)_1px,transparent_1px)] pointer-events-none" />
 
-        <p className="text-sm text-white/70">
-          No credit card required. Free tier includes up to 100 minutes/month.
-        </p>
-      </motion.div>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="relative z-10 max-w-4xl mx-auto flex flex-col items-center"
+        >
+          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-6 text-balance leading-[1.1]">
+            Keep your conversations going.
+          </h2>
+          <p className="text-base sm:text-xl text-white/80 max-w-2xl mb-10 font-medium leading-relaxed">
+            Join teams using Talk2Me to bring meetings, chat, and AI together without losing momentum.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center mb-8 w-full max-w-md">
+            <Link
+              href="/auth"
+              className="group relative w-full sm:flex-1 py-4 px-8 bg-white text-indigo-700 hover:bg-slate-100 rounded-2xl font-bold text-base transition-all hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-2"
+            >
+              <span>Try Talk2Me Free</span>
+              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
+            
+            <Link
+              href="/auth"
+              className="w-full sm:flex-1 py-4 px-8 rounded-2xl font-bold text-base text-white border-2 border-white/30 hover:border-white/60 hover:bg-white/10 transition-all flex items-center justify-center"
+            >
+              See How It Works
+            </Link>
+          </div>
+
+          <p className="text-xs text-white/70 font-medium">
+            No credit card required. Free tier includes full meeting & AI features.
+          </p>
+        </motion.div>
+      </div>
     </section>
   );
 }
@@ -175,17 +178,17 @@ export default function LandingPage() {
 
   if (loading || user) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950">
+      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-white">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-cyan"></div>
-          <p className="text-sm font-bold tracking-widest text-muted-foreground uppercase">Verifying Session...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-cyan-400"></div>
+          <p className="text-sm font-bold tracking-widest text-slate-400 uppercase">Verifying Session...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen w-full flex flex-col justify-center">
+    <main className="min-h-screen w-full flex flex-col justify-center bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
       <HeroSection />
       <FinalCTASection />
     </main>
