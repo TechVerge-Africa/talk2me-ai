@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Navbar } from "@/packages/ui/navbar";
 import { PwaRegister } from "@/components/pwa-register";
 import { InstallAppPrompt } from "@/components/install-app-prompt";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -45,16 +46,19 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background selection:bg-bridge-cyan/30">
-        <PwaRegister />
-        <InstallAppPrompt />
-        <Navbar />
-        {children}
+      <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-bridge-cyan/30 transition-colors duration-200">
+        <ThemeProvider>
+          <PwaRegister />
+          <InstallAppPrompt />
+          <Navbar />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
 }
+
 

@@ -34,13 +34,21 @@ const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
 // ─── Pre-Join Lobby ──────────────────────────────────────────────────
 function PreJoinLobby({ 
   onJoin, 
+  onClose,
   defaultName = '', 
   isHost = false 
 }: { 
   onJoin: (name: string) => void, 
+  onClose?: () => void,
   defaultName?: string, 
   isHost?: boolean 
 }) {
+  const router = useRouter();
+  const { user } = useAuth();
+  const handleClose = () => {
+    if (onClose) onClose();
+    else router.push(user ? '/dashboard' : '/');
+  };
   const [name, setName] = useState(defaultName);
   // Read initial mic/cam state from lobby prefs (persisted to localStorage)
   const [camOn, setCamOn] = useState(() => {
@@ -297,11 +305,20 @@ function PreJoinLobby({
   const isSpeaking = audioLevel > 0.03;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 relative">
       <motion.div 
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-4xl p-6 rounded-[24px] glass-card border border-border relative overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-8"
       >
+        {/* Top-Right Close Button */}
+        <button
+          onClick={handleClose}
+          aria-label="Close meeting preview"
+          className="absolute top-4 right-4 z-50 p-2.5 rounded-full bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-white/20 transition-all cursor-pointer shadow-md"
+          title="Close meeting preview"
+        >
+          <X className="size-5" />
+        </button>
         <div className={`relative rounded-2xl overflow-hidden h-64 md:h-auto flex flex-col min-h-[320px] border border-white/5 ${isSpeaking ? 'ring-4 ring-emerald-400/20 shadow-[0_0_40px_rgba(16,185,129,0.12)]' : ''}`}>
           <CameraPreview camOn={camOn} />
           {isSpeaking && (
@@ -1549,6 +1566,7 @@ function RoomContent({
 // ─── Outer page — handles token fetch, auth role, leave/rejoin ───────
 export default function RoomPage() {
   const params = useParams();
+  const router = useRouter();
   const code = params.code as string;
   const { user, profile, loading: authLoading } = useAuth();
 
@@ -1743,6 +1761,7 @@ export default function RoomPage() {
       isHost={isHost} 
       defaultName={user?.email?.split('@')[0]} 
       onJoin={(name) => { hasFetchedToken.current = true; fetchToken(name || 'Host'); }} 
+      onClose={() => router.push(user ? '/dashboard' : '/')}
     />;
   }
 

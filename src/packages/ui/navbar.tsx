@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/features/auth/use-auth";
 import { supabase } from "@/services/supabase/client";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_ITEMS = [
   { label: "Product",       href: "/#product" },
@@ -68,7 +69,8 @@ function DesktopNav({ scrolled: _scrolled }: { scrolled: boolean }) {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <ThemeToggle />
         {!loading && (
           <>
             {user ? (

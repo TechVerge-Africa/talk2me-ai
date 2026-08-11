@@ -7,11 +7,19 @@ import { motion } from "framer-motion";
 import { QrCode, ArrowRight, X } from "lucide-react";
 import { QrScanner } from "@/packages/ui/qr-scanner";
 import { AiWaveBackground } from "@/packages/ui/ai-effects";
+import { useAuth } from "@/features/auth/use-auth";
 
 export default function JoinPage() {
   const [code, setCode] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/auth');
+    }
+  }, [user, authLoading, router]);
 
   const handleClose = React.useCallback(() => {
     if (typeof window !== 'undefined' && window.history.length > 1) {

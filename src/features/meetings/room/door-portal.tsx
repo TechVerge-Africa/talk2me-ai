@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Unlock, Sparkles, Clock } from 'lucide-react';
+import { Lock, Unlock, Sparkles, Clock, X } from 'lucide-react';
 
 interface MeetingDoorPortalProps {
   isWaiting: boolean; // True when standing in lobby waiting for host admission
@@ -25,6 +25,17 @@ export function MeetingDoorPortal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#090b0e] overflow-hidden select-none">
+      {/* Close button in top-right corner */}
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          aria-label="Close door portal"
+          className="absolute top-6 right-6 z-50 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-all cursor-pointer border border-white/10 shadow-lg"
+          title="Close meeting"
+        >
+          <X className="size-6" />
+        </button>
+      )}
       {/* Background ambient lighting */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-indigo/10 blur-[120px] animate-pulse" />

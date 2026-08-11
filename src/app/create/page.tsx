@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -20,6 +20,12 @@ export default function CreatePage() {
   const [isCreating, setIsCreating] = useState(false);
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/auth');
+    }
+  }, [user, authLoading, router]);
 
   const [requireApproval, setRequireApproval] = useState(false);
   const [allowScreenShare, setAllowScreenShare] = useState(true);

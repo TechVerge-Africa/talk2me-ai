@@ -1,2732 +1,1544 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSmartGreeting } from '@/lib/greetings';
 import {
-  Home,
   Video,
-  Radio,
-  Calendar,
   MessageSquare,
-  Cpu,
-  FileAudio,
-  FileText,
-  Accessibility,
-  BarChart3,
-  Building2,
-  Settings,
   Search,
-  Plus,
   Bell,
   ChevronLeft,
-  ChevronRight,
   Copy,
   Check,
   Loader2,
-  Mic,
-  MicOff,
-  VideoOff,
-  Shield,
-  Activity,
-  Sparkles,
-  LogOut,
-  Share2,
+  Building2,
+  Users,
+  Settings,
+  ArrowRight,
   Send,
-  Lock,
-  Clock,
-  Globe,
-  Languages,
-  Play,
-  Volume2,
-  VolumeX,
-  Trash2
+  X,
+  LogOut,
+  ExternalLink,
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
-import { Meeting } from '@/types/meeting';
 import { MeetingService } from '@/services/supabase/meetings';
-import { ProfileService, UserProfile } from '@/services/supabase/profiles';
 import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
-import { AiWaveBackground } from '@/packages/ui/ai-effects';
-import { QrBlock } from '@/packages/ui/qr-block';
 import { GradientBackground } from '@/components/ui/gradient-background';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 // ── TYPES ────────────────────────────────────────────────────────────
-type DashboardView =
-  | 'home'
-  | 'meetings'
-  | 'streams'
-  | 'events'
-  | 'messages'
-  | 'ai-workspace'
-  | 'recordings'
-  | 'notes'
-  | 'accessibility'
-  | 'analytics'
-  | 'organizations'
-  | 'settings';
+interface WorkspaceMember {
+  name: string;
+  email: string;
+  role: string;
+  avatarBg: string;
+}
 
+interface ActionItem {
+  assignee: string;
+  task: string;
+}
 
+interface PastMeeting {
+  id: string;
+  title: string;
+  dateStr: string;
+  duration: string;
+  participantsCount: number;
+  participantsList: string[];
+  decisions: string[];
+  actionItems: ActionItem[];
+  transcript: { speaker: string; text: string; time: string }[];
+}
+
+interface Workspace {
+  id: string;
+  name: string;
+  topic: string;
+  icon: string;
+  membersCount: number;
+  conversationsCount: number;
+  members: WorkspaceMember[];
+  channels: string[];
+  directMessages: string[];
+  upcomingMeetings: { id: string; title: string; dateStr: string; participants: number; roomCode: string }[];
+  pastMeetings: PastMeeting[];
+  channelMessages: Record<string, { sender: string; isAi?: boolean; text: string; time: string }[]>;
+  aiWorkspaceChat: { sender: 'user' | 'ai'; text: string; sources?: string[]; time: string }[];
+}
+
+// ── MOCK DEFAULT WORKSPACES ──────────────────────────────────────────
+const DEFAULT_WORKSPACES: Workspace[] = [
+  {
+    id: 'ws-product-team',
+    name: 'Talk2Me Product Team',
+    topic: 'Product development & roadmap',
+    icon: '🚀',
+    membersCount: 8,
+    conversationsCount: 12,
+    members: [
+      { name: 'Abdul', email: 'abdul@talk2me.ai', role: 'Product Lead', avatarBg: 'bg-indigo-600' },
+      { name: 'Sarah', email: 'sarah@talk2me.ai', role: 'Engineering Lead', avatarBg: 'bg-cyan-600' },
+      { name: 'Daniel', email: 'daniel@talk2me.ai', role: 'Fullstack Dev', avatarBg: 'bg-emerald-600' },
+      { name: 'Michael', email: 'michael@talk2me.ai', role: 'QA Lead', avatarBg: 'bg-purple-600' }
+    ],
+    channels: ['# General', '# Product', '# Engineering'],
+    directMessages: ['Sarah', 'Daniel', 'Michael'],
+    upcomingMeetings: [
+      { id: 'm-up-1', title: 'Product Review', dateStr: 'Today · 3:00 PM', participants: 4, roomCode: 'PRD-300-REV' }
+    ],
+    pastMeetings: [
+      {
+        id: 'm-past-1',
+        title: 'Product Launch Meeting',
+        dateStr: 'Aug 10 · 45 minutes · 5 participants',
+        duration: '45 minutes',
+        participantsCount: 5,
+        participantsList: ['Abdul', 'Sarah', 'Daniel', 'Michael', 'Elena'],
+        decisions: [
+          'Launch target is September 5',
+          'Payment integration must be completed first'
+        ],
+        actionItems: [
+          { assignee: 'Daniel', task: 'Payment integration' },
+          { assignee: 'Sarah', task: 'Marketing campaign' }
+        ],
+        transcript: [
+          { speaker: 'Sarah', text: 'Are we still targeting September 5 for the launch?', time: '10:02 AM' },
+          { speaker: 'Daniel', text: 'Only if payment integration passes QA testing first.', time: '10:03 AM' },
+          { speaker: 'Abdul', text: 'Agreed. Daniel owns the payment integration milestone.', time: '10:05 AM' }
+        ]
+      },
+      {
+        id: 'm-past-2',
+        title: 'Engineering Sync',
+        dateStr: 'Aug 9 · 30 minutes · 6 participants',
+        duration: '30 minutes',
+        participantsCount: 6,
+        participantsList: ['Daniel', 'Michael', 'Abdul', 'Sarah'],
+        decisions: [
+          'Migrated SFU engine to WebRTC high frame-rate mode',
+          'Configured automatic local WASM audio worklets'
+        ],
+        actionItems: [
+          { assignee: 'Michael', task: 'Test SFU auto-scaling metrics' }
+        ],
+        transcript: [
+          { speaker: 'Daniel', text: 'The SFU latency issue is resolved.', time: '2:15 PM' },
+          { speaker: 'Michael', text: 'I will run load tests on 100 concurrent streams.', time: '2:18 PM' }
+        ]
+      },
+      {
+        id: 'm-past-3',
+        title: 'Marketing Planning',
+        dateStr: 'Aug 7 · 50 minutes · 4 participants',
+        duration: '50 minutes',
+        participantsCount: 4,
+        participantsList: ['Sarah', 'Abdul'],
+        decisions: [
+          'Launch campaign announcement planned across tech news channels',
+          'Focus key message on persistent meeting-to-chat context'
+        ],
+        actionItems: [
+          { assignee: 'Sarah', task: 'Draft press release and demo video' }
+        ],
+        transcript: [
+          { speaker: 'Sarah', text: 'The press release highlights our AI workspace features.', time: '11:00 AM' }
+        ]
+      }
+    ],
+    channelMessages: {
+      '# Product': [
+        { sender: 'Sarah', text: 'Are we still targeting September 5?', time: '10:14 AM' },
+        { sender: 'Daniel', text: 'Only if payment integration passes QA.', time: '10:16 AM' },
+        { sender: 'Abdul', text: '@Talk2Me what did we decide about this?', time: '10:17 AM' },
+        {
+          sender: 'Talk2Me AI',
+          isAi: true,
+          text: "In yesterday's Product Launch meeting, the team agreed that September 5 remains the target, but the launch depends on payment integration passing QA first.",
+          time: '10:17 AM'
+        }
+      ],
+      '# General': [
+        { sender: 'Michael', text: 'Good morning team! Standup in 10 minutes.', time: '9:50 AM' }
+      ],
+      '# Engineering': [
+        { sender: 'Daniel', text: 'WASM audio noise suppression worklet builds clean!', time: 'Yesterday' }
+      ],
+      'Sarah': [
+        { sender: 'Sarah', text: 'Hi Abdul! Did you review the product release notes?', time: 'Yesterday' }
+      ],
+      'Daniel': [
+        { sender: 'Daniel', text: 'Payment gateway API endpoints are staged for review.', time: '2 days ago' }
+      ],
+      'Michael': [
+        { sender: 'Michael', text: 'QA test suite passed 48 out of 48 test cases.', time: '3 days ago' }
+      ]
+    },
+    aiWorkspaceChat: [
+      {
+        sender: 'user',
+        text: 'What are the biggest blockers for our product launch?',
+        time: 'Yesterday'
+      },
+      {
+        sender: 'ai',
+        text: 'Based on your workspace conversations and meetings, I found three current blockers:\n\n1. **Payment integration**: Must complete QA validation first.\n2. **QA testing**: Comprehensive load testing required.\n3. **Marketing assets**: Final press release and demo video pending.\n\nDaniel owns payment integration and QA readiness.',
+        sources: [
+          'Product Launch Meeting — Aug 10',
+          'Engineering Chat — Aug 11',
+          'Product Planning — Aug 8'
+        ],
+        time: 'Yesterday'
+      }
+    ]
+  },
+  {
+    id: 'ws-design-systems',
+    name: 'Design Systems & Accessibility',
+    topic: 'WCAG 3.0 & Accessible UI Components',
+    icon: '🎨',
+    membersCount: 4,
+    conversationsCount: 6,
+    members: [
+      { name: 'Abdul', email: 'abdul@talk2me.ai', role: 'Product Lead', avatarBg: 'bg-indigo-600' },
+      { name: 'Elena', email: 'elena@talk2me.ai', role: 'UI/UX Designer', avatarBg: 'bg-pink-600' },
+      { name: 'Marcus', email: 'marcus@talk2me.ai', role: 'Accessibility Auditor', avatarBg: 'bg-amber-600' }
+    ],
+    channels: ['# General', '# Accessibility-Audit'],
+    directMessages: ['Elena', 'Marcus'],
+    upcomingMeetings: [],
+    pastMeetings: [],
+    channelMessages: {
+      '# General': [
+        { sender: 'Elena', text: 'Updated font scaling tokens to support 130% scaling cleanly.', time: '11:00 AM' }
+      ]
+    },
+    aiWorkspaceChat: []
+  }
+];
 
 export default function DashboardPage() {
-  const { user, profile, loading: authLoading, signOut, updatePassword, updateProfile } = useAuth();
+  const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
-  // ── LAYOUT STATE ───────────────────────────────────────────────────
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
-  const VALID_VIEWS: DashboardView[] = ['home','meetings','streams','events','messages','ai-workspace','recordings','notes','accessibility','analytics','organizations','settings'];
-  const [currentView, setCurrentViewRaw] = useState<DashboardView>(() => {
+  // ── INSTANT MEETING LAUNCHING STATE ────────────────────────────────
+  const [isLaunchingMeeting, setIsLaunchingMeeting] = useState(false);
+
+  // ── WORKSPACE STATE ────────────────────────────────────────────────
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => {
     try {
-      const saved = localStorage.getItem('t2_dashboard_view') as DashboardView;
-      return saved && VALID_VIEWS.includes(saved) ? saved : 'home';
-    } catch { return 'home'; }
-  });
-  const setCurrentView = (view: DashboardView) => {
-    try { localStorage.setItem('t2_dashboard_view', view); } catch {}
-    setCurrentViewRaw(view);
-  };
-  const [searchQuery, setSearchQuery] = useState('');
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [copiedText, setCopiedText] = useState<string | null>(null);
-  const [dbMeetings, setDbMeetings] = useState<Meeting[]>([]);
-
-  // ── QUICK ACTIONS MODAL ──────────────────────────────────────────
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [createModalType, setCreateModalType] = useState<'meeting' | 'stream' | 'event'>('meeting');
-  const [sessionName, setSessionName] = useState('');
-  const [sessionCategory, setSessionCategory] = useState('General');
-  const [sessionAudience, setSessionAudience] = useState('public');
-  const [generatedCode, setGeneratedCode] = useState('');
-
-  /** Auto-formats a room code to the X-NNN-XXX pattern (e.g. S-521-F7G) as the user types */
-  const formatRoomCode = (raw: string): string => {
-    const clean = raw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 7);
-    if (clean.length <= 1) return clean;
-    if (clean.length <= 4) return `${clean[0]}-${clean.slice(1)}`;
-    return `${clean[0]}-${clean.slice(1, 4)}-${clean.slice(4)}`;
-  };
-  const handleRoomCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setGeneratedCode(formatRoomCode(e.target.value));
-  };
-  const joinWithCode = () => {
-    const raw = generatedCode.replace(/-/g, '').trim();
-    if (raw.length >= 4) router.push(`/room/${raw.toUpperCase()}`);
-    else alert('Please enter a valid room code.');
-  };
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [scheduledTime, setScheduledTime] = useState('');
-  const [scheduledRequireApproval, setScheduledRequireApproval] = useState(false);
-  const [scheduledAllowScreenShare, setScheduledAllowScreenShare] = useState(true);
-
-  // ── SHARE SHEET STATE ────────────────────────────────────────────
-  const [shareSheetMeeting, setShareSheetMeeting] = useState<{ title: string; code: string; scheduled_at?: string } | null>(null);
-
-  const openShareSheet = (meeting: { title: string; code: string; scheduled_at?: string }) => {
-    setShareSheetMeeting(meeting);
-  };
-
-  const closeShareSheet = () => setShareSheetMeeting(null);
-
-  // ── ACCESSIBILITY SETTINGS STATE ───────────────────────────────────
-  const [captionsEnabled, setCaptionsEnabled] = useState(true);
-  const [translationLanguage, setTranslationLanguage] = useState('en');
-  const [_textToSpeech, _setTextToSpeech] = useState(false);
-  const [_speechToText, _setSpeechToText] = useState(true);
-  const [signLanguageMode, setSignLanguageMode] = useState(false);
-  const [highContrast, setHighContrast] = useState(false);
-  const [fontScale, setFontScale] = useState<100 | 115 | 130>(100);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [_keyboardNav, _setKeyboardNav] = useState(false);
-
-  // ── DYNAMIC NOTIFICATIONS & ACTIVITY DATA ───────────────────────────
-  const [unreadNotifications, setUnreadNotifications] = useState<Record<string, boolean>>({});
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
-  const [selectedChatId, setSelectedChatId] = useState<string>('');
-  const [newMessageText, setNewMessageText] = useState('');
-  const [chatHistories, setChatHistories] = useState<Record<string, { sender: 'me' | 'them'; text: string; time: string }[]>>({
-    'bot-interpreter': [
-      { sender: 'them', text: 'Hi! I am a certified ASL interpreter. You can request me for any live session!', time: '10:00 AM' }
-    ],
-    'bot-companion': [
-      { sender: 'them', text: 'Hello! I am your Talk2Me companion. I can summarize past meetings, check action items, or answer accessibility questions.', time: '10:00 AM' }
-    ],
-    'sarah-jenkins': [
-      { sender: 'them', text: 'Hi! I reviewed the Deaf Mode visual scales for our webinar tomorrow. They look extremely clean!', time: '12:04 PM' },
-      { sender: 'me', text: 'Excellent, thank you Sarah. We will start the stream simulation soon.', time: '12:05 PM' }
-    ]
+      const saved = localStorage.getItem('t2_workspaces_v1');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_WORKSPACES;
   });
 
-  const notifications = useMemo(() => {
-    const ended = dbMeetings.filter(m => m.status === 'ended').slice(0, 3);
-    return ended.map((m) => ({
-      id: m.id,
-      title: 'AI Summary Ready',
-      body: `The transcription and summary for "${m.title || 'Untitled Meeting'}" is available.`,
-      read: unreadNotifications[m.id] ?? false,
-      time: new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })
-    }));
-  }, [dbMeetings, unreadNotifications]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('t2_active_workspace_v1') || null;
+    } catch {
+      return null;
+    }
+  });
 
-  const markAllNotificationsRead = () => {
-    const updated: Record<string, boolean> = {};
-    notifications.forEach(n => {
-      updated[n.id] = true;
-    });
-    setUnreadNotifications(prev => ({ ...prev, ...updated }));
+  const activeWorkspace = useMemo(
+    () => workspaces.find((w) => w.id === activeWorkspaceId) || null,
+    [workspaces, activeWorkspaceId]
+  );
+
+  const selectWorkspace = (id: string | null) => {
+    setActiveWorkspaceId(id);
+    try {
+      if (id) localStorage.setItem('t2_active_workspace_v1', id);
+      else localStorage.removeItem('t2_active_workspace_v1');
+    } catch {}
   };
 
-  // ── AI ASSISTANT CHAT STATE ───────────────────────────────────────
-  const [aiChatInput, setAiChatInput] = useState('');
-  const [aiChatMessages, setAiChatMessages] = useState([
-    { sender: 'ai', text: "Hello! I am your Talk2Me Companion. I can summarize past meetings, check your action items, or write emails for you. What can I do for you today?", time: 'Just now' }
-  ]);
-  const [isAiTyping, setIsAiTyping] = useState(false);
+  // Persist workspaces
+  useEffect(() => {
+    try {
+      localStorage.setItem('t2_workspaces_v1', JSON.stringify(workspaces));
+    } catch {}
+  }, [workspaces]);
 
-  // ── STREAM SIMULATOR STATE ────────────────────────────────────────
-  const [streamIsLive, setStreamIsLive] = useState(false);
-  const [streamTitle, setStreamTitle] = useState('Building the Future of Digital Workspaces 🚀');
-  const [streamDesc, setStreamDesc] = useState('A live broadcast exploring modern accessibility, AI integration, and next-generation UI workflows.');
-  const [streamCategoryVal, setStreamCategoryVal] = useState('Tech & AI');
-  const [streamAudienceVal, setStreamAudienceVal] = useState('Public');
-  const [streamVolume, setStreamVolume] = useState(80);
-  const [streamMuted, setStreamMuted] = useState(false);
-  const [streamChat, setStreamChat] = useState([
-    { user: 'Sarah K.', text: 'This translation engine is incredibly fast! 🔥', timestamp: '12:04' },
-    { user: 'Michael O.', text: 'Is there a recording available after the stream?', timestamp: '12:05' },
-    { user: 'Elena R.', text: 'Supporting sign language natively is such a game changer.', timestamp: '12:05' }
-  ]);
-  const [streamNewMessage, setStreamNewMessage] = useState('');
-  const [activeCaptionText, setActiveCaptionText] = useState('Welcome back everyone! Today we are demonstrating the custom visual interpreter...');
-  const [aiModLogs, setAiModLogs] = useState<string[]>([
-    '[AI Engine] Speech translation overlay loaded: Swahili/French/ASL',
-    '[AI Mod] Ambient audio profile adjusted for speech clarity'
-  ]);
-  const [pollActive, setPollActive] = useState(true);
-  const [pollQuestion, _setPollQuestion] = useState('How do you prefer to view translation tracks?');
-  const [pollOptions, setPollOptions] = useState([
-    { id: 1, text: 'Burned-in Captions', votes: 45 },
-    { id: 2, text: 'Visual Sign Panel', votes: 78 },
-    { id: 3, text: 'Audio Translation Track', votes: 22 }
-  ]);
-  const [hasVoted, setHasVoted] = useState(false);
+  // ── NAVIGATION WITHIN WORKSPACE ────────────────────────────────────
+  type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
 
-  const streamChatRef = useRef<HTMLDivElement>(null);
+  // Selected sub-items
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [meetingDetailTab, setMeetingDetailTab] = useState<'summary' | 'transcript'>('summary');
+  const [meetingAiQuery, setMeetingAiQuery] = useState('');
+  const [meetingAiResponse, setMeetingAiResponse] = useState<string | null>(null);
 
-  // ── AUTH CHECK ─────────────────────────────────────────────────────
+  const [selectedChannel, setSelectedChannel] = useState<string>('# Product');
+  const [chatInputText, setChatInputText] = useState('');
+
+  const [askAiInput, setAskAiInput] = useState('');
+  const [isAiThinking, setIsAiThinking] = useState(false);
+
+  // ── MODAL STATES ───────────────────────────────────────────────────
+  const [createWsModalOpen, setCreateWsModalOpen] = useState(false);
+  const [newWsName, setNewWsName] = useState('');
+  const [newWsTopic, setNewWsTopic] = useState('');
+  const [newWsEmails, setNewWsEmails] = useState(['', '']);
+
+  const [joinWsModalOpen, setJoinWsModalOpen] = useState(false);
+  const [joinWsCode, setJoinWsCode] = useState('');
+
+  // ── USER DETAILS ───────────────────────────────────────────────────
+  const userName = profile?.full_name || user?.email?.split('@')[0] || 'Communicator';
+  const userFirstName = userName.split(' ')[0];
+
+  // Auth Protection
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/auth');
     }
   }, [user, authLoading, router]);
 
-  // Fetch user meetings and other workspace profiles from database
-  useEffect(() => {
-    if (user) {
-      MeetingService.getUserMeetings(user.id)
-        .then(setDbMeetings)
-        .catch(console.error);
-
-      ProfileService.getAllProfiles()
-        .then(data => {
-          setProfiles(data.filter(p => p.id !== user.id));
-        })
-        .catch(console.error);
-    }
-  }, [user]);
-
-  const displaySchedule = useMemo(() => {
-    return dbMeetings
-      .filter(m => m.status === 'active')
-      .map(m => ({
-        title: m.title || 'Untitled Meeting',
-        time: m.scheduled_at ? new Date(m.scheduled_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Active Now',
-        type: 'Meeting',
-        people: 'Host: You',
-        code: m.room_code
-      }));
-  }, [dbMeetings]);
-
-  const displayMeetings = useMemo(() => {
-    return dbMeetings.map(m => ({
-      id: m.id,
-      name: m.title || 'Untitled Meeting',
-      code: m.room_code,
-      date: new Date(m.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
-      status: m.status === 'active' ? 'Active' : 'Ended'
-    }));
-  }, [dbMeetings]);
-
-  const recentActivity = useMemo(() => {
-    return dbMeetings
-      .filter(m => m.status === 'ended')
-      .slice(0, 3)
-      .map(m => ({
-        title: m.title || 'Untitled Meeting',
-        date: new Date(m.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
-        icon: Video,
-        insights: true,
-        recording: false,
-        code: m.room_code
-      }));
-  }, [dbMeetings]);
-
-  const displayChats = useMemo(() => {
-    const dbChats = profiles.map(p => ({
-      id: p.id,
-      name: p.full_name || 'Workspace User',
-      role: p.is_interpreter ? 'Sign Language Interpreter' : 'Workspace Member',
-      isBot: false,
-    }));
-
-    if (dbChats.length > 0) return dbChats;
-
-    return [
-      { id: 'bot-interpreter', name: 'Premium Sign Language Interpreter', role: 'Sign Professional', isBot: true },
-      { id: 'bot-companion', name: 'Talk2Me AI Assistant', role: 'AI Assistant', isBot: true },
-      { id: 'sarah-jenkins', name: 'Sarah Jenkins', role: 'Deaf Interpreter', isBot: true }
-    ];
-  }, [profiles]);
-
-  useEffect(() => {
-    if (displayChats.length > 0) {
-      queueMicrotask(() => {
-        setSelectedChatId((prev) => (prev ? prev : displayChats[0].id));
-      });
-    }
-  }, [displayChats]);
-
-  const activeChat = useMemo(() => {
-    return displayChats.find(c => c.id === selectedChatId) || displayChats[0];
-  }, [displayChats, selectedChatId]);
-
-  const handleSendMessage = () => {
-    if (!newMessageText.trim() || !activeChat) return;
-
-    const newMsg = {
-      sender: 'me' as const,
-      text: newMessageText,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setChatHistories(prev => ({
-      ...prev,
-      [activeChat.id]: [...(prev[activeChat.id] || []), newMsg]
-    }));
-
-    setNewMessageText('');
-
-    if (activeChat.isBot) {
-      setTimeout(() => {
-        const botReply = {
-          sender: 'them' as const,
-          text: activeChat.id === 'bot-companion'
-            ? `I received your message: "${newMessageText}". As your Talk2Me AI Assistant, I can help you summarize meetings or translate transcriptions once you join a room!`
-            : activeChat.id === 'sarah-jenkins'
-            ? `Hi! As a Deaf Interpreter, I can translate this session. Start a call with me or schedule a meeting!`
-            : `Hello! I'm ready to assist with Sign Language translation. Start a call using the button in the top right to invite me to interpret!`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setChatHistories(prev => ({
-          ...prev,
-          [activeChat.id]: [...(prev[activeChat.id] || []), botReply]
-        }));
-      }, 1000);
-    }
-  };
-
-  const handleDeleteMeeting = async (meetingId: string) => {
-    if (!window.confirm("Are you sure you want to delete this meeting? This action cannot be undone.")) {
-      return;
-    }
-    
-    try {
-      await MeetingService.deleteMeeting(meetingId);
-      setDbMeetings(prev => prev.filter(m => m.id !== meetingId));
-    } catch (err) {
-      console.error("Failed to delete meeting:", err);
-      alert("Failed to delete meeting. Please try again.");
-    }
-  };
-
-  // ── RESPONSIVE WINDOW RESIZE SYNC ──────────────────────────────────
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setSidebarOpen(false);
-      } else {
-        setSidebarOpen(true);
-      }
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Keyboard navigation listener (Accessibility feature)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // CMD/Ctrl + K command palette
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setCommandPaletteOpen(prev => !prev);
-      }
-      // Esc closes modals
-      if (e.key === 'Escape') {
-        setCommandPaletteOpen(false);
-        setCreateModalOpen(false);
-        setNotificationsOpen(false);
-        setShareSheetMeeting(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Auto scroll stream chat
-  useEffect(() => {
-    if (streamChatRef.current) {
-      streamChatRef.current.scrollTop = streamChatRef.current.scrollHeight;
-    }
-  }, [streamChat]);
-
-  // Simulate live data when streaming
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (streamIsLive) {
-      const chatPool = [
-        { user: 'Amina L.', text: 'The low latency makes it feel like an in-person meeting!' },
-        { user: 'David W.', text: 'Just shared this link with our accessibility team.' },
-        { user: 'Jessica M.', text: 'Are the transcripts automatically formatted with headers?' },
-        { user: 'Tariq A.', text: 'Is the sign language transformer running in WASM locally?' },
-        { user: 'Chloe B.', text: 'Amazing visual presentation and dark mode contrast.' }
-      ];
-
-      const captionPool = [
-        'Our vision models parse up to 60 frames per second directly in the client.',
-        'This ensures we do not send raw camera feeds back to central servers, preserving privacy.',
-        'By combining LiveKit media pipes with local Edge logic, we maintain sub-100ms lag.',
-        'If you look at the right AI workspace panel, the action items are updating dynamically.',
-        'We believe that communication should be accessible by design, not as a bolted-on extra.'
-      ];
-
-      interval = setInterval(() => {
-        // Random chat
-        const randomChat = chatPool[Math.floor(Math.random() * chatPool.length)];
-        const time = new Date();
-        const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
-        setStreamChat(prev => [...prev, { user: randomChat.user, text: randomChat.text, timestamp: timeStr }]);
-
-        // Random caption
-        const randomCaption = captionPool[Math.floor(Math.random() * captionPool.length)];
-        setActiveCaptionText(randomCaption);
-
-        // Add to AI Mod log
-        const logTypes = [
-          '[AI Mod] Screen layout adapted for high-readability',
-          '[AI Engine] Generated dynamic keyword highlight: "LiveKit SFU"',
-          '[AI Engine] Sign transformer prediction confidence: 99.4%'
-        ];
-        const randomLog = logTypes[Math.floor(Math.random() * logTypes.length)];
-        setAiModLogs(prev => [randomLog, ...prev.slice(0, 8)]);
-      }, 4000);
-    }
-    return () => clearInterval(interval);
-  }, [streamIsLive]);
-
-  // User details
-  const userName = profile?.full_name || user?.email?.split('@')[0] || 'Communicator';
-  const userInitials = (profile?.full_name || user?.email || 'US').slice(0, 2).toUpperCase();
-  const smartGreeting = useMemo(() => getSmartGreeting(userName), [userName]);
-
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen grid place-items-center bg-slate-950">
+      <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="size-10 animate-spin text-cyan" />
-          <p className="text-sm font-bold tracking-widest text-muted-foreground uppercase">Securing Connection...</p>
+          <Loader2 className="size-10 animate-spin text-cyan-500 dark:text-cyan-400" />
+          <p className="text-sm font-bold tracking-widest text-slate-500 dark:text-slate-400 uppercase">Verifying Session...</p>
         </div>
       </div>
     );
   }
 
-  // ── QUICK SESSION GENERATOR ────────────────────────────────────────
-  const triggerCreateSession = (type: 'meeting' | 'stream' | 'event') => {
-    setCreateModalType(type);
-    setSessionName(type === 'meeting' ? 'Instant Meeting' : type === 'stream' ? 'Live Stream Broadcast' : 'Scheduled Meeting');
-    const code = generateRoomCode();
-    setGeneratedCode(code);
-    
-    // Set a default scheduled time (1 hour from now) formatted for datetime-local input
-    const nextHour = new Date();
-    nextHour.setHours(nextHour.getHours() + 1);
-    nextHour.setMinutes(0);
-    const localISO = new Date(nextHour.getTime() - nextHour.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    setScheduledTime(localISO);
-    setScheduledRequireApproval(false);
-    setScheduledAllowScreenShare(true);
-    
-    setCreateModalOpen(true);
-  };
-
-  const handleLaunchSession = async () => {
-    setIsCreatingSession(true);
+  // ━━━ INSTANT MEETING LAUNCHER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const handleLaunchInstantMeeting = async () => {
+    if (isLaunchingMeeting) return;
+    setIsLaunchingMeeting(true);
     try {
-      if (createModalType === 'meeting') {
-        const meeting = await MeetingService.createMeeting(
-          sessionName || 'New Meeting', 
-          user.id, 
-          scheduledRequireApproval, 
-          undefined, 
-          scheduledAllowScreenShare
-        );
+      if (user) {
+        const meeting = await MeetingService.createMeeting('Instant Meeting', user.id);
         router.push(`/room/${meeting.room_code}`);
-      } else if (createModalType === 'stream') {
-        // Stream simulated setup
-        setStreamTitle(sessionName || 'Untitled Stream');
-        setCurrentView('streams');
-        setStreamIsLive(true);
-        setCreateModalOpen(false);
       } else {
-        // Scheduled meeting
-        const isoTime = new Date(scheduledTime).toISOString();
-        const meeting = await MeetingService.createMeeting(
-          sessionName || 'Scheduled Meeting', 
-          user.id, 
-          scheduledRequireApproval, 
-          isoTime,
-          scheduledAllowScreenShare
-        );
-        
-        // Refresh meetings
-        const updated = await MeetingService.getUserMeetings(user.id);
-        setDbMeetings(updated);
-        setCreateModalOpen(false);
-        // Open share sheet instead of alert
-        openShareSheet({
-          title: meeting.title || 'Scheduled Meeting',
-          code: meeting.room_code,
-          scheduled_at: meeting.scheduled_at,
-        });
+        const roomCode = generateRoomCode();
+        router.push(`/room/${roomCode}`);
       }
     } catch (e) {
-      console.error('Launch session failed:', e);
-      alert('Failed to launch or schedule session. Please try again.');
-    } finally {
-      setIsCreatingSession(false);
+      console.error('Instant meeting creation error:', e);
+      const roomCode = generateRoomCode();
+      router.push(`/room/${roomCode}`);
     }
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedText(text);
-      setTimeout(() => setCopiedText(null), 1500);
-    } catch (_) {}
+  // Create Workspace Handler
+  const handleCreateWorkspace = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWsName.trim()) return;
+
+    const newWs: Workspace = {
+      id: `ws-${Date.now()}`,
+      name: newWsName.trim(),
+      topic: newWsTopic.trim() || 'General Collaboration',
+      icon: '🏢',
+      membersCount: 1 + newWsEmails.filter((e) => e.trim()).length,
+      conversationsCount: 1,
+      members: [
+        { name: userFirstName, email: user.email || '', role: 'Workspace Owner', avatarBg: 'bg-indigo-600' },
+        ...newWsEmails
+          .filter((em) => em.trim())
+          .map((em, idx) => ({
+            name: em.split('@')[0],
+            email: em.trim(),
+            role: 'Member',
+            avatarBg: idx % 2 === 0 ? 'bg-cyan-600' : 'bg-emerald-600'
+          }))
+      ],
+      channels: ['# General', '# Team-Announcements'],
+      directMessages: [],
+      upcomingMeetings: [],
+      pastMeetings: [],
+      channelMessages: {
+        '# General': [
+          { sender: 'Talk2Me AI', isAi: true, text: `Welcome to ${newWsName.trim()}! I am your AI companion for this workspace.`, time: 'Just now' }
+        ]
+      },
+      aiWorkspaceChat: []
+    };
+
+    setWorkspaces((prev) => [newWs, ...prev]);
+    setActiveWorkspaceId(newWs.id);
+    setCreateWsModalOpen(false);
+    setNewWsName('');
+    setNewWsTopic('');
+    setNewWsEmails(['', '']);
   };
 
-  // ── AI ASSISTANT CHAT SEND ─────────────────────────────────────────
-  const handleSendAiMessage = () => {
-    if (!aiChatInput.trim()) return;
-    const userMsg = aiChatInput.trim();
-    setAiChatMessages(prev => [...prev, { sender: 'user', text: userMsg, time: 'Just now' }]);
-    setAiChatInput('');
-    setIsAiTyping(true);
+  // Join Workspace Handler
+  const handleJoinWorkspace = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinWsCode.trim()) return;
+
+    const code = joinWsCode.trim();
+    const existing = workspaces.find((w) => w.id === code || w.name.toLowerCase().includes(code.toLowerCase()));
+
+    if (existing) {
+      setActiveWorkspaceId(existing.id);
+    } else {
+      const joinedWs: Workspace = {
+        id: `ws-joined-${Date.now()}`,
+        name: `Workspace (${code.slice(0, 8)})`,
+        topic: 'Joined Workspace',
+        icon: '🔗',
+        membersCount: 5,
+        conversationsCount: 3,
+        members: [
+          { name: userFirstName, email: user.email || '', role: 'Member', avatarBg: 'bg-cyan-600' }
+        ],
+        channels: ['# General'],
+        directMessages: [],
+        upcomingMeetings: [],
+        pastMeetings: [],
+        channelMessages: {
+          '# General': [
+            { sender: 'System', text: `You joined the workspace using code ${code}.`, time: 'Just now' }
+          ]
+        },
+        aiWorkspaceChat: []
+      };
+      setWorkspaces((prev) => [joinedWs, ...prev]);
+      setActiveWorkspaceId(joinedWs.id);
+    }
+
+    setJoinWsModalOpen(false);
+    setJoinWsCode('');
+  };
+
+  // Chat message sending with @Talk2Me trigger
+  const handleSendChatMessage = () => {
+    if (!chatInputText.trim() || !activeWorkspace) return;
+    const text = chatInputText.trim();
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const updatedMessages = [
+      ...(activeWorkspace.channelMessages[selectedChannel] || []),
+      { sender: userFirstName, text, time: nowStr }
+    ];
+
+    let aiReply: { sender: string; isAi: boolean; text: string; time: string } | null = null;
+
+    if (text.toLowerCase().includes('@talk2me')) {
+      let replyText = `I am analyzing your workspace context regarding: "${text.replace(/@talk2me/gi, '').trim()}".`;
+      if (text.toLowerCase().includes('decide') || text.toLowerCase().includes('target') || text.toLowerCase().includes('launch')) {
+        replyText = "In yesterday's Product Launch meeting, the team agreed that September 5 remains the target, but the launch depends on payment integration passing QA first.";
+      } else if (text.toLowerCase().includes('blocker') || text.toLowerCase().includes('status')) {
+        replyText = "The main open blocker discussed in meetings is payment integration testing. Daniel owns this action item.";
+      }
+      aiReply = {
+        sender: 'Talk2Me AI',
+        isAi: true,
+        text: replyText,
+        time: nowStr
+      };
+    }
+
+    const nextMessages = aiReply ? [...updatedMessages, aiReply] : updatedMessages;
+
+    setWorkspaces((prev) =>
+      prev.map((w) =>
+        w.id === activeWorkspace.id
+          ? {
+              ...w,
+              channelMessages: {
+                ...w.channelMessages,
+                [selectedChannel]: nextMessages
+              }
+            }
+          : w
+      )
+    );
+
+    setChatInputText('');
+  };
+
+  // Dedicated Ask AI Workspace Search Handler
+  const handleSendAskAi = (promptText?: string) => {
+    const text = (promptText || askAiInput).trim();
+    if (!text || !activeWorkspace) return;
+
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const userEntry = { sender: 'user' as const, text, time: nowStr };
+
+    let aiResponseText = `Based on your workspace conversations and meetings for ${activeWorkspace.name}, here is what I found regarding "${text}":`;
+    let sources = ['Product Launch Meeting — Aug 10', 'Engineering Chat — Aug 11'];
+
+    const lower = text.toLowerCase();
+    if (lower.includes('blocker') || lower.includes('launch')) {
+      aiResponseText = `Based on your workspace conversations and meetings, I found three current blockers:\n\n1. **Payment integration**: Must complete QA testing before launch.\n2. **QA testing**: Load tests on 100 concurrent streams.\n3. **Marketing assets**: Final press release and demo video pending.\n\nDaniel owns payment integration and QA readiness.`;
+      sources = ['Product Launch Meeting — Aug 10', 'Engineering Chat — Aug 11', 'Product Planning — Aug 8'];
+    } else if (lower.includes('meeting') || lower.includes('summary') || lower.includes('decide')) {
+      aiResponseText = `In recent workspace meetings, the key decisions were:\n\n• **Target Date**: Launch remains set for September 5.\n• **Architecture**: SFU audio worklets migrated to WebRTC high-performance mode.\n• **Action Owner**: Daniel is leading the payment integration setup.`;
+      sources = ['Product Launch Meeting — Aug 10', 'Engineering Sync — Aug 9'];
+    }
+
+    const aiEntry = {
+      sender: 'ai' as const,
+      text: aiResponseText,
+      sources,
+      time: nowStr
+    };
+
+    setIsAiThinking(true);
+    setAskAiInput('');
 
     setTimeout(() => {
-      let response = "I've processed your request. Let me know if there's anything else I can find for you!";
-      const lower = userMsg.toLowerCase();
-
-      if (lower.includes('summarize') || lower.includes('summary')) {
-        response = "Here is a quick summary of your yesterday's team standup: \n\n• **LCP Optimization**: The frontend team solved the 1.2s delay in hero render.\n• **Access Controls**: The backend RLS policy updates were verified.\n• **Action Item**: Sarah to set up LiveKit auto-recording triggers.";
-      } else if (lower.includes('action') || lower.includes('todo')) {
-        response = "Here are your active action items:\n\n1. Review the RLS migration file (Completed)\n2. Setup LiveKit token generation route (Completed)\n3. Push local changes to staging and test Deaf Mode visual scales (Pending)";
-      } else if (lower.includes('email') || lower.includes('follow-up')) {
-        response = "I have drafted a follow-up email for your last session:\n\n*Subject: Talk2Me Session Follow-up: Milestones & Next Steps*\n\n*Hi team, thanks for joining. Here is what we finalized: we deployed the accessibility center toggles. Next step: configure high frame rate settings.*";
-      }
-
-      setAiChatMessages(prev => [...prev, { sender: 'ai', text: response, time: 'Just now' }]);
-      setIsAiTyping(false);
-    }, 1500);
+      setWorkspaces((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkspace.id
+            ? {
+                ...w,
+                aiWorkspaceChat: [...(w.aiWorkspaceChat || []), userEntry, aiEntry]
+              }
+            : w
+        )
+      );
+      setIsAiThinking(false);
+    }, 600);
   };
 
-  // ── VOTE IN POLL ───────────────────────────────────────────────────
-  const handleVote = (optionId: number) => {
-    if (hasVoted) return;
-    setPollOptions(prev =>
-      prev.map(opt => (opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt))
-    );
-    setHasVoted(true);
+  // Meeting specific query handler
+  const handleQueryMeeting = (query: string) => {
+    if (!query.trim()) return;
+    setMeetingAiQuery(query);
+    setMeetingAiResponse("Searching meeting transcript & audio logs...");
+    setTimeout(() => {
+      setMeetingAiResponse(`Regarding "${query}": The main concern raised by Daniel was ensuring payment integration passes QA before the September 5 launch. Sarah confirmed marketing assets are ready.`);
+    }, 500);
   };
 
-  const totalVotes = pollOptions.reduce((acc, curr) => acc + curr.votes, 0);
-
-  // ── COMMAND PALETTE SEARCH FILTER ─────────────────────────────────
-  const SEARCH_ITEMS = [
-    { type: 'Meeting', title: 'Daily Sync & Backlog Review', code: 'WXP-KLS-QRT', route: '/room/WXP-KLS-QRT' },
-    { type: 'Stream', title: 'Talk2Me Accessibility Product Keynote', code: 'streams', isView: true },
-    { type: 'Event', title: 'Global Accessibility & Inclusion Summit', code: 'events', isView: true },
-    { type: 'AI Summary', title: 'Sprint Planning and RLS policy review', code: 'ai-workspace', isView: true },
-    { type: 'Note', title: 'Deaf Mode Camera layout suggestions', code: 'notes', isView: true },
-    { type: 'People', title: 'Sarah Jenkins (Core Interpreter)', code: 'messages', isView: true }
-  ];
-
-  const filteredSearchItems = SEARCH_ITEMS.filter(
-    item =>
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.type.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleSearchSelect = (item: typeof SEARCH_ITEMS[0]) => {
-    setCommandPaletteOpen(false);
-    setSearchQuery('');
-    if (item.isView) {
-      setCurrentView(item.code as DashboardView);
-    } else if (item.route) {
-      router.push(item.route);
-    }
-  };
-
-  interface NavItem {
-    view: DashboardView;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    highlight?: boolean;
-  }
-
-  // Navigation lists
-  const navItems: NavItem[] = [
-    { view: 'home', label: 'Home', icon: Home },
-    { view: 'meetings', label: 'Meetings', icon: Video },
-    { view: 'streams', label: 'Live Streams', icon: Radio },
-    { view: 'events', label: 'Events & Webinars', icon: Calendar },
-    { view: 'messages', label: 'Messages', icon: MessageSquare },
-    { view: 'ai-workspace', label: 'AI Workspace', icon: Cpu },
-    { view: 'recordings', label: 'Recordings', icon: FileAudio },
-    { view: 'notes', label: 'Notes', icon: FileText },
-    { view: 'accessibility', label: 'Accessibility Center', icon: Accessibility, highlight: true },
-    { view: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { view: 'organizations', label: 'Organizations', icon: Building2 },
-    { view: 'settings', label: 'Settings', icon: Settings }
-  ];
-
-  return (
-    <div
-      className={`h-screen overflow-hidden flex bg-background text-foreground transition-all duration-300 font-sans ${
-        highContrast ? 'contrast-125 border-4 border-cyan' : ''
-      } ${reducedMotion ? 'motion-reduce' : ''}`}
-      style={{
-        fontSize: fontScale === 115 ? '1.15rem' : fontScale === 130 ? '1.3rem' : '1rem'
-      }}
-    >
-      {/* ── LEFT SIDEBAR ────────────────────────────────────────────── */}
-      <motion.aside
-        animate={{ width: sidebarOpen ? '280px' : '80px' }}
-        className="hidden md:flex flex-col flex-shrink-0 h-screen bg-card/60 backdrop-blur-xl border-r border-border/40 relative z-30"
-      >
-        <div className="h-16 flex items-center justify-between px-5 border-b border-border/40">
-          <div className="flex items-center gap-3 overflow-hidden">
-            {sidebarOpen ? (
-              <Link href="/" className="flex items-center">
-                <img
-                  src="/assets/logo-light.png"
-                  alt="Talk2Me Logo"
-                  className="dark:hidden block h-9 w-auto object-contain"
-                />
-                <img
-                  src="/assets/logo-dark.png"
-                  alt="Talk2Me Logo"
-                  className="hidden dark:block h-9 w-auto object-contain"
-                />
-              </Link>
-            ) : (
-              <Link href="/" className="flex items-center justify-center w-9 h-9 flex-shrink-0">
-                <img
-                  src="/assets/logo-symbol.png"
-                  alt="Talk2Me Symbol"
-                  className="h-8 w-8 object-contain"
-                />
-              </Link>
-            )}
-          </div>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1 rounded hover:bg-foreground/5 text-muted-foreground hover:text-foreground flex-shrink-0"
-          >
-            {sidebarOpen ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
-          </button>
-        </div>
-
-        {/* Sidebar Nav Items */}
-        <nav className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto no-scrollbar">
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = currentView === item.view;
-            return (
-              <button
-                key={item.view}
-                onClick={() => setCurrentView(item.view)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all relative group ${
-                  isActive
-                    ? 'bg-indigo text-white font-bold shadow-md shadow-indigo/20'
-                    : item.highlight
-                    ? 'bg-cyan/10 text-cyan font-bold hover:bg-cyan/25'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-foreground/5'
-                }`}
-              >
-                <Icon className={`size-5 flex-shrink-0 ${isActive ? 'text-white' : item.highlight ? 'text-cyan' : ''}`} />
-                {sidebarOpen && <span className="text-sm truncate">{item.label}</span>}
-                {!sidebarOpen && (
-                  <div className="absolute left-20 bg-slate-900 text-white text-xs px-2.5 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl">
-                    {item.label}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* User Account Footer */}
-        <div className="p-4 border-t border-border/40 bg-card/20">
-          <button
-            onClick={() => signOut()}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-all text-left font-semibold"
-          >
-            <LogOut className="size-5 flex-shrink-0" />
-            {sidebarOpen && <span className="text-sm">Log Out</span>}
-          </button>
-        </div>
-      </motion.aside>
-
-      {/* ── MAIN WORKSPACE CONTAINER ─────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 relative">
+  // ━━━ RENDER: GLOBAL HOME SCREEN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (!activeWorkspace) {
+    return (
+      <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col relative overflow-hidden transition-colors duration-200">
         <GradientBackground />
-        {/* ── TOP NAV BAR ───────────────────────────────────────────── */}
-        <header className="h-16 flex items-center justify-between px-3 md:px-6 border-b border-border/40 bg-card/40 backdrop-blur-xl relative z-20">
-          {/* Left: Mobile Sidebar toggle and global Search bar */}
-          <div className="flex items-center gap-2 sm:gap-4 flex-1 max-w-xl">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="md:hidden p-2 rounded-lg bg-foreground/5 text-muted-foreground hover:text-foreground flex-shrink-0"
-            >
-              {sidebarOpen ? <ChevronLeft className="size-5" /> : <ChevronRight className="size-5" />}
+
+        {/* Global Header */}
+        <header className="relative z-10 w-full border-b border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center group flex-shrink-0">
+            <img
+              src="/assets/logo-light.png"
+              alt="Talk2Me Logo"
+              className="dark:hidden block h-10 w-auto object-contain"
+            />
+            <img
+              src="/assets/logo-dark.png"
+              alt="Talk2Me Logo"
+              className="hidden dark:block h-10 w-auto object-contain"
+            />
+          </Link>
+
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+
+            <button className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 transition-all relative">
+              <Bell className="size-5" />
+              <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-cyan-500 dark:bg-cyan-400" />
             </button>
 
-            {/* Global Search palette button */}
-            <button
-              onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center justify-center sm:justify-start gap-3 w-10 sm:w-full max-w-md h-10 px-0 sm:px-4 rounded-xl border border-transparent sm:border-border/40 bg-foreground/5 hover:bg-foreground/8 transition-all text-left text-muted-foreground text-sm flex-shrink-0 sm:flex-shrink"
-            >
-              <Search className="size-4 text-muted-foreground flex-shrink-0" />
-              <span className="hidden sm:inline flex-1 truncate">Search meetings, events, or ask AI...</span>
-              <kbd className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold border rounded bg-card/60 shadow-sm uppercase tracking-wide">
-                Ctrl K
-              </kbd>
-            </button>
-          </div>
-
-          {/* Right: Quick actions, notifications, status, profile */}
-          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-            {/* Quick action button */}
-            <div className="relative">
+            <div className="flex items-center gap-3 pl-2 border-l border-slate-200 dark:border-white/10">
+              <div className="size-9 rounded-xl bg-indigo-600 border border-indigo-500/30 grid place-items-center text-xs font-black text-white uppercase shadow-sm">
+                {userFirstName.slice(0, 2)}
+              </div>
+              <div className="hidden sm:flex flex-col text-left leading-tight">
+                <span className="text-sm font-semibold text-slate-900 dark:text-white">{userName}</span>
+                <span className="text-[11px] text-slate-500 dark:text-muted-foreground">{user.email}</span>
+              </div>
               <button
-                onClick={() => triggerCreateSession('meeting')}
-                className="size-10 sm:h-10 sm:w-auto sm:px-4 rounded-xl bg-indigo text-white font-bold text-sm hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                onClick={() => signOut()}
+                className="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-all ml-1"
+                title="Sign Out"
               >
-                <Plus className="size-4 flex-shrink-0" />
-                <span className="hidden sm:inline">Quick Start</span>
+                <LogOut className="size-4" />
               </button>
-            </div>
-
-            {/* Accessibility Status indicator */}
-            <button
-              onClick={() => setCurrentView('accessibility')}
-              className={`p-2 rounded-xl border transition-all flex-shrink-0 ${
-                captionsEnabled || signLanguageMode || highContrast
-                  ? 'bg-cyan/15 border-cyan/40 text-cyan shadow-sm animate-pulse-slow'
-                  : 'bg-foreground/5 border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-              title="Accessibility Center Status"
-            >
-              <Accessibility className="size-5" />
-            </button>
-
-            {/* Notification system */}
-            <div className="relative flex-shrink-0">
-              <button
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="p-2 rounded-xl bg-foreground/5 hover:bg-foreground/8 text-muted-foreground hover:text-foreground relative transition-all"
-              >
-                <Bell className="size-5" />
-                <span className="absolute top-1 right-1 size-2 rounded-full bg-indigo ring-2 ring-background" />
-              </button>
-
-              <AnimatePresence>
-                {notificationsOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute right-0 mt-3 w-80 rounded-2xl border border-border/40 bg-card p-4 shadow-2xl z-50"
-                    >
-                      <div className="flex justify-between items-center mb-4">
-                        <span className="font-bold text-sm">Notifications</span>
-                        <button
-                          onClick={markAllNotificationsRead}
-                          className="text-xs text-indigo hover:underline font-bold cursor-pointer"
-                        >
-                          Mark all read
-                        </button>
-                      </div>
-                      <div className="space-y-2.5 max-h-60 overflow-y-auto no-scrollbar">
-                        {notifications.length === 0 ? (
-                          <div className="text-center py-8 text-xs text-muted-foreground font-semibold">
-                            No new notifications
-                          </div>
-                        ) : (
-                          notifications.map(item => (
-                            <div
-                              key={item.id}
-                              className={`p-2.5 rounded-xl border transition-all ${
-                                item.read ? 'border-transparent bg-foreground/3' : 'border-indigo/20 bg-indigo/5'
-                              }`}
-                            >
-                              <div className="flex justify-between text-xs font-bold mb-1">
-                                <span className="truncate">{item.title}</span>
-                                <span className="text-muted-foreground text-[10px] font-normal">{item.time}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground leading-relaxed">{item.body}</p>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Profile Avatar */}
-            <div
-              onClick={() => setCurrentView('settings')}
-              className="size-10 rounded-xl bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-xs font-black shadow-lg border border-white/20 cursor-pointer hover:scale-105 transition-transform"
-            >
-              {userInitials}
             </div>
           </div>
         </header>
 
-        {/* ── MAIN SCROLLABLE CONTENT AREA ────────────────────────────── */}
-        <main className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-8 no-scrollbar">
-          <AnimatePresence mode="wait">
+        {/* Main Home Dashboard Body */}
+        <main className="relative z-10 flex-1 max-w-6xl mx-auto px-5 sm:px-8 py-10 w-full flex flex-col gap-10">
+          {/* Greeting Section */}
+          <div className="flex flex-col gap-2">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
+              Good morning, {userFirstName}
+            </h1>
+            <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 font-medium">
+              What would you like to do?
+            </p>
+          </div>
+
+          {/* 3 Primary Action Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Card 1: Start a Meeting */}
             <motion.div
-              key={currentView}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.2 }}
+              whileHover={{ y: -4, scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={handleLaunchInstantMeeting}
+              className="group cursor-pointer p-6 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl"
             >
-              {/* ── HOME VIEW ─────────────────────────────────────────── */}
-              {currentView === 'home' && (
-                <div className="space-y-8 max-w-5xl mx-auto">
-                  {/* Clean Greeting Header */}
-                  <div className="space-y-2">
-                    <h1 className="text-3xl font-black tracking-tight text-foreground sm:text-4xl flex items-center gap-2.5">
-                      {smartGreeting.greeting} <span>{smartGreeting.emoji}</span>
-                    </h1>
-                    <p className="text-muted-foreground text-sm font-medium">
-                      {smartGreeting.subtitle}
-                    </p>
-                  </div>
-
-                  {/* Quick Actions Grid */}
-                  <div className="space-y-4">
-                    <h2 className="text-lg font-bold tracking-tight">Quick Actions</h2>
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                      {/* Action 1: Instant Call */}
-                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-indigo/30 transition-all flex flex-col justify-between min-h-[180px] group">
-                        <div className="space-y-2">
-                          <div className="size-10 rounded-xl bg-indigo/10 text-indigo flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                            <Video className="size-5" />
-                          </div>
-                          <h3 className="font-bold text-sm text-foreground">Instant Call</h3>
-                          <p className="text-[11px] text-muted-foreground leading-normal">Start an immediate inclusive video session.</p>
-                        </div>
-                        <button
-                          onClick={() => triggerCreateSession('meeting')}
-                          className="w-full py-2 px-3 mt-4 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow-md transition-all cursor-pointer"
-                        >
-                          Start Meeting
-                        </button>
-                      </div>
-
-                      {/* Action 2: Join with Code */}
-                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-cyan/30 transition-all flex flex-col justify-between min-h-[180px] group">
-                        <div className="space-y-2">
-                          <div className="size-10 rounded-xl bg-cyan/10 text-cyan flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                            <Lock className="size-5" />
-                          </div>
-                          <h3 className="font-bold text-sm text-foreground">Join with Code</h3>
-                          <p className="text-[11px] text-muted-foreground leading-normal">Enter room credentials to join a session.</p>
-                        </div>
-                        <div className="flex flex-col gap-2 mt-4">
-                          <input
-                            type="text"
-                            value={generatedCode}
-                            placeholder="S-521-F7G"
-                            maxLength={9}
-                            className="w-full px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-xs uppercase font-mono text-center outline-none focus:bg-background focus:ring-1 focus:ring-cyan transition-all"
-                            onChange={handleRoomCodeChange}
-                            onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
-                          />
-                          <button
-                            onClick={joinWithCode}
-                            className="w-full py-2 px-3 rounded-xl bg-foreground text-background font-bold text-xs hover:opacity-90 transition-all cursor-pointer"
-                          >
-                            Join Meeting
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Action 3: Schedule Meeting */}
-                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-indigo/30 transition-all flex flex-col justify-between min-h-[180px] group">
-                        <div className="space-y-2">
-                          <div className="size-10 rounded-xl bg-indigo/10 text-indigo flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                            <Calendar className="size-5" />
-                          </div>
-                          <h3 className="font-bold text-sm text-foreground">Schedule Session</h3>
-                          <p className="text-[11px] text-muted-foreground leading-normal">Book a future meeting with a11y features.</p>
-                        </div>
-                        <button
-                          onClick={() => triggerCreateSession('event')}
-                          className="w-full py-2 px-3 mt-4 rounded-xl border border-border hover:bg-foreground/5 text-foreground font-bold text-xs transition-all cursor-pointer"
-                        >
-                          Schedule
-                        </button>
-                      </div>
-
-                      {/* Action 4: Streaming Studio */}
-                      <div className="glass-card p-5 rounded-2xl border border-border/40 hover:border-cyan/30 transition-all flex flex-col justify-between min-h-[180px] group">
-                        <div className="space-y-2">
-                          <div className="size-10 rounded-xl bg-cyan/10 text-cyan flex items-center justify-center group-hover:scale-105 transition-transform flex-shrink-0">
-                            <Radio className="size-5" />
-                          </div>
-                          <h3 className="font-bold text-sm text-foreground">Go Live</h3>
-                          <p className="text-[11px] text-muted-foreground leading-normal">Launch streaming console to broadcast.</p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setStreamTitle('Live Broadcast Studio');
-                            setCurrentView('streams');
-                            setStreamIsLive(true);
-                          }}
-                          className="w-full py-2 px-3 mt-4 rounded-xl bg-cyan text-slate-950 font-bold text-xs hover:shadow-md transition-all cursor-pointer"
-                        >
-                          Start Broadcast
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                          {/* 3 Core Highlight Metrics */}
-                  <div className="grid sm:grid-cols-3 gap-6">
-                    {[
-                      { title: 'Meetings this Week', value: '14', detail: '4 active sessions today', icon: Video },
-                      { title: 'AI Summaries Generated', value: '23', detail: '100% automated parsing', icon: Cpu },
-                      { title: 'Accessibility Usage', value: '18 hours', detail: 'Live captioning & sign translation', icon: Accessibility }
-                    ].map((card, i) => {
-                      const Icon = card.icon;
-                      return (
-                        <div
-                          key={i}
-                          className="glass-card p-6 rounded-2xl border border-border/40 hover:border-cyan/30 transition-all flex items-center gap-5"
-                        >
-                          <div className="size-12 rounded-xl bg-indigo/10 flex items-center justify-center flex-shrink-0">
-                            <Icon className="size-6 text-indigo" />
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-muted-foreground uppercase font-black tracking-wider block mb-0.5">
-                              {card.title}
-                            </span>
-                            <div className="text-2xl font-black text-foreground">{card.value}</div>
-                            <span className="text-[10px] text-muted-foreground block mt-0.5">{card.detail}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Upcoming & Activity Split */}
-                  <div className="grid lg:grid-cols-3 gap-8 pt-2">
-                    {/* Left: Schedule list */}
-                    <div className="lg:col-span-2 space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h2 className="text-lg font-bold tracking-tight">Today&apos;s Schedule</h2>
-                        <button
-                          onClick={() => setCurrentView('events')}
-                          className="text-xs font-bold text-indigo hover:underline"
-                        >
-                          Full Calendar →
-                        </button>
-                      </div>
-
-                      <div className="space-y-3">
-                        {displaySchedule.length === 0 ? (
-                          <div className="p-8 text-center border border-dashed border-border/40 rounded-2xl text-muted-foreground text-xs font-semibold bg-card/20 flex flex-col items-center justify-center gap-2">
-                            <Calendar className="size-8 opacity-30 text-indigo animate-pulse" />
-                            <span>No upcoming meetings scheduled. Start or schedule a session above!</span>
-                          </div>
-                        ) : (
-                          displaySchedule.map((event, index) => (
-                            <div
-                              key={index}
-                              className="p-4 rounded-xl border border-border/40 bg-card/40 hover:bg-card transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-4"
-                            >
-                              <div className="space-y-0.5">
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
-                                    event.type === 'Meeting' ? 'bg-indigo/10 text-indigo' : 'bg-red-500/10 text-red-500'
-                                  }`}>
-                                    {event.type}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground font-medium">{event.time}</span>
-                                </div>
-                                <h3 className="font-bold text-sm text-foreground">{event.title}</h3>
-                                <p className="text-[11px] text-muted-foreground">{event.people}</p>
-                              </div>
-                              <div className="flex items-center gap-2 self-start sm:self-auto">
-                                <button
-                                  onClick={() => openShareSheet({ title: event.title, code: event.code })}
-                                  className="px-3 py-2 rounded-xl border border-border/40 text-muted-foreground hover:text-foreground hover:bg-foreground/5 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                                  title="Share this meeting"
-                                >
-                                  <Share2 className="size-3.5" />
-                                  Share
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (event.type === 'Meeting') {
-                                      router.push(`/room/${event.code.replace(/-/g, '')}`);
-                                    } else {
-                                      setCurrentView(event.code as DashboardView);
-                                    }
-                                  }}
-                                  className="px-4 py-2 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow transition-all cursor-pointer"
-                                >
-                                  Join
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Right: Activity recap */}
-                    <div className="space-y-4">
-                      <h2 className="text-lg font-bold tracking-tight">Recent Activity</h2>
-                      <div className="space-y-3">
-                        {recentActivity.length === 0 ? (
-                          <div className="p-8 text-center border border-dashed border-border/40 rounded-2xl text-muted-foreground text-xs font-semibold bg-card/20 flex flex-col items-center justify-center gap-2">
-                            <Activity className="size-8 opacity-30 text-indigo" />
-                            <span>No recent activity found. Join a meeting to get started.</span>
-                          </div>
-                        ) : (
-                          recentActivity.map((activity, idx) => {
-                            const ActIcon = activity.icon;
-                            return (
-                              <div key={idx} className="p-4 rounded-xl border border-border/40 bg-card/45 hover:bg-card transition-all space-y-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="size-8 rounded-lg bg-indigo/10 grid place-items-center text-indigo flex-shrink-0">
-                                    <ActIcon className="size-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h4 className="font-bold text-xs text-foreground truncate">{activity.title}</h4>
-                                    <p className="text-[10px] text-muted-foreground">{activity.date}</p>
-                                  </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  {activity.insights && (
-                                    <button
-                                      onClick={() => setCurrentView('ai-workspace')}
-                                      className="text-[9px] font-black uppercase px-2 py-1 rounded bg-indigo/15 text-indigo hover:bg-indigo/20 transition-all flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <Sparkles className="size-2.5" />
-                                      AI Summary
-                                    </button>
-                                  )}
-                                  {activity.recording && (
-                                    <button
-                                      onClick={() => setCurrentView('recordings')}
-                                      className="text-[9px] font-black uppercase px-2 py-1 rounded bg-foreground/5 text-muted-foreground hover:bg-foreground/10 transition-all cursor-pointer"
-                                    >
-                                      Recording
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </div>
+              <div className="flex flex-col gap-4">
+                <div className="size-14 rounded-2xl bg-indigo-500/15 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 grid place-items-center group-hover:scale-110 transition-transform">
+                  {isLaunchingMeeting ? <Loader2 className="size-7 animate-spin text-indigo-600 dark:text-indigo-400" /> : <Video className="size-7" />}
                 </div>
-              )}
-
-              {/* ── MEETINGS VIEW ────────────────────────────────────── */}
-              {currentView === 'meetings' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Meetings Portal</h1>
-                    <p className="text-muted-foreground text-sm">Host instant calls, join using secure credentials, or schedule inclusive video sessions.</p>
-                  </div>
-
-                  <div className="grid md:grid-cols-3 gap-6">
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 flex flex-col justify-between min-h-[220px]">
-                      <div>
-                        <div className="size-12 rounded-xl bg-indigo/10 grid place-items-center text-indigo mb-4">
-                          <Video className="size-6" />
-                        </div>
-                        <h3 className="font-black text-lg mb-1">Instant Session</h3>
-                        <p className="text-xs text-muted-foreground leading-relaxed">Launch an immediate 1:1 call or collaborative group workspace with auto captions.</p>
-                      </div>
-                      <button
-                        onClick={() => triggerCreateSession('meeting')}
-                        className="w-full py-3 rounded-xl bg-indigo text-white font-bold text-sm hover:shadow-lg transition-all"
-                      >
-                        Start Meeting
-                      </button>
-                    </div>
-
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 flex flex-col justify-between min-h-[220px]">
-                      <div>
-                        <div className="size-12 rounded-xl bg-cyan/10 grid place-items-center text-cyan mb-4">
-                          <Lock className="size-6" />
-                        </div>
-                        <h3 className="font-black text-lg mb-1">Join with Code</h3>
-                        <p className="text-xs text-muted-foreground leading-relaxed">Enter a 9-letter code to instantly connect to an ongoing secured meeting room.</p>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <input
-                          type="text"
-                          value={generatedCode}
-                          placeholder="S-521-F7G"
-                          maxLength={9}
-                          className="w-full px-3 py-2 rounded-xl border border-border/40 bg-foreground/5 text-sm uppercase tracking-wider outline-none text-center font-mono focus:bg-background focus:ring-1 focus:ring-cyan transition-all"
-                          onChange={handleRoomCodeChange}
-                          onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
-                        />
-                        <button
-                          onClick={joinWithCode}
-                          className="w-full py-3 rounded-xl bg-foreground text-background font-bold text-sm hover:opacity-90 transition-all cursor-pointer"
-                        >
-                          Join Meeting
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 flex flex-col justify-between min-h-[220px]">
-                      <div>
-                        <div className="size-12 rounded-xl bg-indigo/10 grid place-items-center text-indigo mb-4">
-                          <Calendar className="size-6" />
-                        </div>
-                        <h3 className="font-black text-lg mb-1">Schedule Meeting</h3>
-                        <p className="text-xs text-muted-foreground leading-relaxed">Configure date, participants, language overlays, and automatic summary policies.</p>
-                      </div>
-                      <button
-                        onClick={() => triggerCreateSession('event')}
-                        className="w-full py-3 rounded-xl border border-border text-foreground hover:bg-foreground/5 font-bold text-sm"
-                      >
-                        Schedule
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Active Rooms Table */}
-                  <div className="space-y-4">
-                    <h3 className="font-bold text-lg">Active Rooms History</h3>
-                    <div className="overflow-x-auto rounded-xl border border-border/40 bg-card">
-                      <table className="w-full text-left text-sm border-collapse">
-                        <thead>
-                          <tr className="border-b border-border/40 bg-foreground/3">
-                            <th className="p-4 font-bold text-xs text-muted-foreground uppercase">Room Name</th>
-                            <th className="p-4 font-bold text-xs text-muted-foreground uppercase">Room Code</th>
-                            <th className="p-4 font-bold text-xs text-muted-foreground uppercase">Created At</th>
-                            <th className="p-4 font-bold text-xs text-muted-foreground uppercase">Status</th>
-                            <th className="p-4 font-bold text-xs text-muted-foreground uppercase text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayMeetings.length === 0 ? (
-                            <tr>
-                              <td colSpan={5} className="p-8 text-center text-muted-foreground text-xs font-semibold">
-                                No meetings found. Create or schedule a meeting above to start.
-                              </td>
-                            </tr>
-                          ) : (
-                            displayMeetings.map((room, idx) => (
-                              <tr key={idx} className="border-b border-border/20 last:border-0 hover:bg-foreground/2">
-                                <td className="p-4 font-bold">{room.name}</td>
-                                <td className="p-4 font-mono text-xs text-indigo">{room.code}</td>
-                                <td className="p-4 text-muted-foreground text-xs">{room.date}</td>
-                                <td className="p-4">
-                                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
-                                    room.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-foreground/5 text-muted-foreground'
-                                  }`}>
-                                    {room.status}
-                                  </span>
-                                </td>
-                                <td className="p-4 text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button
-                                      onClick={() => openShareSheet({ title: room.name, code: room.code })}
-                                      className="p-1.5 rounded bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition cursor-pointer"
-                                      title="Share Meeting Link"
-                                    >
-                                      <Share2 className="size-4" />
-                                    </button>
-                                    <button
-                                      onClick={() => router.push(`/room/${room.code}`)}
-                                      className="px-3 py-1.5 rounded bg-indigo text-white font-bold text-xs hover:shadow transition cursor-pointer"
-                                    >
-                                      Enter
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteMeeting(room.id)}
-                                      className="p-1.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 transition cursor-pointer"
-                                      title="Delete Meeting"
-                                    >
-                                      <Trash2 className="size-4" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── LIVE STREAMS VIEW (STUDIO SIMULATOR) ───────────────── */}
-              {currentView === 'streams' && (
-                <div className="space-y-8">
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                    <div>
-                      <h1 className="text-3xl font-black tracking-tight">Talk2Me Streaming Studio</h1>
-                      <p className="text-muted-foreground text-sm">Simulate live interactive broadcasting with integrated AI captions and real-time overlays.</p>
-                    </div>
-
-                    {!streamIsLive ? (
-                      <button
-                        onClick={() => setStreamIsLive(true)}
-                        className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg flex items-center gap-2 self-start"
-                      >
-                        <Radio className="size-4" />
-                        Go Live Now
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setStreamIsLive(false)}
-                        className="px-6 py-3 bg-slate-900 text-white border border-border/50 hover:bg-slate-900/80 font-bold rounded-xl flex items-center gap-2 self-start"
-                      >
-                        <VolumeX className="size-4 text-red-500" />
-                        End Stream
-                      </button>
-                    )}
-                  </div>
-
-                  {!streamIsLive ? (
-                    /* Stream Setup Panel */
-                    <div className="grid lg:grid-cols-3 gap-8">
-                      <div className="lg:col-span-2 glass-card p-8 rounded-3xl border border-border/40 space-y-6">
-                        <h3 className="font-bold text-lg border-b border-border/40 pb-4">Stream Configuration</h3>
-
-                        <div className="grid sm:grid-cols-2 gap-6">
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Broadcast Title</label>
-                            <input
-                              type="text"
-                              value={streamTitle}
-                              onChange={(e) => setStreamTitle(e.target.value)}
-                              className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-cyan transition-all outline-none text-sm font-semibold"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Category</label>
-                            <input
-                              type="text"
-                              value={streamCategoryVal}
-                              onChange={(e) => setStreamCategoryVal(e.target.value)}
-                              className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-cyan transition-all outline-none text-sm font-semibold"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Description</label>
-                          <textarea
-                            value={streamDesc}
-                            onChange={(e) => setStreamDesc(e.target.value)}
-                            rows={3}
-                            className="w-full p-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-cyan transition-all outline-none text-sm font-semibold resize-none"
-                          />
-                        </div>
-
-                        <div className="grid sm:grid-cols-2 gap-6">
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Audience Privacy</label>
-                            <select
-                              value={streamAudienceVal}
-                              onChange={(e) => setStreamAudienceVal(e.target.value)}
-                              className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-cyan transition-all outline-none text-sm font-semibold"
-                            >
-                              <option value="Public">Public (Anyone can view)</option>
-                              <option value="Unlisted">Unlisted (Link holders only)</option>
-                              <option value="Private">Private (Org invitees only)</option>
-                            </select>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Language Stream Translates To</label>
-                            <select
-                              value={translationLanguage}
-                              onChange={(e) => setTranslationLanguage(e.target.value)}
-                              className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-cyan transition-all outline-none text-sm font-semibold"
-                            >
-                              <option value="en">English (US)</option>
-                              <option value="fr">French (France)</option>
-                              <option value="sw">Swahili (Kenya)</option>
-                              <option value="de">German</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right preview box */}
-                      <div className="glass-card p-6 rounded-3xl border border-border/40 flex flex-col justify-between">
-                        <div className="space-y-4">
-                          <div className="aspect-video w-full rounded-2xl bg-slate-950 flex items-center justify-center relative overflow-hidden border border-white/5">
-                            <Radio className="size-12 text-slate-800 animate-pulse" />
-                            <div className="absolute top-3 left-3 bg-black/60 px-2 py-1 rounded text-[10px] font-bold uppercase text-white border border-white/10">
-                              Preview Off
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <h4 className="font-bold text-base">{streamTitle}</h4>
-                            <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{streamDesc}</p>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => setStreamIsLive(true)}
-                          className="w-full py-4 mt-6 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm transition-all shadow-lg shadow-red-500/15 flex items-center justify-center gap-2"
-                        >
-                          <Radio className="size-4" />
-                          Launch Live Broadcast
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Broadcaster Studio Simulator */
-                    <div className="grid lg:grid-cols-4 gap-8">
-                      {/* Studio Main (Left 3 columns) */}
-                      <div className="lg:col-span-3 space-y-6">
-                        {/* Simulated Webcam Feed */}
-                        <div className="relative aspect-video rounded-3xl bg-slate-950 overflow-hidden border border-cyan/20 shadow-2xl flex items-center justify-center">
-                          <AiWaveBackground className="opacity-40" />
-
-                          {/* Top controls / badges */}
-                          <div className="absolute top-4 inset-x-4 flex justify-between items-center pointer-events-none">
-                            <div className="flex items-center gap-2 pointer-events-auto">
-                              <span className="bg-red-500 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-md tracking-wider flex items-center gap-1.5 animate-pulse">
-                                <span className="size-1.5 rounded-full bg-white animate-ping" />
-                                LIVE
-                              </span>
-                              <span className="bg-black/60 text-white text-[10px] font-bold px-2.5 py-1 rounded-md border border-white/10 flex items-center gap-1">
-                                <Clock className="size-3 text-cyan" />
-                                00:04:12
-                              </span>
-                            </div>
-
-                            <span className="bg-black/60 text-white text-[10px] font-bold px-2.5 py-1 rounded-md border border-white/10 pointer-events-auto">
-                              {streamCategoryVal}
-                            </span>
-                          </div>
-
-                          {/* Interactive Overlay Captions */}
-                          <div className="absolute bottom-6 inset-x-6 bg-black/70 border border-white/15 p-4 rounded-2xl backdrop-blur text-center space-y-2 pointer-events-auto">
-                            <div className="flex justify-between items-center px-2 border-b border-white/10 pb-1.5 mb-1.5">
-                              <div className="flex items-center gap-1 text-[10px] font-black text-cyan uppercase tracking-wider">
-                                <Languages className="size-3" />
-                                Translated Captions ({translationLanguage.toUpperCase()})
-                              </div>
-                              <span className="text-[9px] text-muted-foreground uppercase font-bold">Auto Scroll ON</span>
-                            </div>
-                            <p className="text-white text-sm sm:text-base font-medium leading-relaxed tracking-wide italic">
-                              &quot;{activeCaptionText}&quot;
-                            </p>
-                          </div>
-
-                          {/* Mock video source label */}
-                          <div className="absolute text-white/40 font-black text-2xl tracking-tighter pointer-events-none opacity-40 select-none">
-                            TALK2ME STREAM CONSOLE
-                          </div>
-                        </div>
-
-                        {/* Stream Action Toolbar */}
-                        <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl border border-border/40 bg-card">
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setStreamMuted(!streamMuted)}
-                              className={`p-3 rounded-xl transition-all ${
-                                streamMuted ? 'bg-red-500 text-white' : 'bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground'
-                              }`}
-                            >
-                              {streamMuted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
-                            </button>
-                            <button className="p-3 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-all">
-                              <VideoOff className="size-5" />
-                            </button>
-                            <div className="hidden sm:flex items-center gap-2 ml-4">
-                              <Volume2 className="size-4 text-muted-foreground" />
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={streamVolume}
-                                onChange={(e) => setStreamVolume(Number(e.target.value))}
-                                className="w-24 accent-indigo"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3">
-                            <button className="px-4 py-2 bg-indigo/15 text-indigo font-bold text-xs rounded-xl hover:bg-indigo/20 transition-all flex items-center gap-1.5">
-                              <Share2 className="size-3.5" />
-                              Invite
-                            </button>
-                            <button
-                              onClick={() => setStreamIsLive(false)}
-                              className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl transition-all shadow shadow-red-500/10"
-                            >
-                              Stop Streaming
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Interactive poll overlay or panel */}
-                        {pollActive && (
-                          <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                            <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-2">
-                                <span className="size-2 rounded-full bg-cyan animate-pulse" />
-                                <h4 className="font-bold text-sm uppercase tracking-wider text-cyan">Active Engagement Poll</h4>
-                              </div>
-                              <button
-                                onClick={() => setPollActive(false)}
-                                className="text-xs text-muted-foreground hover:text-foreground"
-                              >
-                                Close Poll
-                              </button>
-                            </div>
-                            <div className="space-y-3">
-                              <p className="font-bold text-base">{pollQuestion}</p>
-
-                              <div className="space-y-2.5">
-                                {pollOptions.map((opt) => {
-                                  const percentage = totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0;
-                                  return (
-                                    <button
-                                      key={opt.id}
-                                      onClick={() => handleVote(opt.id)}
-                                      disabled={hasVoted}
-                                      className="w-full text-left relative overflow-hidden rounded-xl border border-border/40 p-4 hover:border-indigo/50 transition-all active:scale-[0.99] disabled:pointer-events-none group"
-                                    >
-                                      {/* Fill background */}
-                                      {hasVoted && (
-                                        <div
-                                          className="absolute inset-y-0 left-0 bg-indigo/10 transition-all duration-1000"
-                                          style={{ width: `${percentage}%` }}
-                                        />
-                                      )}
-
-                                      <div className="flex justify-between items-center relative z-10">
-                                        <span className="font-semibold text-sm">{opt.text}</span>
-                                        {hasVoted && (
-                                          <span className="font-bold text-xs text-indigo">
-                                            {opt.votes} votes ({percentage}%)
-                                          </span>
-                                        )}
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              {hasVoted && (
-                                <p className="text-[10px] text-muted-foreground text-center">
-                                  Thank you for voting! Total responses: {totalVotes}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Chat and moderation panel (Right column) */}
-                      <div className="space-y-6">
-                        {/* Live Audience Chat */}
-                        <div className="glass-card rounded-3xl border border-border/40 flex flex-col h-[380px]">
-                          <div className="p-4 border-b border-border/40 flex justify-between items-center">
-                            <span className="font-bold text-sm">Audience Chat</span>
-                            <span className="text-[10px] bg-foreground/5 text-muted-foreground px-2 py-0.5 rounded font-bold uppercase">
-                              120 Online
-                            </span>
-                          </div>
-
-                          {/* Chat feed */}
-                          <div ref={streamChatRef} className="flex-1 p-4 space-y-3 overflow-y-auto no-scrollbar">
-                            {streamChat.map((chat, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <div className="flex justify-between items-baseline">
-                                  <span className="font-bold text-xs text-indigo">{chat.user}</span>
-                                  <span className="text-[9px] text-muted-foreground">{chat.timestamp}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground leading-relaxed">{chat.text}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Chat Input */}
-                          <div className="p-4 border-t border-border/40 flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="Send message to audience..."
-                              value={streamNewMessage}
-                              onChange={(e) => setStreamNewMessage(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  if (!streamNewMessage.trim()) return;
-                                  const time = new Date();
-                                  const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
-                                  setStreamChat(prev => [...prev, { user: userName, text: streamNewMessage, timestamp: timeStr }]);
-                                  setStreamNewMessage('');
-                                }
-                              }}
-                              className="flex-1 px-3 py-2 bg-foreground/5 border border-transparent rounded-xl outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-xs font-semibold"
-                            />
-                            <button
-                              onClick={() => {
-                                if (!streamNewMessage.trim()) return;
-                                const time = new Date();
-                                const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
-                                setStreamChat(prev => [...prev, { user: userName, text: streamNewMessage, timestamp: timeStr }]);
-                                setStreamNewMessage('');
-                              }}
-                              className="p-2 rounded-xl bg-indigo text-white hover:opacity-90"
-                            >
-                              <Send className="size-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* AI Moderation Logger */}
-                        <div className="p-4 rounded-2xl bg-card border border-border/40 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Shield className="size-4 text-cyan" />
-                            <span className="font-bold text-xs uppercase tracking-wider text-cyan">AI Mod & Safety logs</span>
-                          </div>
-                          <div className="space-y-2 max-h-[160px] overflow-y-auto no-scrollbar">
-                            {aiModLogs.map((log, index) => (
-                              <div key={index} className="text-[10px] font-medium leading-relaxed border-b border-border/10 pb-1.5 text-muted-foreground">
-                                {log}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── EVENTS & WEBINARS VIEW ────────────────────────────── */}
-              {currentView === 'events' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Events & Webinars</h1>
-                    <p className="text-muted-foreground text-sm">Schedule and manage large-scale interactive webinars with accessibility settings built-in.</p>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                      <h3 className="font-bold text-lg">Event Schedule Planner</h3>
-                      <p className="text-xs text-muted-foreground">Setup registration pipelines, ticket integrations, speaker channels, and automated follow-up workflows.</p>
-                      <button
-                        onClick={() => triggerCreateSession('event')}
-                        className="px-4 py-2.5 rounded-xl bg-indigo text-white font-bold text-xs hover:shadow"
-                      >
-                        Create New Event
-                      </button>
-                    </div>
-
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                      <h3 className="font-bold text-lg">Access Pass & Invitations</h3>
-                      <p className="text-xs text-muted-foreground">Review registered attendee analytics, generate invite credentials, or export RSVPs to your workspace.</p>
-                      <button className="px-4 py-2.5 rounded-xl border border-border text-foreground hover:bg-foreground/5 font-bold text-xs">
-                        Manage Registration
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── MESSAGES HUB VIEW ─────────────────────────────────── */}
-              {currentView === 'messages' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Messages Hub</h1>
-                    <p className="text-muted-foreground text-sm">Connect with team members or translation professionals securely.</p>
-                  </div>
-
-                  <div className="glass-card rounded-3xl border border-border/40 grid md:grid-cols-3 h-[680px] md:h-[500px] overflow-hidden">
-                    {/* Channel lists */}
-                    <div className="border-b md:border-b-0 md:border-r border-border/40 p-4 space-y-4 overflow-y-auto no-scrollbar h-[200px] md:h-full flex-shrink-0">
-                      <input
-                        type="text"
-                        placeholder="Search chats..."
-                        className="w-full h-10 px-3 bg-foreground/5 rounded-xl text-xs outline-none border border-transparent focus:bg-background focus:ring-1 focus:ring-indigo"
-                      />
-                      <div className="space-y-2">
-                        {displayChats.map((chat) => (
-                          <button
-                            key={chat.id}
-                            onClick={() => setSelectedChatId(chat.id)}
-                            className={`w-full text-left p-3 rounded-xl transition-all flex items-center gap-3 cursor-pointer ${
-                              chat.id === selectedChatId ? 'bg-indigo/10 text-indigo font-bold' : 'hover:bg-foreground/3 text-muted-foreground'
-                            }`}
-                          >
-                            <div className="size-8 rounded-full bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-[10px] font-black">
-                              {chat.name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="font-bold text-xs text-foreground truncate">{chat.name}</h4>
-                              <p className="text-[10px] text-muted-foreground truncate">{chat.role}</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Chat Area */}
-                    {activeChat ? (
-                      <div className="md:col-span-2 flex flex-col justify-between p-4 md:p-6 overflow-hidden h-[480px] md:h-full">
-                        <div className="flex justify-between items-center border-b border-border/40 pb-4">
-                          <div>
-                            <h3 className="font-bold text-base">{activeChat.name}</h3>
-                            <p className="text-[10px] text-muted-foreground">{activeChat.role}</p>
-                          </div>
-                          <button
-                            onClick={() => router.push('/create')}
-                            className="px-3 py-1.5 rounded-lg bg-indigo text-white font-bold text-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            <Video className="size-3" />
-                            Start Call
-                          </button>
-                        </div>
-
-                        <div className="flex-1 py-4 space-y-3 overflow-y-auto no-scrollbar flex flex-col">
-                          {(chatHistories[activeChat.id] || []).length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground text-xs gap-2 py-8">
-                              <MessageSquare className="size-8 opacity-20 text-indigo" />
-                              <span>No messages yet. Send a message to start the conversation!</span>
-                            </div>
-                          ) : (
-                            (chatHistories[activeChat.id] || []).map((msg, i) => (
-                              <div
-                                key={i}
-                                className={`p-3 rounded-2xl max-w-xs md:max-w-sm ${
-                                  msg.sender === 'me'
-                                    ? 'bg-indigo text-white self-end ml-auto'
-                                    : 'bg-foreground/5 text-foreground self-start mr-auto border border-border/30'
-                                }`}
-                              >
-                                {msg.sender !== 'me' && (
-                                  <span className="text-[10px] font-bold text-indigo dark:text-indigo-400 block mb-1">
-                                    {activeChat.name}
-                                  </span>
-                                )}
-                                <p className="text-xs leading-relaxed">{msg.text}</p>
-                                <span className="text-[8px] opacity-60 block text-right mt-1">{msg.time}</span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={newMessageText}
-                            onChange={(e) => setNewMessageText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSendMessage();
-                            }}
-                            placeholder="Type your message..."
-                            className="flex-1 px-4 py-3 bg-foreground/5 rounded-xl text-xs outline-none focus:bg-background focus:ring-1 focus:ring-indigo"
-                          />
-                          <button
-                            onClick={handleSendMessage}
-                            className="px-4 py-3 bg-indigo text-white font-bold text-xs rounded-xl cursor-pointer"
-                          >
-                            Send
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="md:col-span-2 flex flex-col items-center justify-center text-center text-muted-foreground p-8 gap-2">
-                        <MessageSquare className="size-10 opacity-20 text-indigo" />
-                        <span className="text-sm font-semibold">Select a chat to start messaging</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* ── AI WORKSPACE VIEW ────────────────────────────────── */}
-              {currentView === 'ai-workspace' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">AI Intelligence Center</h1>
-                    <p className="text-muted-foreground text-sm">Review action items, request summaries, or query meeting transcripts proactively.</p>
-                  </div>
-
-                  <div className="grid md:grid-cols-3 gap-8">
-                    {/* Insights & Recommendations */}
-                    <div className="space-y-6">
-                      <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                        <div className="flex items-center gap-2">
-                          <Shield className="size-4 text-indigo" />
-                          <h4 className="font-bold text-xs uppercase tracking-wider text-indigo">Open Action Items</h4>
-                        </div>
-                        <ul className="space-y-2 text-xs">
-                          <li className="flex items-center gap-2">
-                            <span className="size-1.5 rounded-full bg-indigo" />
-                            Review design contrast scales
-                          </li>
-                          <li className="flex items-center gap-2 text-muted-foreground line-through">
-                            <span className="size-1.5 rounded-full bg-muted-foreground" />
-                            Fix migration RLS (UUID mismatch)
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="size-1.5 rounded-full bg-indigo" />
-                            Verify LiveKit key variables
-                          </li>
-                        </ul>
-                      </div>
-
-                      <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="size-4 text-cyan" />
-                          <h4 className="font-bold text-xs uppercase tracking-wider text-cyan">Proactive Suggestions</h4>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          &quot;Based on the last team sync, I suggest scheduling a 15-minute verification call with Elena to approve the new layout.&quot;
-                        </p>
-                        <button className="text-xs font-bold text-indigo hover:underline">Draft invite →</button>
-                      </div>
-                    </div>
-
-                    {/* Interactive AI Chat */}
-                    <div className="md:col-span-2 glass-card rounded-2xl border border-border/40 flex flex-col h-[400px]">
-                      <div className="p-4 border-b border-border/40 flex items-center gap-2">
-                        <Cpu className="size-4 text-indigo" />
-                        <span className="font-bold text-sm">Interactive Assistant</span>
-                      </div>
-
-                      <div className="flex-1 p-4 space-y-4 overflow-y-auto no-scrollbar">
-                        {aiChatMessages.map((msg, i) => (
-                          <div
-                            key={i}
-                            className={`p-3 rounded-2xl text-xs max-w-md ${
-                              msg.sender === 'ai'
-                                ? 'bg-foreground/5 text-foreground self-start mr-auto'
-                                : 'bg-indigo text-white self-end ml-auto'
-                            }`}
-                          >
-                            <p className="whitespace-pre-line">{msg.text}</p>
-                          </div>
-                        ))}
-                        {isAiTyping && (
-                          <div className="flex items-center gap-2 p-3 bg-foreground/5 rounded-2xl max-w-xs text-xs text-muted-foreground animate-pulse">
-                            <Loader2 className="size-3.5 animate-spin" />
-                            Synthesizing summary...
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Chat Pre-prompts */}
-                      <div className="p-2 border-t border-border/20 flex gap-2 flex-wrap">
-                        {[
-                          'Summarize last meeting',
-                          'Show action items',
-                          'Write follow-up email'
-                        ].map((prompt, index) => (
-                          <button
-                            key={index}
-                            onClick={() => {
-                              setAiChatInput(prompt);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground text-[10px] font-bold"
-                          >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="p-4 border-t border-border/40 flex gap-2">
-                        <input
-                          type="text"
-                          placeholder="Ask AI assistant..."
-                          value={aiChatInput}
-                          onChange={(e) => setAiChatInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSendAiMessage();
-                          }}
-                          className="flex-1 px-3 py-2 bg-foreground/5 border border-transparent rounded-xl outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-xs"
-                        />
-                        <button
-                          onClick={handleSendAiMessage}
-                          className="p-2 rounded-xl bg-indigo text-white hover:opacity-90"
-                        >
-                          <Send className="size-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── RECORDINGS VIEW ──────────────────────────────────── */}
-              {currentView === 'recordings' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Recordings Vault</h1>
-                    <p className="text-muted-foreground text-sm">Review high-resolution videos, transcript overlays, and AI follow-up records.</p>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    {[
-                      { title: 'Weekly Alignment Standup', date: 'Today, 10:30 AM', duration: '45 mins', size: '1.2 GB' },
-                      { title: 'Accessibility Feature Demo', date: 'June 9, 2:00 PM', duration: '20 mins', size: '540 MB' }
-                    ].map((rec, idx) => (
-                      <div key={idx} className="glass-card p-5 rounded-2xl border border-border/40 hover:border-cyan/30 transition-all space-y-4">
-                        <div className="aspect-video w-full rounded-xl bg-slate-900 flex items-center justify-center relative border border-white/5">
-                          <Play className="size-8 text-white/50 hover:text-cyan transition-colors cursor-pointer" />
-                          <span className="absolute bottom-2 right-2 bg-black/60 px-2 py-0.5 rounded text-[10px] font-bold text-white">
-                            {rec.duration}
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          <h3 className="font-bold text-base">{rec.title}</h3>
-                          <p className="text-xs text-muted-foreground">{rec.date} • {rec.size}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button className="px-3.5 py-2 rounded-lg bg-indigo text-white font-bold text-xs">
-                            Watch Playback
-                          </button>
-                          <button
-                            onClick={() => setCurrentView('ai-workspace')}
-                            className="px-3.5 py-2 rounded-lg border border-border text-foreground hover:bg-foreground/5 font-bold text-xs"
-                          >
-                            AI Transcript
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ── NOTES VIEW ───────────────────────────────────────── */}
-              {currentView === 'notes' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Notes & Agendas</h1>
-                    <p className="text-muted-foreground text-sm">Write real-time transcripts, compile action notes, or organize collaborative briefs.</p>
-                  </div>
-
-                  <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-6">
-                    <div className="flex justify-between items-center border-b border-border/40 pb-4">
-                      <input
-                        type="text"
-                        defaultValue="Deaf Mode Custom Scale Suggestions"
-                        className="text-lg font-black bg-transparent border-0 outline-none text-foreground w-full"
-                      />
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap font-bold">Saved 2m ago</span>
-                    </div>
-
-                    <textarea
-                      rows={10}
-                      defaultValue={`### Talk2Me Design Brainstorming\n\n1. Contrast Enhancement: Ensure WCAG AAA compliance.\n2. Font Scale: We support 100%, 115%, and 130% scaling without clipping layout elements.\n3. Motion Controls: Toggle reduced-motion styles via state context.`}
-                      className="w-full bg-transparent border-0 outline-none text-sm resize-none leading-relaxed text-muted-foreground"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* ── ACCESSIBILITY CENTER (GLOBAL SETTINGS UPDATES) ────── */}
-              {currentView === 'accessibility' && (
-                <div className="space-y-8 max-w-3xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight text-cyan">Accessibility Center</h1>
-                    <p className="text-muted-foreground text-sm">Customize visual scales, audio profiles, interpreter features, and cognitive aids globally.</p>
-                  </div>
-
-                  <div className="glass-card p-8 rounded-3xl border border-cyan/20 space-y-6">
-                    <h3 className="font-bold text-lg border-b border-border/40 pb-4 flex items-center gap-2">
-                      <Accessibility className="size-5 text-cyan" />
-                      Visual & Input Adaptability
-                    </h3>
-
-                    <div className="grid sm:grid-cols-2 gap-6">
-                      <div className="p-4 rounded-xl border border-border/40 bg-card/40 flex justify-between items-center">
-                        <div>
-                          <h4 className="font-bold text-xs">Live Captions</h4>
-                          <p className="text-[10px] text-muted-foreground">Generate real-time speech overlays</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={captionsEnabled}
-                          onChange={(e) => setCaptionsEnabled(e.target.checked)}
-                          className="size-5 accent-cyan cursor-pointer"
-                        />
-                      </div>
-
-                      <div className="p-4 rounded-xl border border-border/40 bg-card/40 flex justify-between items-center">
-                        <div>
-                          <h4 className="font-bold text-xs">High Contrast Mode</h4>
-                          <p className="text-[10px] text-muted-foreground">Add extreme borders & brightness</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={highContrast}
-                          onChange={(e) => setHighContrast(e.target.checked)}
-                          className="size-5 accent-cyan cursor-pointer"
-                        />
-                      </div>
-
-                      <div className="p-4 rounded-xl border border-border/40 bg-card/40 flex justify-between items-center">
-                        <div>
-                          <h4 className="font-bold text-xs">Reduced Motion</h4>
-                          <p className="text-[10px] text-muted-foreground">Override and stop visual shifts</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={reducedMotion}
-                          onChange={(e) => setReducedMotion(e.target.checked)}
-                          className="size-5 accent-cyan cursor-pointer"
-                        />
-                      </div>
-
-                      <div className="p-4 rounded-xl border border-border/40 bg-card/40 flex justify-between items-center">
-                        <div>
-                          <h4 className="font-bold text-xs">Sign Language Mode</h4>
-                          <p className="text-[10px] text-muted-foreground">Prioritize visual interpreter overlays</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={signLanguageMode}
-                          onChange={(e) => setSignLanguageMode(e.target.checked)}
-                          className="size-5 accent-cyan cursor-pointer"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 pt-4 border-t border-border/40">
-                      <h4 className="font-bold text-xs uppercase tracking-widest text-muted-foreground">Font Scale</h4>
-                      <div className="flex gap-4">
-                        {[
-                          { scale: 100, label: 'Default (100%)' },
-                          { scale: 115, label: 'Medium (115%)' },
-                          { scale: 130, label: 'Large (130%)' }
-                        ].map((item) => (
-                          <button
-                            key={item.scale}
-                            onClick={() => setFontScale(item.scale as 100 | 115 | 130)}
-                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                              fontScale === item.scale
-                                ? 'bg-cyan border-cyan text-slate-950 shadow-md'
-                                : 'border-border/40 hover:bg-foreground/5'
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── ANALYTICS VIEW ───────────────────────────────────── */}
-              {currentView === 'analytics' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Analytics & Usage</h1>
-                    <p className="text-muted-foreground text-sm">Track team interaction patterns, caption usage minutes, and translation outputs.</p>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                      <h3 className="font-bold text-lg">Translation Volume</h3>
-                      <p className="text-xs text-muted-foreground">English and Swahili remain the most translated tracks (cumulative 450 minutes this month).</p>
-                    </div>
-
-                    <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                      <h3 className="font-bold text-lg">Accessibility Performance</h3>
-                      <p className="text-xs text-muted-foreground">Average caption rendering latency maintained below 150ms.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── ORGANIZATIONS VIEW ───────────────────────────────── */}
-              {currentView === 'organizations' && (
-                <div className="space-y-8 max-w-4xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">Organizations</h1>
-                    <p className="text-muted-foreground text-sm">Manage workspace access, invite colleagues, or view organization channels.</p>
-                  </div>
-
-                  <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-4">
-                    <h3 className="font-bold text-lg">TechVerge Africa</h3>
-                    <p className="text-xs text-muted-foreground">Active corporate workspace. Currently includes 14 team members.</p>
-                    <button className="px-4 py-2 bg-indigo text-white font-bold text-xs rounded-xl">
-                      Manage Workspace
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ── SETTINGS VIEW ────────────────────────────────────── */}
-              {currentView === 'settings' && (
-                <div className="space-y-8 max-w-3xl">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight">System & Account Settings</h1>
-                    <p className="text-muted-foreground text-sm">Configure authentication credentials, profile metadata, and accessibility preferences.</p>
-                  </div>
-
-                  {/* Profile Metadata Form */}
-                  <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-6">
-                    <h3 className="font-bold text-lg border-b border-border/40 pb-4">Profile Settings</h3>
-
-                    <form onSubmit={async (e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.currentTarget);
-                      const name = formData.get('fullName') as string;
-                      try {
-                        await updateProfile({ full_name: name });
-                        alert('Profile updated successfully!');
-                      } catch (err: unknown) {
-                        alert(err instanceof Error ? err.message : 'Failed to update profile.');
-                      }
-                    }} className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Account Email</label>
-                        <input
-                          type="text"
-                          disabled
-                          defaultValue={user?.email || ''}
-                          className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent text-sm font-semibold opacity-60 cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Full Name</label>
-                        <input
-                          type="text"
-                          name="fullName"
-                          required
-                          defaultValue={profile?.full_name || ''}
-                          placeholder="Your full name"
-                          className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-indigo transition-all outline-none text-sm font-semibold"
-                        />
-                      </div>
-
-                      <div className="pt-2 flex justify-end">
-                        <button
-                          type="submit"
-                          className="px-6 py-2.5 rounded-xl bg-indigo text-white font-bold text-xs hover:opacity-90 transition-opacity"
-                        >
-                          Save Profile Changes
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-
-                  {/* Security & Password Update Form */}
-                  <div className="glass-card p-6 rounded-2xl border border-border/40 space-y-6">
-                    <h3 className="font-bold text-lg border-b border-border/40 pb-4">Security & Password</h3>
-
-                    <form onSubmit={async (e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.currentTarget);
-                      const pass = formData.get('newPassword') as string;
-                      const confirm = formData.get('confirmNewPassword') as string;
-                      if (pass !== confirm) {
-                        alert('Passwords do not match');
-                        return;
-                      }
-                      if (pass.length < 6) {
-                        alert('Password must be at least 6 characters');
-                        return;
-                      }
-                      try {
-                        await updatePassword(pass);
-                        alert('Password updated successfully!');
-                        e.currentTarget.reset();
-                      } catch (err: unknown) {
-                        alert(err instanceof Error ? err.message : 'Failed to update password.');
-                      }
-                    }} className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">New Password</label>
-                        <input
-                          type="password"
-                          name="newPassword"
-                          required
-                          placeholder="••••••••"
-                          className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-indigo transition-all outline-none text-sm font-semibold"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Confirm New Password</label>
-                        <input
-                          type="password"
-                          name="confirmNewPassword"
-                          required
-                          placeholder="••••••••"
-                          className="w-full h-12 px-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-indigo transition-all outline-none text-sm font-semibold"
-                        />
-                      </div>
-
-                      <div className="pt-2 flex justify-end">
-                        <button
-                          type="submit"
-                          className="px-6 py-2.5 rounded-xl bg-indigo text-white font-bold text-xs hover:opacity-90 transition-opacity"
-                        >
-                          Update Password
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-            </motion.div>
-          </AnimatePresence>
-        </main>
-      </div>
-
-      {/* ── RIGHT DOCKABLE AI WORKSPACE PANEL ───────────────────────── */}
-      <AnimatePresence>
-        {aiSidebarOpen && (
-          <>
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 bg-black/15 backdrop-blur-xs z-30 pointer-events-auto"
-              onClick={() => setAiSidebarOpen(false)}
-            />
-            <motion.aside
-              initial={{ x: '100%', opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 w-[360px] bg-card/95 backdrop-blur-xl border-l border-border/40 z-40 flex flex-col shadow-2xl"
-            >
-              {/* AI Header */}
-              <div className="h-16 flex items-center justify-between px-6 border-b border-border/40">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-5 text-indigo animate-pulse-slow" />
-                  <span className="font-bold text-sm tracking-tight">AI Workspace Assistant</span>
-                </div>
-                <button
-                  onClick={() => setAiSidebarOpen(false)}
-                  className="p-1 rounded hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronRight className="size-5" />
-                </button>
-              </div>
-
-              {/* AI Assistant Chat Panel */}
-              <div className="flex-1 flex flex-col justify-between p-4 overflow-hidden">
-                <div className="flex-1 overflow-y-auto space-y-4 pr-1 no-scrollbar">
-                  {/* Insights Summary */}
-                  <div className="p-3.5 rounded-2xl bg-indigo/5 border border-indigo/20 space-y-2">
-                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-indigo tracking-wider">
-                      <Activity className="size-3.5" />
-                      Live Insights
-                    </div>
-                    <ul className="space-y-1.5 text-[11px] font-medium leading-relaxed text-muted-foreground">
-                      <li className="flex items-center gap-2">
-                        <span className="size-1 rounded-full bg-indigo" />
-                        Action: Push local RLS adjustments (Done)
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <span className="size-1 rounded-full bg-indigo" />
-                        Verify LiveKit endpoints (Done)
-                      </li>
-                    </ul>
-                  </div>
-
-                  {/* Messages feed */}
-                  <div className="space-y-3">
-                    {aiChatMessages.map((msg, i) => (
-                      <div
-                        key={i}
-                        className={`p-3 rounded-2xl text-[11px] font-medium leading-relaxed ${
-                          msg.sender === 'ai'
-                            ? 'bg-foreground/5 text-foreground mr-8'
-                            : 'bg-indigo text-white ml-8'
-                        }`}
-                      >
-                        <p className="whitespace-pre-line">{msg.text}</p>
-                      </div>
-                    ))}
-                    {isAiTyping && (
-                      <div className="flex items-center gap-2 p-3 bg-foreground/5 rounded-2xl max-w-xs text-[11px] text-muted-foreground animate-pulse">
-                        <Loader2 className="size-3.5 animate-spin" />
-                        AI is formulating insights...
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Chat Send */}
-                <div className="border-t border-border/40 pt-4 space-y-3">
-                  {/* Pre-prompt Quick Tags */}
-                  <div className="flex gap-2 flex-wrap">
-                    {['Summarize', 'Action Items'].map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => setAiChatInput(tag)}
-                        className="px-2 py-0.5 rounded bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground text-[10px] font-bold"
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Ask Talk2Me AI..."
-                      value={aiChatInput}
-                      onChange={(e) => setAiChatInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSendAiMessage();
-                      }}
-                      className="flex-1 px-3 py-2 bg-foreground/5 border border-transparent rounded-xl outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-xs font-semibold"
-                    />
-                    <button
-                      onClick={handleSendAiMessage}
-                      className="p-2 rounded-xl bg-indigo text-white hover:opacity-90"
-                    >
-                      <Send className="size-3.5" />
-                    </button>
-                  </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-2">
+                    🎥 Start a Meeting
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                    Create an instant meeting and share the link. No workspace required.
+                  </p>
                 </div>
               </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Dock toggle for AI Sidebar */}
-      {!aiSidebarOpen && (
-        <button
-          onClick={() => setAiSidebarOpen(true)}
-          className="fixed bottom-6 right-6 z-40 size-12 rounded-full bg-indigo text-white hover:scale-105 transition-all shadow-xl flex items-center justify-center border border-white/10"
-          title="Open AI Companion"
-        >
-          <Sparkles className="size-5 animate-pulse" />
-        </button>
-      )}
-
-      {/* ── GLOBAL MODALS ────────────────────────────────────────────── */}
-
-      {/* 1. COMMAND PALETTE SEARCH MODAL */}
-      <AnimatePresence>
-        {commandPaletteOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setCommandPaletteOpen(false)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -20 }}
-              className="fixed top-[15%] left-1/2 -translate-x-1/2 w-full max-w-xl rounded-3xl border border-border/40 bg-card p-6 shadow-2xl z-50 space-y-4"
-            >
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Type a query (e.g. 'Webinar', 'Sarah', 'RLS')..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-12 pl-12 pr-4 rounded-xl bg-foreground/5 border-transparent focus:bg-background focus:ring-1 focus:ring-indigo outline-none text-sm font-semibold"
-                  autoFocus
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Search Results</div>
-                <div className="space-y-1 max-h-60 overflow-y-auto no-scrollbar">
-                  {filteredSearchItems.map((item, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSearchSelect(item)}
-                      className="w-full text-left p-3 rounded-xl hover:bg-foreground/5 transition-all flex justify-between items-center group"
-                    >
-                      <div>
-                        <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-indigo/10 text-indigo mr-2">
-                          {item.type}
-                        </span>
-                        <span className="text-sm font-semibold text-foreground group-hover:text-indigo transition-colors">{item.title}</span>
-                      </div>
-                      <span className="text-xs text-muted-foreground font-mono">{item.code}</span>
-                    </button>
-                  ))}
-                  {filteredSearchItems.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-4">No results found matching your query.</p>
-                  )}
-                </div>
+              <div className="flex items-center text-xs font-bold text-indigo-600 dark:text-indigo-400 gap-1 group-hover:translate-x-1 transition-transform">
+                {isLaunchingMeeting ? 'Launching instant room...' : 'Start instant meeting'} <ArrowRight className="size-4" />
               </div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
-      {/* 2. CREATE / LAUNCH SESSION MODAL */}
-      <AnimatePresence>
-        {createModalOpen && (
-          <>
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" onClick={() => setCreateModalOpen(false)} />
+            {/* Card 2: Create a Workspace */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg rounded-3xl border border-border/40 bg-card p-8 shadow-2xl z-50 space-y-6"
+              whileHover={{ y: -4, scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => setCreateWsModalOpen(true)}
+              className="group cursor-pointer p-6 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-cyan-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl"
             >
-              <div className="flex justify-between items-center border-b border-border/40 pb-4">
-                <h3 className="text-xl font-black tracking-tight">
-                  Launch {createModalType.charAt(0).toUpperCase() + createModalType.slice(1)}
-                </h3>
-                <span className="bg-cyan/15 text-cyan text-[10px] font-black uppercase px-2.5 py-1 rounded">Ready</span>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Session Name</label>
-                  <input
-                    type="text"
-                    value={sessionName}
-                    onChange={(e) => setSessionName(e.target.value)}
-                    className="w-full h-12 px-4 rounded-xl bg-foreground/5 border border-transparent outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-sm font-semibold"
-                  />
+              <div className="flex flex-col gap-4">
+                <div className="size-14 rounded-2xl bg-cyan-500/15 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 grid place-items-center group-hover:scale-110 transition-transform">
+                  <Building2 className="size-7" />
                 </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors flex items-center gap-2">
+                    🏢 Create a Workspace
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                    Build a shared space for your team with persistent chat, meetings, and AI.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center text-xs font-bold text-cyan-600 dark:text-cyan-400 gap-1 group-hover:translate-x-1 transition-transform">
+                Create new workspace <ArrowRight className="size-4" />
+              </div>
+            </motion.div>
 
-                {createModalType === 'stream' && (
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Category</label>
-                      <input
-                        type="text"
-                        value={sessionCategory}
-                        onChange={(e) => setSessionCategory(e.target.value)}
-                        className="w-full h-12 px-4 rounded-xl bg-foreground/5 border border-transparent outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-sm font-semibold"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Privacy</label>
-                      <select
-                        value={sessionAudience}
-                        onChange={(e) => setSessionAudience(e.target.value)}
-                        className="w-full h-12 px-4 rounded-xl bg-foreground/5 border border-transparent outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-sm font-semibold"
-                      >
-                        <option value="public">Public</option>
-                        <option value="private">Private</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
+            {/* Card 3: Join a Workspace */}
+            <motion.div
+              whileHover={{ y: -4, scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              onClick={() => setJoinWsModalOpen(true)}
+              className="group cursor-pointer p-6 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-emerald-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl"
+            >
+              <div className="flex flex-col gap-4">
+                <div className="size-14 rounded-2xl bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 grid place-items-center group-hover:scale-110 transition-transform">
+                  <Users className="size-7" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors flex items-center gap-2">
+                    🔗 Join a Workspace
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                    Enter an existing workspace invitation link or workspace code.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center text-xs font-bold text-emerald-600 dark:text-emerald-400 gap-1 group-hover:translate-x-1 transition-transform">
+                Enter code or link <ArrowRight className="size-4" />
+              </div>
+            </motion.div>
+          </div>
 
-                {createModalType === 'event' && (
-                  <div className="space-y-2">
-                    <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Schedule Time</label>
-                    <input
-                      type="datetime-local"
-                      value={scheduledTime}
-                      onChange={(e) => setScheduledTime(e.target.value)}
-                      className="w-full h-12 px-4 rounded-xl bg-foreground/5 border border-transparent outline-none focus:bg-background focus:ring-1 focus:ring-indigo text-sm font-semibold text-foreground scheme-dark"
-                    />
-                  </div>
-                )}
+          {/* My Workspaces List Section */}
+          <div className="flex flex-col gap-6 pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">My Workspaces</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Your hubs for video meetings, persistent chat, and AI context.</p>
+              </div>
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300">
+                {workspaces.length} Workspaces
+              </span>
+            </div>
 
-                {(createModalType === 'meeting' || createModalType === 'event') && (
-                  <div className="space-y-3 pt-2">
-                    <label className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Room Moderation Controls</label>
-                    
-                    {/* Require Host Approval Toggle */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-foreground/3 border border-border/40">
-                      <div>
-                        <p className="text-sm font-bold text-foreground">Require Host Approval</p>
-                        <p className="text-[10px] text-muted-foreground">Guests wait in lobby until host admits them</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setScheduledRequireApproval(!scheduledRequireApproval)}
-                        className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 cursor-pointer ${
-                          scheduledRequireApproval ? 'bg-indigo' : 'bg-foreground/10'
-                        }`}
-                      >
-                        <motion.div 
-                          layout 
-                          className="size-4 rounded-full bg-white shadow-sm"
-                          animate={{ x: scheduledRequireApproval ? 20 : 0 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        />
-                      </button>
-                    </div>
-
-                    {/* Allow Guest Screen Share Toggle */}
-                    <div className="flex items-center justify-between p-3.5 rounded-xl bg-foreground/3 border border-border/40">
-                      <div>
-                        <p className="text-sm font-bold text-foreground">Allow Guest Screen Sharing</p>
-                        <p className="text-[10px] text-muted-foreground">Permit non-host participants to share screen</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setScheduledAllowScreenShare(!scheduledAllowScreenShare)}
-                        className={`w-11 h-6 rounded-full transition-colors relative flex items-center px-1 cursor-pointer ${
-                          scheduledAllowScreenShare ? 'bg-indigo' : 'bg-foreground/10'
-                        }`}
-                      >
-                        <motion.div 
-                          layout 
-                          className="size-4 rounded-full bg-white shadow-sm"
-                          animate={{ x: scheduledAllowScreenShare ? 20 : 0 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-4 rounded-xl border border-border/40 bg-foreground/3 flex justify-between items-center gap-4">
-                  <div>
-                    <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">Room Code</span>
-                    <p className="text-lg font-black tracking-tight text-indigo">{generatedCode}</p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(generatedCode)}
-                    className="px-3 py-1.5 bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground text-xs font-bold rounded-lg flex items-center gap-1.5"
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {workspaces.map((ws) => {
+                const latestMeeting = ws.pastMeetings[0];
+                return (
+                  <motion.div
+                    key={ws.id}
+                    whileHover={{ y: -4, scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    onClick={() => selectWorkspace(ws.id)}
+                    className="group cursor-pointer p-6 rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-indigo-500/50 hover:bg-slate-50/80 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl relative overflow-hidden"
                   >
-                    {copiedText === generatedCode ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-                    {copiedText === generatedCode ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-              </div>
+                    {/* Subtle top-right ambient glow */}
+                    <div className="absolute top-0 right-0 w-36 h-36 bg-gradient-to-bl from-indigo-500/10 via-cyan-500/5 to-transparent rounded-bl-full pointer-events-none group-hover:scale-125 transition-transform duration-500" />
 
-              <div className="flex gap-4 border-t border-border/40 pt-6">
-                <button
-                  onClick={() => setCreateModalOpen(false)}
-                  className="flex-1 py-3.5 border border-border rounded-xl font-bold text-sm text-foreground hover:bg-foreground/5"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLaunchSession}
-                  disabled={isCreatingSession}
-                  className="flex-1 py-3.5 bg-indigo text-white font-bold text-sm rounded-xl hover:shadow-lg hover:opacity-90 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isCreatingSession ? <Loader2 className="size-4 animate-spin" /> : (createModalType === 'event' ? 'Schedule Meeting' : 'Enter Session')}
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+                    {/* Top Header: Icon + Title + Open CTA */}
+                    <div className="flex items-start justify-between gap-4 relative z-10">
+                      <div className="flex items-center gap-3.5">
+                        <div className="size-13 rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200/60 dark:border-indigo-500/30 grid place-items-center text-2xl shadow-sm group-hover:scale-105 transition-transform">
+                          {ws.icon}
+                        </div>
+                        <div className="flex flex-col">
+                          <h3 className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight">
+                            {ws.name}
+                          </h3>
+                          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+                            {ws.topic || 'Team Collaboration & AI Context'}
+                          </p>
+                        </div>
+                      </div>
 
-      {/* ── MOBILE MENU DRAWER OVERLAY ────────────────────────────────── */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <div className="md:hidden">
-            {/* Backdrop */}
+                      <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 group-hover:bg-indigo-600 group-hover:text-white text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 transition-all shadow-sm flex-shrink-0">
+                        Open <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </div>
+
+                    {/* Feature Chips showcasing Core UVP: Meetings, Chat, AI */}
+                    <div className="flex flex-wrap items-center gap-2 relative z-10">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/50 dark:border-indigo-500/20 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                        <Video className="size-3 text-indigo-500" /> Meetings
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200/50 dark:border-cyan-500/20 text-[11px] font-bold text-cyan-700 dark:text-cyan-300">
+                        <MessageSquare className="size-3 text-cyan-500" /> Persistent Chat
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/50 dark:border-emerald-500/20 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <Sparkles className="size-3 text-emerald-500" /> AI Knowledge
+                      </span>
+                    </div>
+
+                    {/* Footer: Member avatars & activity */}
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-200/80 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400 relative z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="flex -space-x-2 overflow-hidden">
+                          {ws.members.slice(0, 3).map((m, idx) => (
+                            <div
+                              key={idx}
+                              className={`inline-block size-6 rounded-full ${m.avatarBg} ring-2 ring-white dark:ring-slate-900 text-[9px] font-bold text-white text-center leading-6 uppercase`}
+                              title={m.name}
+                            >
+                              {m.name.slice(0, 2)}
+                            </div>
+                          ))}
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                          {ws.membersCount} members
+                        </span>
+                      </div>
+
+                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate max-w-[170px]">
+                        {latestMeeting ? `Last: ${latestMeeting.title}` : `${ws.conversationsCount} channels & DMs`}
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        </main>
+
+        {/* MODAL 1: CREATE WORKSPACE */}
+        <AnimatePresence>
+          {createWsModalOpen && (
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.6 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-black z-40"
-            />
-            {/* Drawer */}
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] bg-card/95 backdrop-blur-xl border-r border-border/40 z-50 flex flex-col p-6 shadow-2xl"
+              className="fixed inset-0 z-50 bg-black/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+              onClick={() => setCreateWsModalOpen(false)}
             >
-              {/* Header */}
-              <div className="flex justify-between items-center mb-6">
-                <Link href="/" className="flex items-center">
-                  <img
-                    src="/assets/logo-light.png"
-                    alt="Talk2Me Logo"
-                    className="dark:hidden block h-9 w-auto object-contain"
-                  />
-                  <img
-                    src="/assets/logo-dark.png"
-                    alt="Talk2Me Logo"
-                    className="hidden dark:block h-9 w-auto object-contain"
-                  />
-                </Link>
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="p-1 rounded hover:bg-foreground/5 text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronLeft className="size-6" />
-                </button>
-              </div>
-
-              {/* Navigation items */}
-              <nav className="flex-1 space-y-1.5 overflow-y-auto no-scrollbar">
-                {navItems.map(item => {
-                  const Icon = item.icon;
-                  const isActive = currentView === item.view;
-                  return (
-                    <button
-                      key={item.view}
-                      onClick={() => {
-                        setCurrentView(item.view);
-                        setSidebarOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left ${
-                        isActive
-                          ? 'bg-indigo text-white font-bold'
-                          : item.highlight
-                          ? 'bg-cyan/10 text-cyan font-bold'
-                          : 'text-muted-foreground hover:bg-foreground/5'
-                      }`}
-                    >
-                      <Icon className="size-5" />
-                      <span className="text-sm font-semibold">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-
-              {/* Footer */}
-              <button
-                onClick={() => signOut()}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-500/10 transition-all text-left font-semibold mt-4 border-t border-border/40 pt-4"
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col gap-6 relative text-slate-900 dark:text-white"
               >
-                <LogOut className="size-5" />
-                <span className="text-sm">Log Out</span>
-              </button>
-            </motion.aside>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ── MOBILE BOTTOM NAVIGATION ──────────────────────────────────── */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 h-16 bg-card/90 backdrop-blur-xl border-t border-border/40 z-40 flex justify-around items-center px-2 pb-safe shadow-premium">
-        {[
-          { view: 'home', label: 'Home', icon: Home },
-          { view: 'meetings', label: 'Meetings', icon: Video },
-          { view: 'streams', label: 'Streams', icon: Radio },
-          { view: 'ai-workspace', label: 'AI', icon: Cpu },
-          { view: 'accessibility', label: 'A11y', icon: Accessibility }
-        ].map(item => {
-          const Icon = item.icon;
-          const isActive = currentView === item.view;
-          return (
-            <button
-              key={item.view}
-              onClick={() => setCurrentView(item.view as DashboardView)}
-              className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 rounded-xl transition-all ${
-                isActive ? 'text-indigo font-bold scale-105' : 'text-muted-foreground'
-              }`}
-            >
-              <Icon className="size-5" />
-              <span className="text-[10px] tracking-tight">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* ── SHARE SHEET MODAL ──────────────────────────────────────────── */}
-      {/* Backdrop — rendered separately so it never overlaps the sheet's close button */}
-      <AnimatePresence>
-        {shareSheetMeeting && (
-          <motion.div
-            key="share-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
-            onClick={closeShareSheet}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Sheet — z-[61] ensures it always sits above the backdrop */}
-      <AnimatePresence>
-        {shareSheetMeeting && (
-          <motion.div
-            key={`share-sheet-${shareSheetMeeting.code}`}
-            initial={{ opacity: 0, y: 60, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 60, scale: 0.97 }}
-            transition={{ type: 'spring', damping: 28, stiffness: 340 }}
-            className="fixed inset-x-0 bottom-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 z-[61] w-full sm:max-w-md pointer-events-none"
-          >
-            {/* Outer shell — flex column, capped at 90dvh, restores pointer-events for the card itself */}
-            <div className="bg-card rounded-t-3xl sm:rounded-2xl border border-border/40 shadow-2xl flex flex-col max-h-[90dvh] overflow-hidden pointer-events-auto">
-
-              {/* Drag handle — mobile only, always visible, not scrollable */}
-              <div className="sm:hidden flex justify-center pt-3 pb-1 flex-shrink-0">
-                <div className="w-10 h-1 rounded-full bg-border/60" />
-              </div>
-
-              {/* Header — always visible, never scrolls away */}
-              <div className="px-5 pt-4 pb-4 border-b border-border/40 flex items-start justify-between gap-3 flex-shrink-0">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="size-6 rounded-lg bg-indigo/10 grid place-items-center flex-shrink-0">
-                      <Share2 className="size-3 text-indigo" />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo">Share Meeting</span>
-                  </div>
-                  <h2 className="font-black text-base leading-tight truncate">{shareSheetMeeting.title}</h2>
-                  {shareSheetMeeting.scheduled_at && (
-                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                      <Clock className="size-3 flex-shrink-0" />
-                      {new Date(shareSheetMeeting.scheduled_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
-                    </p>
-                  )}
-                </div>
                 <button
-                  onClick={closeShareSheet}
-                  aria-label="Close share panel"
-                  className="relative z-10 flex items-center justify-center size-8 rounded-xl bg-foreground/8 hover:bg-foreground/15 text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+                  onClick={() => setCreateWsModalOpen(false)}
+                  className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 >
-                  <svg className="size-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="size-5" />
                 </button>
-              </div>
 
-              {/* Scrollable body — flex-1 + min-h-0 are required for overflow-y-auto to activate inside a flex container */}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 space-y-4 pb-[max(env(safe-area-inset-bottom),16px)]">
-
-                {/* QR Code — large enough to scan comfortably */}
-                <div className="flex justify-center">
-                  <div className="bg-white rounded-2xl p-3 shadow-inner border border-border/20">
-                    <QrBlock value={roomShareUrl(shareSheetMeeting.code)} size={200} />
-                  </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Create your workspace</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Set up a central hub for your team's meetings, chat, and AI context.
+                  </p>
                 </div>
 
-                {/* Meeting Link */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Meeting Link</label>
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-foreground/5 border border-border/40">
-                    <Globe className="size-3.5 text-muted-foreground flex-shrink-0" />
-                    <span className="flex-1 text-xs font-mono truncate text-foreground/80 select-all min-w-0">
-                      {roomShareUrl(shareSheetMeeting.code)}
-                    </span>
+                <form onSubmit={handleCreateWorkspace} className="flex flex-col gap-4">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
+                      Workspace Name
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      value={newWsName}
+                      onChange={(e) => setNewWsName(e.target.value)}
+                      placeholder="Talk2Me Product Team"
+                      className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white outline-none focus:border-cyan-500 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
+                      What is your team working on?
+                    </label>
+                    <input
+                      type="text"
+                      value={newWsTopic}
+                      onChange={(e) => setNewWsTopic(e.target.value)}
+                      placeholder="Product development"
+                      className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white outline-none focus:border-cyan-500 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
+                      Invite teammates (optional)
+                    </label>
+                    <div className="flex flex-col gap-2">
+                      {newWsEmails.map((email, idx) => (
+                        <input
+                          key={idx}
+                          type="email"
+                          value={email}
+                          onChange={(e) => {
+                            const updated = [...newWsEmails];
+                            updated[idx] = e.target.value;
+                            setNewWsEmails(updated);
+                          }}
+                          placeholder={`email${idx + 1}@example.com`}
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm outline-none focus:border-cyan-500 transition-all"
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2">
                     <button
-                      onClick={() => copyToClipboard(roomShareUrl(shareSheetMeeting.code))}
-                      className="flex-shrink-0 p-1.5 rounded-lg bg-foreground/5 hover:bg-indigo/10 hover:text-indigo text-muted-foreground transition-all"
-                      title="Copy link"
+                      type="submit"
+                      className="w-full py-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-base transition-all shadow-lg active:scale-95"
                     >
-                      {copiedText === roomShareUrl(shareSheetMeeting.code)
-                        ? <Check className="size-3.5 text-emerald-500" />
-                        : <Copy className="size-3.5" />}
+                      Create Workspace
                     </button>
-                  </div>
-                </div>
-
-                {/* Room Code */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Room Code</label>
-                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-indigo/5 border border-indigo/20">
-                    <span className="flex-1 text-lg font-black font-mono tracking-widest text-indigo text-center">
-                      {shareSheetMeeting.code}
-                    </span>
                     <button
-                      onClick={() => copyToClipboard(shareSheetMeeting.code)}
-                      className="flex-shrink-0 p-1.5 rounded-lg bg-indigo/10 hover:bg-indigo/20 text-indigo transition-all"
-                      title="Copy room code"
-                    >
-                      {copiedText === shareSheetMeeting.code
-                        ? <Check className="size-3.5 text-emerald-500" />
-                        : <Copy className="size-3.5" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className={`grid gap-2.5 ${typeof navigator !== 'undefined' && !!navigator.share ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                  {typeof navigator !== 'undefined' && !!navigator.share && (
-                    <button
+                      type="button"
                       onClick={() => {
-                        navigator.share({
-                          title: `Join "${shareSheetMeeting.title}" on Talk2Me`,
-                          text: shareSheetMeeting.scheduled_at
-                            ? `You're invited to "${shareSheetMeeting.title}" scheduled for ${new Date(shareSheetMeeting.scheduled_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}. Room code: ${shareSheetMeeting.code}`
-                            : `Join my Talk2Me meeting "${shareSheetMeeting.title}". Room code: ${shareSheetMeeting.code}`,
-                          url: roomShareUrl(shareSheetMeeting.code),
-                        }).catch(() => {});
+                        setNewWsEmails(['', '']);
+                        handleCreateWorkspace({ preventDefault: () => {} } as any);
                       }}
-                      className="py-2.5 rounded-xl bg-gradient-to-r from-indigo to-cyan text-white font-bold text-sm flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-indigo/20 transition-all"
+                      className="w-full py-2.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                     >
-                      <Share2 className="size-4" />
-                      Share via...
+                      Skip invitations → Invite later
                     </button>
-                  )}
-                  <button
-                    onClick={() => copyToClipboard(roomShareUrl(shareSheetMeeting.code))}
-                    className={`py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                      copiedText === roomShareUrl(shareSheetMeeting.code)
-                        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                        : 'bg-foreground/[0.08] border border-border/40 hover:bg-foreground/[0.12] text-foreground'
-                    }`}
-                  >
-                    {copiedText === roomShareUrl(shareSheetMeeting.code)
-                      ? <><Check className="size-4" /> Copied!</>
-                      : <><Copy className="size-4" /> Copy Link</>}
-                  </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL 2: JOIN WORKSPACE */}
+        <AnimatePresence>
+          {joinWsModalOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 dark:bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+              onClick={() => setJoinWsModalOpen(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col gap-6 relative text-slate-900 dark:text-white"
+              >
+                <button
+                  onClick={() => setJoinWsModalOpen(false)}
+                  className="absolute top-6 right-6 text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                >
+                  <X className="size-5" />
+                </button>
+
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Join a Workspace</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Enter an invitation link or workspace code to enter.
+                  </p>
                 </div>
 
-                {/* Footer note */}
-                <p className="text-center text-[11px] text-muted-foreground leading-relaxed pb-1">
-                  Anyone with this link or code can join the meeting.
-                  {shareSheetMeeting.scheduled_at && ' The room opens at the scheduled time.'}
+                <form onSubmit={handleJoinWorkspace} className="flex flex-col gap-4">
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-2">
+                      Invitation Link or Workspace Code
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      value={joinWsCode}
+                      onChange={(e) => setJoinWsCode(e.target.value)}
+                      placeholder="e.g. ws-product-team or https://talk2me.ai/join/ws-123"
+                      className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white font-mono text-sm outline-none focus:border-emerald-500 transition-all"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-base transition-all shadow-lg active:scale-95"
+                  >
+                    Join Workspace
+                  </button>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* INSTANT MEETING LAUNCHING OVERLAY */}
+        <AnimatePresence>
+          {isLaunchingMeeting && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 text-white"
+            >
+              <div className="flex flex-col items-center gap-4 text-center">
+                <Loader2 className="size-12 animate-spin text-cyan-400" />
+                <h3 className="text-xl font-bold">Launching Instant Meeting</h3>
+                <p className="text-xs text-slate-400 max-w-xs">
+                  Generating secure meeting room credentials...
                 </p>
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  // ━━━ RENDER: WORKSPACE ENVIRONMENT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const currentPastMeeting = activeWorkspace.pastMeetings.find((m) => m.id === selectedMeetingId) || null;
+
+  return (
+    <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col relative overflow-hidden transition-colors duration-200">
+      {/* Workspace Header */}
+      <header className="relative z-20 w-full border-b border-slate-200 dark:border-white/10 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => selectWorkspace(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 transition-all"
+            title="Return to Home Dashboard"
+          >
+            <ChevronLeft className="size-4" /> Home
+          </button>
+
+          <div className="h-5 w-[1px] bg-slate-200 dark:bg-white/10" />
+
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{activeWorkspace.icon}</span>
+            <span className="font-bold text-lg text-slate-900 dark:text-white truncate max-w-[200px] sm:max-w-xs">
+              {activeWorkspace.name}
+            </span>
+          </div>
+        </div>
+
+        {/* Global Search & User Bar */}
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400">
+            <Search className="size-3.5" />
+            <span>Search workspace...</span>
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-white/10 text-[10px]">⌘K</kbd>
+          </div>
+
+          <ThemeToggle />
+
+          <button className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-600 dark:text-slate-300 relative">
+            <Bell className="size-4" />
+            <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-cyan-500 dark:bg-cyan-400" />
+          </button>
+
+          <div className="size-8 rounded-xl bg-indigo-600 border border-indigo-500/30 grid place-items-center text-xs font-black text-white">
+            {userFirstName.slice(0, 2)}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Workspace Layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Workspace Sidebar */}
+        <aside className="w-64 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/60 backdrop-blur-xl flex flex-col justify-between p-4 flex-shrink-0">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3">
+                Workspace Navigation
+              </span>
+
+              {/* Navigation Items */}
+              <nav className="flex flex-col gap-1 mt-2">
+                {[
+                  { id: 'overview', label: '🏠 Overview', tab: 'overview' },
+                  { id: 'meetings', label: '🎥 Meetings', tab: 'meetings' },
+                  { id: 'chat', label: '💬 Chat', tab: 'chat' },
+                  { id: 'ask-ai', label: '✨ Ask AI', tab: 'ask-ai', highlight: true }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.tab as WorkspaceTab);
+                      if (item.tab !== 'meetings') setSelectedMeetingId(null);
+                    }}
+                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                      activeTab === item.tab
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    {item.highlight && activeTab !== item.tab && (
+                      <span className="size-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse" />
+                    )}
+                  </button>
+                ))}
+              </nav>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+            {/* Members Section */}
+            <div className="flex flex-col gap-2 pt-4 border-t border-slate-200 dark:border-white/10">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 px-3 flex items-center justify-between">
+                <span>Members ({activeWorkspace.members.length})</span>
+              </span>
+              <div className="flex flex-col gap-1">
+                {activeWorkspace.members.map((m) => (
+                  <div key={m.email} className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5">
+                    <div className={`size-6 rounded-full ${m.avatarBg} grid place-items-center text-[10px] font-bold text-white`}>
+                      {m.name.slice(0, 2)}
+                    </div>
+                    <span className="truncate">{m.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Settings & Switcher */}
+          <div className="flex flex-col gap-1 pt-4 border-t border-slate-200 dark:border-white/10">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                activeTab === 'settings'
+                  ? 'bg-slate-200 dark:bg-white/10 text-slate-900 dark:text-white'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
+              }`}
+            >
+              <Settings className="size-4" /> Settings
+            </button>
+          </div>
+        </aside>
+
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto p-6 sm:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col text-slate-900 dark:text-white">
+          {/* TAB 1: WORKSPACE OVERVIEW */}
+          {activeTab === 'overview' && (
+            <div className="max-w-4xl flex flex-col gap-8">
+              {/* Header greeting */}
+              <div className="flex flex-col gap-1">
+                <h1 className="text-3xl font-black text-slate-900 dark:text-white">Good morning, {userFirstName}</h1>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Here is what's happening in <strong className="text-slate-900 dark:text-white">{activeWorkspace.name}</strong>.
+                </p>
+              </div>
+
+              {/* Action Buttons Row */}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleLaunchInstantMeeting}
+                  className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
+                >
+                  {isLaunchingMeeting ? <Loader2 className="size-4 animate-spin" /> : '+ Start Meeting'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab('chat');
+                    setSelectedChannel('# General');
+                  }}
+                  className="px-5 py-3 rounded-2xl bg-white dark:bg-white/10 hover:bg-slate-100 dark:hover:bg-white/15 text-slate-900 dark:text-white text-sm font-bold flex items-center gap-2 border border-slate-200 dark:border-white/10 transition-all shadow-sm"
+                >
+                  + New Chat
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('ask-ai')}
+                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-500 hover:opacity-90 text-white text-sm font-bold flex items-center gap-2 transition-all shadow-lg"
+                >
+                  ✨ Ask AI
+                </button>
+              </div>
+
+              {/* Upcoming Meetings */}
+              <div className="flex flex-col gap-4">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Upcoming Meetings</h2>
+                {activeWorkspace.upcomingMeetings.length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    {activeWorkspace.upcomingMeetings.map((m) => (
+                      <div
+                        key={m.id}
+                        className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex items-center justify-between gap-4 shadow-sm dark:shadow-md"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <h3 className="font-bold text-base text-slate-900 dark:text-white">{m.title}</h3>
+                          <span className="text-xs text-indigo-600 dark:text-cyan-400 font-medium">{m.dateStr} · {m.participants} participants</span>
+                        </div>
+                        <button
+                          onClick={() => router.push(`/room/${m.roomCode}`)}
+                          className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all"
+                        >
+                          Join
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/30 text-slate-500 dark:text-slate-400 text-sm">
+                    No upcoming meetings scheduled.
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Conversations */}
+              <div className="flex flex-col gap-4">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Recent Conversations</h2>
+                <div className="flex flex-col gap-3">
+                  {activeWorkspace.pastMeetings.map((pm) => (
+                    <div
+                      key={pm.id}
+                      onClick={() => {
+                        setSelectedMeetingId(pm.id);
+                        setActiveTab('meetings');
+                      }}
+                      className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900/80 cursor-pointer transition-all flex items-center justify-between gap-4 group shadow-sm"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="size-10 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 grid place-items-center">
+                          <Video className="size-5" />
+                        </div>
+                        <div className="flex flex-col">
+                          <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                            {pm.title}
+                          </h3>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {pm.dateStr}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="size-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors" />
+                    </div>
+                  ))}
+
+                  <div
+                    onClick={() => {
+                      setActiveTab('chat');
+                      setSelectedChannel('# Product');
+                    }}
+                    className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900/80 cursor-pointer transition-all flex items-center justify-between gap-4 group shadow-sm"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="size-10 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 grid place-items-center">
+                        <MessageSquare className="size-5" />
+                      </div>
+                      <div className="flex flex-col">
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                          # Product Discussion
+                        </h3>
+                        <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Yesterday · 8 messages</span>
+                      </div>
+                    </div>
+                    <ChevronRight className="size-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white transition-colors" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: WORKSPACE MEETINGS */}
+          {activeTab === 'meetings' && (
+            <div className="max-w-4xl flex flex-col gap-6">
+              {!selectedMeetingId ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-3xl font-black text-slate-900 dark:text-white">Meetings</h1>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Recorded & transcribed workspace meeting history.</p>
+                    </div>
+
+                    <button
+                      onClick={handleLaunchInstantMeeting}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-2"
+                    >
+                      {isLaunchingMeeting ? <Loader2 className="size-4 animate-spin" /> : '+ Start Meeting'}
+                    </button>
+                  </div>
+
+                  {/* Past Meetings List */}
+                  <div className="flex flex-col gap-4">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Past Workspace Meetings</h2>
+
+                    {activeWorkspace.pastMeetings.map((pm) => (
+                      <div
+                        key={pm.id}
+                        onClick={() => setSelectedMeetingId(pm.id)}
+                        className="p-5 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 cursor-pointer transition-all flex items-center justify-between gap-4 shadow-sm"
+                      >
+                        <div className="flex flex-col gap-1">
+                          <h3 className="font-bold text-base text-slate-900 dark:text-white">{pm.title}</h3>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{pm.dateStr}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                          View Summary & Transcript <ChevronRight className="size-4" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                /* OPEN PREVIOUS MEETING DETAIL VIEW */
+                currentPastMeeting && (
+                  <div className="flex flex-col gap-6">
+                    <button
+                      onClick={() => setSelectedMeetingId(null)}
+                      className="flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline w-fit"
+                    >
+                      ← Back to all meetings
+                    </button>
+
+                    <div className="flex flex-col gap-2 border-b border-slate-200 dark:border-white/10 pb-6">
+                      <h1 className="text-3xl font-black text-slate-900 dark:text-white">{currentPastMeeting.title}</h1>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{currentPastMeeting.dateStr}</span>
+                    </div>
+
+                    {/* Sub-tabs: Summary / Transcript / Chat */}
+                    <div className="flex border-b border-slate-200 dark:border-white/10 gap-6">
+                      {(['summary', 'transcript'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setMeetingDetailTab(t)}
+                          className={`pb-3 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 ${
+                            meetingDetailTab === t
+                              ? 'border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* SUMMARY SUB-TAB */}
+                    {meetingDetailTab === 'summary' && (
+                      <div className="flex flex-col gap-6">
+                        <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Key Decisions</h3>
+                          <ul className="list-disc list-inside text-sm text-slate-700 dark:text-slate-200 space-y-2">
+                            {currentPastMeeting.decisions.map((d, i) => (
+                              <li key={i}>{d}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Action Items</h3>
+                          <div className="flex flex-col gap-2">
+                            {currentPastMeeting.actionItems.map((act, i) => (
+                              <div key={i} className="flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
+                                <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-white/10 text-xs font-bold text-indigo-700 dark:text-white border border-indigo-200 dark:border-transparent">
+                                  {act.assignee}
+                                </span>
+                                <span>→ {act.task}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* ASK ABOUT THIS MEETING */}
+                        <div className="p-6 rounded-2xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col gap-4 shadow-sm">
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                            Ask about this meeting
+                          </h3>
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={meetingAiQuery}
+                              onChange={(e) => setMeetingAiQuery(e.target.value)}
+                              placeholder="What were the main concerns?"
+                              className="flex-1 px-4 py-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                            />
+                            <button
+                              onClick={() => handleQueryMeeting(meetingAiQuery || 'What were the main concerns?')}
+                              className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                            >
+                              Ask AI
+                            </button>
+                          </div>
+
+                          {meetingAiResponse && (
+                            <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs text-slate-700 dark:text-slate-300 leading-relaxed shadow-sm">
+                              {meetingAiResponse}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TRANSCRIPT SUB-TAB */}
+                    {meetingDetailTab === 'transcript' && (
+                      <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Full Meeting Transcript</h3>
+                        <div className="flex flex-col gap-3">
+                          {currentPastMeeting.transcript.map((t, i) => (
+                            <div key={i} className="flex flex-col gap-1 text-xs">
+                              <span className="font-bold text-cyan-600 dark:text-cyan-400">{t.speaker} <span className="text-[10px] text-slate-400 dark:text-slate-500">{t.time}</span></span>
+                              <p className="text-slate-700 dark:text-slate-300">{t.text}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: WORKSPACE CHAT WITH @TALK2ME */}
+          {activeTab === 'chat' && (
+            <div className="flex-1 flex rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 overflow-hidden max-h-[75vh] shadow-sm dark:shadow-xl">
+              {/* Channel / DM list */}
+              <div className="w-56 border-r border-slate-200 dark:border-white/10 p-4 flex flex-col gap-4 bg-slate-50 dark:bg-slate-900/80">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Channels</span>
+                  <div className="flex flex-col gap-1 mt-2">
+                    {activeWorkspace.channels.map((ch) => (
+                      <button
+                        key={ch}
+                        onClick={() => setSelectedChannel(ch)}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition-colors ${
+                          selectedChannel === ch
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Direct Messages</span>
+                  <div className="flex flex-col gap-1 mt-2">
+                    {activeWorkspace.directMessages.map((dm) => (
+                      <button
+                        key={dm}
+                        onClick={() => setSelectedChannel(dm)}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition-colors ${
+                          selectedChannel === dm
+                            ? 'bg-indigo-600 text-white'
+                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        👤 {dm}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages Thread */}
+              <div className="flex-1 flex flex-col justify-between">
+                <div className="p-4 border-b border-slate-200 dark:border-white/10 font-bold text-sm text-slate-900 dark:text-white">
+                  {selectedChannel}
+                </div>
+
+                <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+                  {(activeWorkspace.channelMessages[selectedChannel] || []).map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex flex-col gap-1 p-3 rounded-2xl max-w-xl ${
+                        msg.isAi
+                          ? 'bg-cyan-50 dark:bg-gradient-to-r dark:from-indigo-950/80 dark:to-cyan-950/80 border border-cyan-200 dark:border-cyan-500/30'
+                          : 'bg-slate-100 dark:bg-white/5 border border-slate-200/60 dark:border-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={`font-bold ${msg.isAi ? 'text-cyan-600 dark:text-cyan-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                          {msg.sender}
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">{msg.time}</span>
+                      </div>
+                      <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed">{msg.text}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Input with @Talk2Me prompt */}
+                <div className="p-4 border-t border-slate-200 dark:border-white/10 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={chatInputText}
+                    onChange={(e) => setChatInputText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
+                    placeholder="Message or type @Talk2Me to ask AI inline..."
+                    className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={handleSendChatMessage}
+                    className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                  >
+                    <Send className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: ASK AI (DEDICATED WORKSPACE SEARCH) */}
+          {activeTab === 'ask-ai' && (
+            <div className="max-w-4xl flex flex-col gap-6">
+              <div>
+                <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                  ✨ Talk2Me AI
+                </h1>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                  Ask Talk2Me about your workspace — Get answers from your meetings and conversations.
+                </p>
+              </div>
+
+              {/* Chat Thread */}
+              <div className="flex flex-col gap-4">
+                {activeWorkspace.aiWorkspaceChat.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`p-6 rounded-2xl border ${
+                      msg.sender === 'user'
+                        ? 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10'
+                        : 'bg-white dark:bg-slate-900/90 border-indigo-200 dark:border-indigo-500/40 shadow-md dark:shadow-xl'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 mb-2">
+                      <span>{msg.sender === 'user' ? 'You' : 'Talk2Me AI'}</span>
+                      <span>{msg.time}</span>
+                    </div>
+                    <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">{msg.text}</p>
+
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/10 flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                          Sources:
+                        </span>
+                        {msg.sources.map((src, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 rounded-full bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 text-[11px] font-semibold text-cyan-700 dark:text-cyan-300"
+                          >
+                            {src}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {isAiThinking && (
+                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                    <Loader2 className="size-4 animate-spin text-cyan-500 dark:text-cyan-400" />
+                    Analyzing workspace meetings and conversations...
+                  </div>
+                )}
+              </div>
+
+              {/* Prompt Bar */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={askAiInput}
+                  onChange={(e) => setAskAiInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendAskAi()}
+                  placeholder="What are the biggest blockers for our product launch?"
+                  className="flex-1 px-4 py-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 shadow-sm"
+                />
+                <button
+                  onClick={() => handleSendAskAi()}
+                  className="px-6 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg"
+                >
+                  Ask AI
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: WORKSPACE SETTINGS */}
+          {activeTab === 'settings' && (
+            <div className="max-w-2xl flex flex-col gap-6">
+              <h1 className="text-3xl font-black text-slate-900 dark:text-white">Workspace Settings</h1>
+
+              <div className="p-6 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 flex flex-col gap-4 shadow-sm">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                    Workspace Name
+                  </label>
+                  <input
+                    type="text"
+                    value={activeWorkspace.name}
+                    readOnly
+                    className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-300 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                    Workspace ID / Invite Code
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={activeWorkspace.id}
+                      readOnly
+                      className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-slate-300 text-sm font-mono"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(activeWorkspace.id);
+                        alert('Workspace ID copied to clipboard!');
+                      }}
+                      className="px-4 py-3 rounded-xl bg-slate-200 dark:bg-white/10 text-slate-800 dark:text-white text-xs font-bold"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }
