@@ -315,13 +315,11 @@ export default function AuthPage() {
 
             <button
               disabled={loading}
-              className="group relative w-full h-14 sm:h-16 rounded-2xl sm:rounded-3xl bg-primary text-primary-foreground font-bold uppercase tracking-widest shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 overflow-hidden text-xs sm:text-sm"
-              style={{ background: (isSignUp || isForgotPassword) ? "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" : undefined }}
+              className="group relative w-full h-12 sm:h-13 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm active:scale-[0.99] transition-all disabled:opacity-50 text-sm font-sans"
             >
-              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="flex items-center justify-center gap-3 relative z-10">
-                {loading ? <Loader2 className="size-5 animate-spin" /> : (isForgotPassword ? "Send Reset Link" : isSignUp ? "Sign Up" : "Sign In")}
-                {!loading && <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />}
+              <div className="flex items-center justify-center gap-2 relative z-10">
+                {loading ? <Loader2 className="size-4 animate-spin" /> : (isForgotPassword ? "Send Reset Link" : isSignUp ? "Sign Up" : "Sign In")}
+                {!loading && <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />}
               </div>
             </button>
           </form>

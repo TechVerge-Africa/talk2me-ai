@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, Search, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw } from 'lucide-react';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, Search, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
@@ -44,10 +44,19 @@ function PreJoinLobby({
   isHost?: boolean 
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
+  
+  const getReturnUrl = useCallback(() => {
+    const wsId = searchParams.get('workspaceId') || (() => {
+      try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
+    })();
+    return wsId ? `/dashboard?workspaceId=${wsId}` : (user ? '/dashboard' : '/');
+  }, [searchParams, user]);
+
   const handleClose = () => {
     if (onClose) onClose();
-    else router.push(user ? '/dashboard' : '/');
+    else router.push(getReturnUrl());
   };
   const [name, setName] = useState(defaultName);
   // Read initial mic/cam state from lobby prefs (persisted to localStorage)
@@ -555,12 +564,20 @@ function LeftMeetingScreen({
   onReopen: () => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [duration] = useState(() => Math.floor(Math.random() * 30) + 10);
   const [randomParticipants] = useState(() => Math.floor(Math.random() * 5) + 2);
 
+  const returnUrl = useMemo(() => {
+    const wsId = searchParams.get('workspaceId') || (() => {
+      try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
+    })();
+    return wsId ? `/dashboard?workspaceId=${wsId}` : (user ? '/dashboard' : '/');
+  }, [searchParams, user]);
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 gap-8">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 gap-8 font-sans">
       {/* Ambient glow */}
       <div className="absolute inset-0 bg-gradient-to-br from-bridge-indigo/5 via-transparent to-bridge-cyan/5 pointer-events-none" />
 
@@ -570,52 +587,60 @@ function LeftMeetingScreen({
         className="relative w-full max-w-md text-center"
       >
         {/* Icon */}
-        <div className="size-20 rounded-3xl bg-gradient-to-br from-bridge-indigo/20 to-bridge-cyan/20 border border-bridge-cyan/20 grid place-items-center mx-auto mb-6">
+        <div className="size-20 rounded-3xl bg-blue-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 grid place-items-center mx-auto mb-6">
           <span className="text-4xl">{isHost ? '👑' : '👋'}</span>
         </div>
 
-        <h1 className="text-3xl font-bold tracking-tight mb-2">
+        <h1 className="text-3xl font-bold tracking-tight mb-2 font-heading">
           {didEndMeeting ? 'You ended the session' : 'You left the meeting'}
         </h1>
         <p className="text-muted-foreground text-sm">
           {didEndMeeting
-            ? 'The meeting has been ended. You can reopen it or start a new one.'
+            ? 'The meeting has been ended. You can reopen it or return to your workspace.'
             : `Meeting code: `}
           {!didEndMeeting && <span className="font-mono font-bold text-foreground">{code}</span>}
         </p>
 
         {/* Stats row for host */}
         {isHost && (
-          <div className="mt-6 grid grid-cols-2 gap-3">
+          <div className="mt-6 grid grid-cols-2 gap-3 font-sans">
             <div className="p-4 rounded-2xl bg-card ring-1 ring-border text-center">
-              <div className="text-2xl font-bold text-bridge-cyan">{duration}m</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{duration}m</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">Duration</div>
             </div>
             <div className="p-4 rounded-2xl bg-card ring-1 ring-border text-center">
-              <div className="text-2xl font-bold text-bridge-indigo">{randomParticipants}</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{randomParticipants}</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">Participants</div>
             </div>
           </div>
         )}
 
         {/* Actions */}
-        <div className="mt-8 flex flex-col gap-3">
+        <div className="mt-8 flex flex-col gap-3 font-sans">
+          {/* Primary Return to Workspace / Dashboard Button */}
+          <button
+            onClick={() => router.push(returnUrl)}
+            className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-sm hover:bg-blue-700 transition bg-blue-600"
+          >
+            <Building2 className="size-5" />
+            {user ? 'Return to Workspace' : 'Back to Home'}
+          </button>
+
           {/* Host who ended: offer Reopen. Host who left / participant: offer Rejoin */}
           {didEndMeeting ? (
             <button
               onClick={onReopen}
-              className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
+              className="w-full h-12 rounded-2xl border border-slate-300 dark:border-slate-700 font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
-              <RotateCcw className="size-5" />
+              <RotateCcw className="size-4" />
               Reopen &amp; Rejoin
             </button>
           ) : (
             <button
               onClick={onRejoin}
-              className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg hover:opacity-95 transition bg-gradient-to-br from-bridge-indigo to-bridge-cyan ring-1 ring-white/10"
-              style={{ backgroundColor: '#4f46e5' }}
+              className="w-full h-12 rounded-2xl border border-slate-300 dark:border-slate-700 font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
             >
-              <RotateCcw className="size-5" />
+              <RotateCcw className="size-4" />
               Rejoin Meeting
             </button>
           )}
@@ -623,20 +648,12 @@ function LeftMeetingScreen({
           {isHost && (
             <button
               onClick={() => router.push('/create')}
-              className="w-full h-12 rounded-2xl bg-card ring-1 ring-border font-medium flex items-center justify-center gap-2 hover:bg-muted transition"
+              className="w-full h-12 rounded-2xl bg-card border border-border font-medium flex items-center justify-center gap-2 hover:bg-muted transition text-xs"
             >
               <Crown className="size-4 text-amber-500" />
               Start New Meeting
             </button>
           )}
-
-          <button
-            onClick={() => router.push(user ? '/dashboard' : '/')}
-            className="w-full h-12 rounded-2xl font-medium text-muted-foreground flex items-center justify-center gap-2 hover:text-foreground transition"
-          >
-            <Home className="size-4" />
-            {user ? 'Back to Dashboard' : 'Back to Home'}
-          </button>
         </div>
       </motion.div>
     </div>
@@ -1564,7 +1581,7 @@ function RoomContent({
 }
 
 // ─── Outer page — handles token fetch, auth role, leave/rejoin ───────
-export default function RoomPage() {
+function RoomPageInner() {
   const params = useParams();
   const router = useRouter();
   const code = params.code as string;
@@ -1761,7 +1778,10 @@ export default function RoomPage() {
       isHost={isHost} 
       defaultName={user?.email?.split('@')[0]} 
       onJoin={(name) => { hasFetchedToken.current = true; fetchToken(name || 'Host'); }} 
-      onClose={() => router.push(user ? '/dashboard' : '/')}
+      onClose={() => {
+        const wsId = (() => { try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; } })();
+        router.push(wsId ? `/dashboard?workspaceId=${wsId}` : (user ? '/dashboard' : '/'));
+      }}
     />;
   }
 
@@ -1800,5 +1820,20 @@ export default function RoomPage() {
       <RoomAudioRenderer />
       <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} meetingId={meetingRecord?.id} isAppAdmin={profile?.role === 'admin'} />
     </LiveKitRoom>
+  );
+}
+
+export default function RoomPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+          <Loader2 className="size-10 animate-spin text-bridge-indigo" />
+          <p className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Verifying meeting code...</p>
+        </div>
+      }
+    >
+      <RoomPageInner />
+    </Suspense>
   );
 }

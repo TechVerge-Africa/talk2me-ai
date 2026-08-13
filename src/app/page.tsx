@@ -4,90 +4,79 @@ import React from 'react';
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/features/auth/use-auth';
-import { motion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
 import { ArrowRight, Video, MessageSquare, Sparkles } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
 import { GradientBackground } from "@/components/ui/gradient-background";
 
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 }
-  }
-};
-
 const HERO_FEATURES = [
   { 
     icon: Video, 
-    label: "Meet", 
-    desc: "Video meetings for your team." 
+    label: "Meeting", 
+    desc: "HD video meetings with live accessibility captions and automated action tracking." 
   },
   { 
     icon: MessageSquare, 
     label: "Chat", 
-    desc: "Conversations that continue beyond meetings." 
+    desc: "Persistent team messaging that keeps meeting decisions attached to your workspace." 
   },
   { 
     icon: Sparkles, 
-    label: "AI", 
-    desc: "Ask questions and get context from your conversations." 
+    label: "AI Context", 
+    desc: "Query your workspace AI for instant answers derived from your real team conversations." 
   }
 ];
 
 // ━━━ SECTION 1: Hero ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function HeroSection() {
   return (
-    <section id="product" className="relative w-full overflow-hidden pt-16 pb-12 sm:pt-24 sm:pb-16 lg:pt-28 lg:pb-20">
-      {/* Animated background elements */}
+    <section id="product" className="relative w-full overflow-hidden pt-12 pb-16 sm:pt-20 sm:pb-24 lg:pt-24 lg:pb-28">
       <GradientBackground />
 
-      <div className="relative max-w-5xl mx-auto px-5 sm:px-6 lg:px-8 w-full text-center flex flex-col items-center">
+      <div className="relative max-w-6xl mx-auto px-5 sm:px-6 lg:px-8 w-full text-center flex flex-col items-center">
         <motion.div 
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="flex flex-col items-center gap-8 w-full"
+          className="flex flex-col items-center gap-10 w-full"
         >
           {/* Main heading and description */}
           <div className="flex flex-col items-center gap-6 max-w-4xl">
             <motion.h1 
               variants={fadeInUp} 
-              className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black tracking-tighter text-balance leading-[1.02]"
+              className="font-heading text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-balance leading-[1.08] text-slate-900 dark:text-white"
             >
-              <span className="block text-slate-900 dark:text-white">Meetings end.</span>
-              <span className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 dark:from-indigo-400 dark:via-cyan-300 dark:to-cyan-400 bg-clip-text text-transparent drop-shadow-sm">
-                Communication doesn&apos;t.
-              </span>
+              Meetings end.<br />
+              Conversations don't.
             </motion.h1>
 
             <motion.p 
               variants={fadeInUp} 
-              className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 text-pretty leading-relaxed font-medium max-w-2xl"
+              className="font-sans text-lg sm:text-xl text-slate-600 dark:text-slate-300 text-pretty leading-relaxed font-normal max-w-2xl"
             >
-              Talk2Me brings meetings, chat, and AI together so your conversations can continue wherever they need to go.
+              Meet, chat, and work with AI in one connected workspace. Talk2Me keeps your team's conversations together so you can continue where you left off.
             </motion.p>
           </div>
 
           {/* CTA Buttons */}
           <motion.div 
             variants={fadeInUp} 
-            className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center"
+            className="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center font-sans"
           >
             <Link
               href="/auth"
-              className="group flex items-center justify-center gap-2 px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-base rounded-2xl shadow-lg hover:shadow-indigo-500/25 transition-all active:scale-95 sm:flex-1"
+              className="group flex items-center justify-center gap-2 px-7 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-base rounded-xl transition-all shadow-sm active:scale-98 sm:flex-1"
             >
-              Try Talk2Me Free
-              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+              Get Started
+              <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
             </Link>
 
             <Link
               href="#how-it-works"
-              className="group flex items-center justify-center gap-2 px-8 py-4 border-2 border-slate-300 dark:border-white/15 text-slate-900 dark:text-white font-bold text-base rounded-2xl hover:border-indigo-500/50 hover:bg-slate-100 dark:hover:bg-white/10 transition-all sm:flex-1"
+              className="group flex items-center justify-center gap-2 px-7 py-3.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-800 font-medium text-base rounded-xl transition-all sm:flex-1"
             >
               See How It Works
-              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
             </Link>
           </motion.div>
 
@@ -95,24 +84,25 @@ export function HeroSection() {
           <motion.div 
             id="how-it-works"
             variants={fadeInUp}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl pt-8"
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl pt-8 font-sans"
           >
             {HERO_FEATURES.map(({ icon: Icon, label, desc }) => (
               <motion.div 
                 key={label}
                 variants={fadeInUp}
-                className="group flex flex-col items-center text-center gap-3 p-6 sm:p-8 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 backdrop-blur-xl hover:border-cyan-500/50 dark:hover:border-cyan-400/40 hover:bg-white dark:hover:bg-slate-900/90 transition-all duration-300 shadow-md dark:shadow-2xl"
+                className="group flex flex-col items-start text-left gap-3 p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 shadow-sm"
               >
-                <div className="size-13 rounded-2xl bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-cyan-400 grid place-items-center group-hover:scale-110 transition-transform mb-1 shadow-sm">
-                  <Icon className="size-6" />
+                <div className="size-11 rounded-lg bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-1">
+                  <Icon className="size-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1.5">{label}</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{desc}</p>
+                  <h3 className="font-heading font-semibold text-lg text-slate-900 dark:text-white mb-1">{label}</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-normal">{desc}</p>
                 </div>
               </motion.div>
             ))}
           </motion.div>
+
         </motion.div>
       </div>
     </section>
@@ -122,43 +112,40 @@ export function HeroSection() {
 // ━━━ SECTION 2: Final CTA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export function FinalCTASection() {
   return (
-    <section id="pricing" className="px-5 py-20 lg:py-28 relative overflow-hidden max-w-6xl mx-auto w-full">
-      <div className="relative rounded-3xl sm:rounded-[40px] p-8 sm:p-14 lg:p-20 bg-gradient-to-br from-indigo-700 via-indigo-600 to-cyan-600 dark:from-indigo-950 dark:via-slate-900 dark:to-cyan-950 border border-white/10 shadow-2xl overflow-hidden text-center flex flex-col items-center">
-        {/* Subtle dot pattern background */}
-        <div className="absolute inset-0 opacity-15 [mask-image:radial-gradient(ellipse_at_center,black,transparent)] bg-[length:24px_24px] bg-[radial-gradient(circle,rgba(255,255,255,0.2)_1px,transparent_1px)] pointer-events-none" />
-
+    <section id="pricing" className="px-5 py-16 lg:py-24 relative overflow-hidden max-w-6xl mx-auto w-full font-sans">
+      <div className="relative rounded-2xl p-8 sm:p-12 lg:p-16 bg-slate-900 text-white border border-slate-800 shadow-lg text-center flex flex-col items-center">
         <motion.div 
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="relative z-10 max-w-4xl mx-auto flex flex-col items-center"
+          className="relative z-10 max-w-3xl mx-auto flex flex-col items-center"
         >
-          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-6 text-balance leading-[1.1]">
+          <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-5 leading-tight">
             Keep your conversations going.
           </h2>
-          <p className="text-base sm:text-xl text-white/80 max-w-2xl mb-10 font-medium leading-relaxed">
-            Join teams using Talk2Me to bring meetings, chat, and AI together without losing momentum.
+          <p className="text-base sm:text-lg text-slate-300 max-w-2xl mb-8 font-normal leading-relaxed">
+            Join teams using Talk2Me to bring meetings, chat, and AI together in one connected workspace.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center mb-8 w-full max-w-md">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center mb-6 w-full max-w-md">
             <Link
               href="/auth"
-              className="group relative w-full sm:flex-1 py-4 px-8 bg-white text-indigo-700 hover:bg-slate-100 rounded-2xl font-bold text-base transition-all hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-2"
+              className="group w-full sm:flex-1 py-3.5 px-7 bg-white text-slate-900 hover:bg-slate-100 rounded-xl font-medium text-base transition-all flex items-center justify-center gap-2"
             >
-              <span>Try Talk2Me Free</span>
-              <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />
+              <span>Get Started</span>
+              <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
             </Link>
             
             <Link
-              href="/auth"
-              className="w-full sm:flex-1 py-4 px-8 rounded-2xl font-bold text-base text-white border-2 border-white/30 hover:border-white/60 hover:bg-white/10 transition-all flex items-center justify-center"
+              href="#how-it-works"
+              className="w-full sm:flex-1 py-3.5 px-7 rounded-xl font-medium text-base text-white border border-slate-700 hover:bg-slate-800 transition-all flex items-center justify-center"
             >
               See How It Works
             </Link>
           </div>
 
-          <p className="text-xs text-white/70 font-medium">
-            No credit card required. Free tier includes full meeting & AI features.
+          <p className="text-xs text-slate-400 font-normal">
+            No credit card required. Built for modern team communication.
           </p>
         </motion.div>
       </div>
@@ -179,10 +166,10 @@ export default function LandingPage() {
 
   if (loading || user) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-white">
+      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-white font-sans">
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-cyan-400"></div>
-          <p className="text-sm font-bold tracking-widest text-slate-400 uppercase">Verifying Session...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Verifying Session...</p>
         </div>
       </div>
     );
@@ -195,3 +182,4 @@ export default function LandingPage() {
     </main>
   );
 }
+

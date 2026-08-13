@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,10 +20,12 @@ import {
   Send,
   X,
   LogOut,
-  ExternalLink,
-  ChevronRight,
   Sparkles,
-  Menu
+  Menu,
+  Rocket,
+  Palette,
+  Link2,
+  ChevronRight
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
@@ -31,6 +33,14 @@ import { MeetingService } from '@/services/supabase/meetings';
 import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
 import { GradientBackground } from '@/components/ui/gradient-background';
 import { ThemeToggle } from '@/components/theme-toggle';
+
+// ── ICON HELPER ──────────────────────────────────────────────────────
+const renderWorkspaceIcon = (iconStr: string) => {
+  if (iconStr === 'palette' || iconStr === '🎨') return <Palette className="size-5 text-blue-600 dark:text-blue-400" />;
+  if (iconStr === 'building' || iconStr === '🏢') return <Building2 className="size-5 text-blue-600 dark:text-blue-400" />;
+  if (iconStr === 'link' || iconStr === '🔗') return <Link2 className="size-5 text-blue-600 dark:text-blue-400" />;
+  return <Rocket className="size-5 text-blue-600 dark:text-blue-400" />;
+};
 
 // ── TYPES ────────────────────────────────────────────────────────────
 interface WorkspaceMember {
@@ -79,7 +89,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     id: 'ws-product-team',
     name: 'Talk2Me Product Team',
     topic: 'Product development & roadmap',
-    icon: '🚀',
+    icon: 'rocket',
     membersCount: 8,
     conversationsCount: 12,
     members: [
@@ -203,7 +213,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
     id: 'ws-design-systems',
     name: 'Design Systems & Accessibility',
     topic: 'WCAG 3.0 & Accessible UI Components',
-    icon: '🎨',
+    icon: 'palette',
     membersCount: 4,
     conversationsCount: 6,
     members: [
@@ -224,7 +234,7 @@ const DEFAULT_WORKSPACES: Workspace[] = [
   }
 ];
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
@@ -241,6 +251,8 @@ export default function DashboardPage() {
     return DEFAULT_WORKSPACES;
   });
 
+  const searchParams = useSearchParams();
+
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
     try {
       return localStorage.getItem('t2_active_workspace_v1') || null;
@@ -248,6 +260,17 @@ export default function DashboardPage() {
       return null;
     }
   });
+
+  // Sync workspaceId from query params when navigating back from meeting
+  useEffect(() => {
+    const wsParam = searchParams.get('workspaceId');
+    if (wsParam && workspaces.some((w) => w.id === wsParam)) {
+      setActiveWorkspaceId(wsParam);
+      try {
+        localStorage.setItem('t2_active_workspace_v1', wsParam);
+      } catch {}
+    }
+  }, [searchParams, workspaces]);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((w) => w.id === activeWorkspaceId) || null,
@@ -261,6 +284,18 @@ export default function DashboardPage() {
       if (id) localStorage.setItem('t2_active_workspace_v1', id);
       else localStorage.removeItem('t2_active_workspace_v1');
     } catch {}
+  };
+
+  const navigateToRoom = (roomCode: string) => {
+    const targetWsId = activeWorkspaceId || (() => {
+      try { return localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
+    })();
+    if (targetWsId) {
+      try { sessionStorage.setItem('t2_return_workspace_id', targetWsId); } catch {}
+      router.push(`/room/${roomCode}?workspaceId=${targetWsId}`);
+    } else {
+      router.push(`/room/${roomCode}`);
+    }
   };
 
   // Persist workspaces
@@ -324,15 +359,15 @@ export default function DashboardPage() {
     try {
       if (user) {
         const meeting = await MeetingService.createMeeting('Instant Meeting', user.id);
-        router.push(`/room/${meeting.room_code}`);
+        navigateToRoom(meeting.room_code);
       } else {
         const roomCode = generateRoomCode();
-        router.push(`/room/${roomCode}`);
+        navigateToRoom(roomCode);
       }
     } catch (e) {
       console.error('Instant meeting creation error:', e);
       const roomCode = generateRoomCode();
-      router.push(`/room/${roomCode}`);
+      navigateToRoom(roomCode);
     }
   };
 
@@ -345,7 +380,7 @@ export default function DashboardPage() {
       id: `ws-${Date.now()}`,
       name: newWsName.trim(),
       topic: newWsTopic.trim() || 'General Collaboration',
-      icon: '🏢',
+      icon: 'building',
       membersCount: 1 + newWsEmails.filter((e) => e.trim()).length,
       conversationsCount: 1,
       members: [
@@ -394,7 +429,7 @@ export default function DashboardPage() {
         id: `ws-joined-${Date.now()}`,
         name: `Workspace (${code.slice(0, 8)})`,
         topic: 'Joined Workspace',
-        icon: '🔗',
+        icon: 'link',
         membersCount: 5,
         conversationsCount: 3,
         members: [
@@ -596,16 +631,16 @@ export default function DashboardPage() {
                   {isLaunchingMeeting ? <Loader2 className="size-7 animate-spin text-indigo-600 dark:text-indigo-400" /> : <Video className="size-7" />}
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center gap-2">
-                    🎥 Start a Meeting
+                  <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                    <Video className="size-5 text-blue-600 dark:text-blue-400" /> Start Meeting
                   </h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                    Create an instant meeting and share the link. No workspace required.
+                  <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                    Create an instant video meeting and share the room link with your team.
                   </p>
                 </div>
               </div>
-              <div className="flex items-center text-xs font-bold text-indigo-600 dark:text-indigo-400 gap-1 group-hover:translate-x-1 transition-transform">
-                {isLaunchingMeeting ? 'Launching instant room...' : 'Start instant meeting'} <ArrowRight className="size-4" />
+              <div className="font-sans flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400 gap-1 group-hover:translate-x-1 transition-transform">
+                {isLaunchingMeeting ? 'Launching instant room...' : 'Start Meeting'} <ArrowRight className="size-4" />
               </div>
             </motion.div>
 
@@ -614,23 +649,23 @@ export default function DashboardPage() {
               whileHover={{ y: -4, scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               onClick={() => setCreateWsModalOpen(true)}
-              className="group cursor-pointer p-6 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-cyan-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl"
+              className="group cursor-pointer p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 flex flex-col justify-between gap-6 shadow-sm"
             >
               <div className="flex flex-col gap-4">
-                <div className="size-14 rounded-2xl bg-cyan-500/15 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 grid place-items-center group-hover:scale-110 transition-transform">
-                  <Building2 className="size-7" />
+                <div className="size-12 rounded-lg bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Building2 className="size-6" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors flex items-center gap-2">
-                    🏢 Create a Workspace
+                  <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                    <Building2 className="size-5 text-blue-600 dark:text-blue-400" /> Create Workspace
                   </h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                  <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                     Build a shared space for your team with persistent chat, meetings, and AI.
                   </p>
                 </div>
               </div>
-              <div className="flex items-center text-xs font-bold text-cyan-600 dark:text-cyan-400 gap-1 group-hover:translate-x-1 transition-transform">
-                Create new workspace <ArrowRight className="size-4" />
+              <div className="font-sans flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400 gap-1 group-hover:translate-x-1 transition-transform">
+                Create Workspace <ArrowRight className="size-4" />
               </div>
             </motion.div>
 
@@ -639,23 +674,23 @@ export default function DashboardPage() {
               whileHover={{ y: -4, scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
               onClick={() => setJoinWsModalOpen(true)}
-              className="group cursor-pointer p-6 rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-emerald-500/50 hover:bg-slate-50 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl"
+              className="group cursor-pointer p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 flex flex-col justify-between gap-6 shadow-sm"
             >
               <div className="flex flex-col gap-4">
-                <div className="size-14 rounded-2xl bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 grid place-items-center group-hover:scale-110 transition-transform">
-                  <Users className="size-7" />
+                <div className="size-12 rounded-lg bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Users className="size-6" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors flex items-center gap-2">
-                    🔗 Join a Workspace
+                  <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                    <Users className="size-5 text-blue-600 dark:text-blue-400" /> Join Workspace
                   </h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                  <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                     Enter an existing workspace invitation link or workspace code.
                   </p>
                 </div>
               </div>
-              <div className="flex items-center text-xs font-bold text-emerald-600 dark:text-emerald-400 gap-1 group-hover:translate-x-1 transition-transform">
-                Enter code or link <ArrowRight className="size-4" />
+              <div className="font-sans flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400 gap-1 group-hover:translate-x-1 transition-transform">
+                Join Workspace <ArrowRight className="size-4" />
               </div>
             </motion.div>
           </div>
@@ -689,8 +724,8 @@ export default function DashboardPage() {
                     {/* Top Header: Icon + Title + Open CTA */}
                     <div className="flex items-start justify-between gap-4 relative z-10">
                       <div className="flex items-center gap-3.5">
-                        <div className="size-13 rounded-2xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200/60 dark:border-indigo-500/30 grid place-items-center text-2xl shadow-sm group-hover:scale-105 transition-transform">
-                          {ws.icon}
+                        <div className="size-12 rounded-xl bg-blue-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-sm flex-shrink-0">
+                          {renderWorkspaceIcon(ws.icon)}
                         </div>
                         <div className="flex flex-col">
                           <h3 className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight">
@@ -963,8 +998,8 @@ export default function DashboardPage() {
           <div className="h-5 w-[1px] bg-slate-200 dark:bg-white/10 hidden sm:block" />
 
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xl flex-shrink-0">{activeWorkspace.icon}</span>
-            <span className="font-bold text-base sm:text-lg text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-xs">
+            <span className="flex-shrink-0">{renderWorkspaceIcon(activeWorkspace.icon)}</span>
+            <span className="font-heading font-bold text-base sm:text-lg text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-xs">
               {activeWorkspace.name}
             </span>
           </div>
@@ -1002,31 +1037,37 @@ export default function DashboardPage() {
               </span>
 
               {/* Navigation Items */}
-              <nav className="flex flex-col gap-1 mt-2">
+              <nav className="flex flex-col gap-1 mt-2 font-sans">
                 {[
-                  { id: 'overview', label: '🏠 Overview', tab: 'overview' },
-                  { id: 'meetings', label: '🎥 Meetings', tab: 'meetings' },
-                  { id: 'chat', label: '💬 Chat', tab: 'chat' },
-                  { id: 'ask-ai', label: '✨ Ask AI', tab: 'ask-ai', highlight: true }
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setActiveTab(item.tab as WorkspaceTab);
-                      if (item.tab !== 'meetings') setSelectedMeetingId(null);
-                    }}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                      activeTab === item.tab
-                        ? 'bg-indigo-600 text-white shadow-md'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                    {item.highlight && activeTab !== item.tab && (
-                      <span className="size-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse" />
-                    )}
-                  </button>
-                ))}
+                  { id: 'overview', label: 'Overview', tab: 'overview', icon: Building2 },
+                  { id: 'meetings', label: 'Meetings', tab: 'meetings', icon: Video },
+                  { id: 'chat', label: 'Chat', tab: 'chat', icon: MessageSquare },
+                  { id: 'ask-ai', label: 'Ask AI', tab: 'ask-ai', icon: Sparkles, highlight: true }
+                ].map((item) => {
+                  const NavIcon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.tab as WorkspaceTab);
+                        if (item.tab !== 'meetings') setSelectedMeetingId(null);
+                      }}
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                        activeTab === item.tab
+                          ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <NavIcon className="size-4 opacity-80" />
+                        {item.label}
+                      </span>
+                      {item.highlight && activeTab !== item.tab && (
+                        <span className="size-2 rounded-full bg-blue-500" />
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
             </div>
 
@@ -1096,32 +1137,38 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Navigation Items */}
-                  <nav className="flex flex-col gap-1.5">
+                  <nav className="flex flex-col gap-1.5 font-sans">
                     {[
-                      { id: 'overview', label: '🏠 Workspace Overview', tab: 'overview' },
-                      { id: 'meetings', label: '🎥 Meetings & Transcripts', tab: 'meetings' },
-                      { id: 'chat', label: '💬 Team Chat', tab: 'chat' },
-                      { id: 'ask-ai', label: '✨ Ask AI', tab: 'ask-ai', highlight: true }
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          setActiveTab(item.tab as WorkspaceTab);
-                          if (item.tab !== 'meetings') setSelectedMeetingId(null);
-                          setMobileNavOpen(false);
-                        }}
-                        className={`flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold transition-all ${
-                          activeTab === item.tab
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-                        }`}
-                      >
-                        <span>{item.label}</span>
-                        {item.highlight && activeTab !== item.tab && (
-                          <span className="size-2 rounded-full bg-cyan-500 dark:bg-cyan-400 animate-pulse" />
-                        )}
-                      </button>
-                    ))}
+                      { id: 'overview', label: 'Workspace Overview', tab: 'overview', icon: Building2 },
+                      { id: 'meetings', label: 'Meetings & Transcripts', tab: 'meetings', icon: Video },
+                      { id: 'chat', label: 'Team Chat', tab: 'chat', icon: MessageSquare },
+                      { id: 'ask-ai', label: 'Ask AI', tab: 'ask-ai', icon: Sparkles, highlight: true }
+                    ].map((item) => {
+                      const NavIcon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.tab as WorkspaceTab);
+                            if (item.tab !== 'meetings') setSelectedMeetingId(null);
+                            setMobileNavOpen(false);
+                          }}
+                          className={`flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium transition-all ${
+                            activeTab === item.tab
+                              ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <NavIcon className="size-4 opacity-80" />
+                            {item.label}
+                          </span>
+                          {item.highlight && activeTab !== item.tab && (
+                            <span className="size-2 rounded-full bg-blue-500" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </nav>
 
                   {/* Members Section */}
@@ -1213,7 +1260,7 @@ export default function DashboardPage() {
                           <span className="text-xs text-indigo-600 dark:text-cyan-400 font-medium">{m.dateStr} · {m.participants} participants</span>
                         </div>
                         <button
-                          onClick={() => router.push(`/room/${m.roomCode}`)}
+                          onClick={() => navigateToRoom(m.roomCode)}
                           className="px-4 sm:px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all flex-shrink-0"
                         >
                           Join
@@ -1458,19 +1505,19 @@ export default function DashboardPage() {
                 </div>
 
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Direct Messages</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Direct Messages</span>
                   <div className="flex flex-col gap-1 mt-2">
                     {activeWorkspace.directMessages.map((dm) => (
                       <button
                         key={dm}
                         onClick={() => setSelectedChannel(dm)}
-                        className={`px-3 py-2 rounded-xl text-xs font-semibold text-left transition-colors ${
+                        className={`px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors flex items-center gap-1.5 ${
                           selectedChannel === dm
-                            ? 'bg-indigo-600 text-white'
+                            ? 'bg-blue-600 text-white font-semibold'
                             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/5'
                         }`}
                       >
-                        👤 {dm}
+                        <Users className="size-3.5 text-slate-400" /> {dm}
                       </button>
                     ))}
                   </div>
@@ -1485,7 +1532,7 @@ export default function DashboardPage() {
                     onClick={() => setSelectedChannel(ch)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex-shrink-0 transition-colors ${
                       selectedChannel === ch
-                        ? 'bg-indigo-600 text-white'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300'
                     }`}
                   >
@@ -1495,8 +1542,8 @@ export default function DashboardPage() {
               </div>
 
               {/* Messages Thread */}
-              <div className="flex-1 flex flex-col justify-between">
-                <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-white/10 font-bold text-sm text-slate-900 dark:text-white">
+              <div className="flex-1 flex flex-col justify-between font-sans">
+                <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 font-semibold text-sm text-slate-900 dark:text-white">
                   {selectedChannel}
                 </div>
 
@@ -1504,38 +1551,38 @@ export default function DashboardPage() {
                   {(activeWorkspace.channelMessages[selectedChannel] || []).map((msg, i) => (
                     <div
                       key={i}
-                      className={`flex flex-col gap-1 p-3 rounded-2xl max-w-xl ${
+                      className={`flex flex-col gap-1 p-3.5 rounded-xl max-w-xl ${
                         msg.isAi
-                          ? 'bg-cyan-50 dark:bg-gradient-to-r dark:from-indigo-950/80 dark:to-cyan-950/80 border border-cyan-200 dark:border-cyan-500/30'
-                          : 'bg-slate-100 dark:bg-white/5 border border-slate-200/60 dark:border-white/5'
+                          ? 'bg-blue-50 dark:bg-slate-900 border border-blue-200 dark:border-blue-500/30'
+                          : 'bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800'
                       }`}
                     >
                       <div className="flex items-center justify-between text-xs">
-                        <span className={`font-bold ${msg.isAi ? 'text-cyan-600 dark:text-cyan-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                        <span className={`font-semibold ${msg.isAi ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
                           {msg.sender}
                         </span>
                         <span className="text-[10px] text-slate-400 dark:text-slate-500">{msg.time}</span>
                       </div>
-                      <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed">{msg.text}</p>
+                      <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-normal">{msg.text}</p>
                     </div>
                   ))}
                 </div>
 
                 {/* Input with @Talk2Me prompt */}
-                <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-white/10 flex items-center gap-2">
+                <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
                   <input
                     type="text"
                     value={chatInputText}
                     onChange={(e) => setChatInputText(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
                     placeholder="Message or type @Talk2Me..."
-                    className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:border-blue-600"
                   />
                   <button
                     onClick={handleSendChatMessage}
-                    className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold"
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1.5 transition-all"
                   >
-                    <Send className="size-4" />
+                    <Send className="size-3.5" /> Send Message
                   </button>
                 </div>
               </div>
@@ -1544,12 +1591,12 @@ export default function DashboardPage() {
 
           {/* TAB 4: ASK AI (DEDICATED WORKSPACE SEARCH) */}
           {activeTab === 'ask-ai' && (
-            <div className="max-w-4xl flex flex-col gap-6">
+            <div className="max-w-4xl flex flex-col gap-6 font-sans">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-                  ✨ Talk2Me AI
+                <h1 className="font-heading text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                  <Sparkles className="size-6 text-blue-600 dark:text-blue-400" /> Talk2Me AI
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1 font-normal">
                   Ask Talk2Me about your workspace — Get answers from your meetings and conversations.
                 </p>
               </div>
@@ -1663,38 +1710,52 @@ export default function DashboardPage() {
         </main>
 
         {/* MOBILE STICKY BOTTOM TAB NAVIGATION BAR */}
-        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 px-3 py-2 flex items-center justify-around shadow-2xl">
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-around shadow-lg font-sans">
           {[
-            { id: 'overview', label: 'Overview', icon: '🏠' },
-            { id: 'meetings', label: 'Meetings', icon: '🎥' },
-            { id: 'chat', label: 'Chat', icon: '💬' },
-            { id: 'ask-ai', label: 'Ask AI', icon: '✨' },
-            { id: 'settings', label: 'Settings', icon: '⚙' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id as WorkspaceTab);
-                if (tab.id !== 'meetings') setSelectedMeetingId(null);
-              }}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-xs font-bold transition-all relative ${
-                activeTab === tab.id
-                  ? 'text-indigo-600 dark:text-cyan-400 scale-105'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <span className="text-base">{tab.icon}</span>
-              <span className="text-[10px] tracking-tight">{tab.label}</span>
-              {activeTab === tab.id && (
-                <motion.span
-                  layoutId="active-mobile-tab"
-                  className="absolute -bottom-1 size-1 rounded-full bg-indigo-600 dark:bg-cyan-400"
-                />
-              )}
-            </button>
-          ))}
+            { id: 'overview', label: 'Overview', icon: Building2 },
+            { id: 'meetings', label: 'Meetings', icon: Video },
+            { id: 'chat', label: 'Chat', icon: MessageSquare },
+            { id: 'ask-ai', label: 'Ask AI', icon: Sparkles },
+            { id: 'settings', label: 'Settings', icon: Settings }
+          ].map((tab) => {
+            const TabIcon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id as WorkspaceTab);
+                  if (tab.id !== 'meetings') setSelectedMeetingId(null);
+                }}
+                className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition-all relative ${
+                  activeTab === tab.id
+                    ? 'text-blue-600 dark:text-blue-400 font-semibold'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <TabIcon className="size-4" />
+                <span className="text-[10px] tracking-tight">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white font-sans">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="size-10 animate-spin text-blue-600 dark:text-blue-400" />
+            <p className="text-sm font-bold tracking-widest text-slate-500 dark:text-slate-400 uppercase">Loading Workspace...</p>
+          </div>
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
   );
 }

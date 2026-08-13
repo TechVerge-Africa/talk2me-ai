@@ -183,12 +183,12 @@ function MobileNav({ open, onClose }: { open: boolean; onClose: () => void }) {
               {!loading && (
                 user ? (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-3 px-3 mb-2">
-                      <div className="size-10 rounded-xl bg-gradient-to-tr from-cyan to-indigo grid place-items-center text-white text-xs font-black ring-1 ring-white/20 shadow-lg flex-shrink-0">
+                    <div className="flex items-center gap-3 px-3 mb-2 font-sans">
+                      <div className="size-10 rounded-xl bg-blue-600 grid place-items-center text-white text-xs font-bold shadow-sm flex-shrink-0">
                         {user.email?.slice(0, 2).toUpperCase()}
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-cyan opacity-70">Authenticated</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Authenticated</span>
                         <span className="text-xs text-muted-foreground truncate">{user.email}</span>
                       </div>
                     </div>

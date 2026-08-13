@@ -1,33 +1,34 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import { Navbar } from "@/packages/ui/navbar";
 import { PwaRegister } from "@/components/pwa-register";
 import { InstallAppPrompt } from "@/components/install-app-prompt";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const plusJakartaSans = Plus_Jakarta_Sans({
+  variable: "--font-plus-jakarta-sans",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  preload: false,
+  weight: ["400", "500", "600", "700"],
 });
 
 export const viewport: Viewport = {
-  themeColor: "#0d0e12",
+  themeColor: "#0f172a",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
 };
 
 export const metadata: Metadata = {
-  title: "Talk2Me — The AI-Powered Communication Platform",
+  title: "Talk2Me — Connected Workspace for Meetings, Chat & AI",
   description:
-    "Meet, stream, collaborate, and communicate without barriers. Real-time captions, live translation, AI meeting assistance, accessibility tools, and intelligent communication built into every conversation.",
+    "Meet, chat, and work with AI in one connected workspace. Talk2Me keeps your team's conversations together so you can continue where you left off.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -46,10 +47,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${plusJakartaSans.variable} ${inter.variable} h-full antialiased dark`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-bridge-cyan/30 transition-colors duration-200">
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans selection:bg-indigo-600/30 transition-colors duration-200">
         <ThemeProvider>
           <PwaRegister />
           <InstallAppPrompt />

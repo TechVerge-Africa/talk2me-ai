@@ -87,61 +87,61 @@ export default function ResetPasswordPage() {
           </button>
 
           {/* Header */}
-          <div className="text-center mb-6 sm:mb-10 pt-2 sm:pt-0">
+          <div className="text-center mb-6 sm:mb-10 pt-2 sm:pt-0 font-sans">
             <motion.div
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
-              className="size-12 sm:size-16 rounded-2xl sm:rounded-[24px] bg-gradient-to-br from-bridge-indigo to-bridge-cyan flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg"
+              className="size-12 sm:size-14 rounded-xl bg-blue-600 flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-sm"
             >
-              <KeyRound className="size-6 sm:size-8 text-white" />
+              <KeyRound className="size-6 text-white" />
             </motion.div>
-            <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-2">
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-2">
               Set New Password
             </h1>
-            <p className="text-muted-foreground text-xs sm:text-sm font-medium opacity-60 px-2">
+            <p className="text-muted-foreground text-xs sm:text-sm font-normal px-2">
               Please enter your new security password below
             </p>
           </div>
 
           {success ? (
-            <div className="text-center space-y-4 py-8">
-              <CheckCircle2 className="size-14 sm:size-16 text-emerald-400 mx-auto animate-bounce" />
-              <h2 className="text-xl sm:text-2xl font-bold">Password Updated!</h2>
+            <div className="text-center space-y-4 py-8 font-sans">
+              <CheckCircle2 className="size-14 text-emerald-500 mx-auto" />
+              <h2 className="font-heading text-xl sm:text-2xl font-bold">Password Updated!</h2>
               <p className="text-xs sm:text-sm text-muted-foreground">Redirecting you to dashboard...</p>
             </div>
           ) : (
-            <form onSubmit={handleReset} className="space-y-4 sm:space-y-6">
+            <form onSubmit={handleReset} className="space-y-4 sm:space-y-6 font-sans">
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-widest ml-4 opacity-70">New Password</label>
+                <label className="text-[11px] font-semibold uppercase tracking-wider ml-1 text-slate-500">New Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <input
                     type={showPassword ? "text" : "password"}
                     required
                     placeholder="••••••••"
-                    className="w-full h-14 sm:h-16 pl-14 pr-14 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-sm sm:text-base"
+                    className="w-full h-12 sm:h-13 pl-11 pr-11 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all outline-none text-sm"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-widest ml-4 opacity-70">Confirm New Password</label>
+                <label className="text-[11px] font-semibold uppercase tracking-wider ml-1 text-slate-500">Confirm New Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <input
                     type={showPassword ? "text" : "password"}
                     required
                     placeholder="••••••••"
-                    className="w-full h-14 sm:h-16 pl-14 pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-sm sm:text-base"
+                    className="w-full h-12 sm:h-13 pl-11 pr-4 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-all outline-none text-sm"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                   />
@@ -154,7 +154,7 @@ export default function ResetPasswordPage() {
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
-                    className="px-6 py-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold text-center"
+                    className="px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-semibold text-center"
                   >
                     {error}
                   </motion.div>
@@ -163,13 +163,11 @@ export default function ResetPasswordPage() {
 
               <button
                 disabled={loading}
-                className="group relative w-full h-14 sm:h-16 rounded-2xl sm:rounded-3xl bg-primary text-primary-foreground font-bold uppercase tracking-widest shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 overflow-hidden text-xs sm:text-sm"
-                style={{ background: "linear-gradient(135deg, var(--color-bridge-indigo) 0%, var(--color-bridge-cyan) 100%)" }}
+                className="group relative w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all disabled:opacity-50 text-sm"
               >
-                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="flex items-center justify-center gap-3 relative z-10">
-                  {loading ? <Loader2 className="size-5 animate-spin" /> : "Update Password"}
-                  {!loading && <ArrowRight className="size-5 group-hover:translate-x-1 transition-transform" />}
+                <div className="flex items-center justify-center gap-2 relative z-10">
+                  {loading ? <Loader2 className="size-4 animate-spin" /> : "Update Password"}
+                  {!loading && <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />}
                 </div>
               </button>
             </form>

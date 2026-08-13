@@ -1,8 +1,7 @@
 export function AiWaveBackground({ className = "" }: { className?: string }) {
   return (
     <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 size-72 rounded-full bg-bridge-cyan/40 blur-3xl animate-wave-pulse" />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 size-96 rounded-full bg-bridge-indigo/30 blur-3xl animate-wave-pulse [animation-delay:1.2s]" />
+      <div className="absolute inset-0 bg-blue-500/5" />
     </div>
   );
 }
@@ -10,10 +9,11 @@ export function AiWaveBackground({ className = "" }: { className?: string }) {
 export function AiOrb({ size = 48 }: { size?: number }) {
   return (
     <div
-      className="rounded-full bg-gradient-to-tr from-bridge-cyan to-bridge-indigo animate-orb-pulse animate-float-soft grid place-items-center text-white shadow-bridge-sm"
+      className="rounded-full bg-blue-600 grid place-items-center text-white shadow-sm"
       style={{ width: size, height: size }}
     >
       <div className="size-2 rounded-full bg-white" />
     </div>
   );
 }
+

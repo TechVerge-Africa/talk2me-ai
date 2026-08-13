@@ -14,13 +14,10 @@ export function QrBlock({
   level?: "L" | "M" | "Q" | "H";
 }) {
   return (
-    <div className="relative p-6 bg-white rounded-3xl shadow-bridge-sm overflow-hidden group">
-      {/* Dynamic glow effect */}
-      <div className="absolute -inset-4 bg-gradient-to-tr from-bridge-indigo/10 via-bridge-cyan/5 to-bridge-indigo/10 opacity-0 group-hover:opacity-100 blur-2xl transition-opacity duration-700 pointer-events-none" />
-      
+    <div className="relative p-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group font-sans">
       {/* Decorative corner accents */}
-      <div className="absolute top-0 left-0 size-16 border-t-4 border-l-4 border-bridge-indigo/10 rounded-tl-3xl transition-all duration-500 group-hover:border-bridge-indigo/30 group-hover:size-20" />
-      <div className="absolute bottom-0 right-0 size-16 border-b-4 border-r-4 border-bridge-cyan/10 rounded-br-3xl transition-all duration-500 group-hover:border-bridge-cyan/30 group-hover:size-20" />
+      <div className="absolute top-0 left-0 size-12 border-t-2 border-l-2 border-blue-600/20 rounded-tl-2xl transition-all duration-300" />
+      <div className="absolute bottom-0 right-0 size-12 border-b-2 border-r-2 border-blue-600/20 rounded-br-2xl transition-all duration-300" />
       
       <div className="relative bg-white p-4 rounded-2xl ring-1 ring-border shadow-sm">
         <QRCodeSVG
