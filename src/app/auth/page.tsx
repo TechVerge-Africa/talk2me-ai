@@ -120,22 +120,26 @@ export default function AuthPage() {
       onClick={(e) => {
         if (e.target === e.currentTarget) handleClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6 overflow-y-auto bg-black/75 backdrop-blur-md animate-in fade-in duration-200 min-h-screen py-6 sm:py-10"
     >
       <AiWaveBackground className="opacity-20 pointer-events-none" />
       
-      <div className="relative w-full max-w-xl my-auto">
+      <div className="relative w-full max-w-xl my-auto overflow-hidden rounded-3xl sm:rounded-[40px]">
+        {/* Ambient Glow - safely clipped inside container */}
+        <div className="absolute -top-20 -right-20 size-[350px] sm:size-[400px] bg-bridge-cyan/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute -bottom-20 -left-20 size-[350px] sm:size-[400px] bg-bridge-indigo/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none" />
+
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="glass-card p-6 sm:p-12 rounded-3xl sm:rounded-[40px] shadow-2xl border-white/10 bg-card/95 backdrop-blur-2xl relative"
+          className="glass-card p-5 sm:p-8 md:p-10 rounded-3xl sm:rounded-[40px] shadow-2xl border-white/10 bg-card/95 backdrop-blur-2xl relative z-10"
         >
           {/* Close button returning home or previous page */}
           <button
             onClick={handleClose}
             type="button"
-            className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2.5 sm:p-3 rounded-full bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-all duration-200 cursor-pointer z-20"
+            className="absolute top-3.5 right-3.5 sm:top-5 sm:right-5 p-2 sm:p-2.5 rounded-full bg-foreground/5 hover:bg-foreground/10 text-muted-foreground hover:text-foreground transition-all duration-200 cursor-pointer z-30"
             title="Close pop-up"
             aria-label="Close authentication pop-up"
           >
@@ -143,20 +147,20 @@ export default function AuthPage() {
           </button>
 
           {/* Header */}
-          <div className="text-center mb-6 sm:mb-8 pt-2 sm:pt-0">
-            <Link href="/" className="inline-block mb-4">
+          <div className="text-center mb-5 sm:mb-8 pt-1 sm:pt-0">
+            <Link href="/" className="inline-block mb-3 sm:mb-4">
               <img
                 src="/assets/logo-light.png"
                 alt="Talk2Me Logo"
-                className="dark:hidden h-10 w-auto object-contain mx-auto"
+                className="dark:hidden h-8 sm:h-10 w-auto object-contain mx-auto"
               />
               <img
                 src="/assets/logo-dark.png"
                 alt="Talk2Me Logo"
-                className="hidden dark:block h-10 w-auto object-contain mx-auto"
+                className="hidden dark:block h-8 sm:h-10 w-auto object-contain mx-auto"
               />
             </Link>
-            <h1 className="text-2xl sm:text-4xl font-bold tracking-tight mb-2">
+            <h1 className="text-xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-1.5 sm:mb-2">
               {isForgotPassword ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}
             </h1>
             <p className="text-muted-foreground text-xs sm:text-sm font-medium opacity-60 px-2">
@@ -164,25 +168,25 @@ export default function AuthPage() {
             </p>
 
             {/* Mode Switcher Tabs */}
-            <div className="flex items-center justify-center gap-1 mt-5 sm:mt-6 p-1 sm:p-1.5 rounded-2xl bg-foreground/5 max-w-xs sm:max-w-sm mx-auto border border-white/5">
+            <div className="flex items-center justify-between gap-1 mt-4 sm:mt-6 p-1 rounded-2xl bg-foreground/5 w-full max-w-xs sm:max-w-sm mx-auto border border-white/5">
               <button
                 type="button"
                 onClick={() => { setIsSignUp(false); setIsForgotPassword(false); setError(null); setResetSuccess(false); }}
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-xl transition-all ${!isSignUp && !isForgotPassword ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-2 px-1 text-[11px] sm:text-xs font-bold rounded-xl text-center truncate transition-all ${!isSignUp && !isForgotPassword ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Sign In
               </button>
               <button
                 type="button"
                 onClick={() => { setIsSignUp(true); setIsForgotPassword(false); setError(null); setResetSuccess(false); }}
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-xl transition-all ${isSignUp && !isForgotPassword ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-2 px-1 text-[11px] sm:text-xs font-bold rounded-xl text-center truncate transition-all ${isSignUp && !isForgotPassword ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Sign Up
               </button>
               <button
                 type="button"
                 onClick={() => { setIsForgotPassword(true); setIsSignUp(false); setError(null); setResetSuccess(false); }}
-                className={`flex-1 py-2 text-[11px] sm:text-xs font-bold rounded-xl transition-all ${isForgotPassword ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`flex-1 py-2 px-1 text-[11px] sm:text-xs font-bold rounded-xl text-center truncate transition-all ${isForgotPassword ? 'bg-background shadow-md text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Forgot
               </button>
@@ -196,7 +200,7 @@ export default function AuthPage() {
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={googleLoading || loading}
-                className="group w-full h-14 sm:h-16 rounded-2xl flex items-center justify-center gap-3 bg-foreground/5 hover:bg-foreground/10 border border-white/10 hover:border-white/20 transition-all duration-200 font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group w-full h-12 sm:h-14 rounded-2xl flex items-center justify-center gap-3 bg-foreground/5 hover:bg-foreground/10 border border-white/10 hover:border-white/20 transition-all duration-200 font-semibold text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {googleLoading ? (
                   <Loader2 className="size-5 animate-spin" />
@@ -206,7 +210,7 @@ export default function AuthPage() {
                 <span>{isSignUp ? 'Sign up with Google' : 'Continue with Google'}</span>
               </button>
 
-              <div className="flex items-center gap-3 mt-4 sm:mt-6">
+              <div className="flex items-center gap-3 mt-4 sm:mt-5">
                 <div className="flex-1 h-px bg-white/10" />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground opacity-50">or with email</span>
                 <div className="flex-1 h-px bg-white/10" />
@@ -215,16 +219,18 @@ export default function AuthPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleAuth} className="space-y-4 sm:space-y-6">
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-widest ml-4 opacity-70">Email Address</label>
+          <form onSubmit={handleAuth} className="space-y-3.5 sm:space-y-5">
+            <div className="space-y-1.5 sm:space-y-2">
+              <label className="text-[11px] font-bold uppercase tracking-widest ml-3 sm:ml-4 opacity-70">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
+                <Mail className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 size-4 sm:size-5 text-muted-foreground" />
                 <input
                   type="email"
                   required
+                  autoComplete="email"
+                  inputMode="email"
                   placeholder="name@email.com"
-                  className="w-full h-14 sm:h-16 pl-14 pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-sm sm:text-base"
+                  className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-4 sm:pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -232,8 +238,8 @@ export default function AuthPage() {
             </div>
 
             {!isForgotPassword && (
-              <div className="space-y-2">
-                <div className="flex justify-between items-center px-4">
+              <div className="space-y-1.5 sm:space-y-2">
+                <div className="flex justify-between items-center px-3 sm:px-4">
                   <label className="text-[11px] font-bold uppercase tracking-widest opacity-70">Password</label>
                   {!isSignUp && (
                     <button 
@@ -246,21 +252,23 @@ export default function AuthPage() {
                   )}
                 </div>
                 <div className="relative">
-                  <Lock className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
+                  <Lock className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 size-4 sm:size-5 text-muted-foreground" />
                   <input
                     type={showPassword ? "text" : "password"}
                     required
+                    autoComplete={isSignUp ? "new-password" : "current-password"}
                     placeholder="••••••••"
-                    className="w-full h-14 sm:h-16 pl-14 pr-14 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-sm sm:text-base"
+                    className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-11 sm:pr-14 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-4 sm:right-5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                   >
-                    {showPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+                    {showPassword ? <EyeOff className="size-4 sm:size-5" /> : <Eye className="size-4 sm:size-5" />}
                   </button>
                 </div>
               </div>
@@ -272,16 +280,17 @@ export default function AuthPage() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="space-y-2 overflow-hidden"
+                  className="space-y-1.5 sm:space-y-2 overflow-hidden"
                 >
-                  <label className="text-[11px] font-bold uppercase tracking-widest ml-4 opacity-70">Confirm Password</label>
+                  <label className="text-[11px] font-bold uppercase tracking-widest ml-3 sm:ml-4 opacity-70">Confirm Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-5 top-1/2 -translate-y-1/2 size-5 text-muted-foreground" />
+                    <Lock className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 size-4 sm:size-5 text-muted-foreground" />
                     <input
                       type={showPassword ? "text" : "password"}
                       required
+                      autoComplete="new-password"
                       placeholder="••••••••"
-                      className="w-full h-14 sm:h-16 pl-14 pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-sm sm:text-base"
+                      className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-4 sm:pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                     />
@@ -296,7 +305,7 @@ export default function AuthPage() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
-                  className="px-6 py-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-bold text-center"
+                  className="px-5 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-bold text-center"
                 >
                   Password reset link sent! Please check your email inbox.
                 </motion.div>
@@ -306,7 +315,7 @@ export default function AuthPage() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
-                  className="px-6 py-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold text-center"
+                  className="px-5 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold text-center"
                 >
                   {error}
                 </motion.div>
@@ -315,7 +324,7 @@ export default function AuthPage() {
 
             <button
               disabled={loading}
-              className="group relative w-full h-12 sm:h-13 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm active:scale-[0.99] transition-all disabled:opacity-50 text-sm font-sans"
+              className="group relative w-full h-12 sm:h-14 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm active:scale-[0.99] transition-all disabled:opacity-50 text-sm font-sans"
             >
               <div className="flex items-center justify-center gap-2 relative z-10">
                 {loading ? <Loader2 className="size-4 animate-spin" /> : (isForgotPassword ? "Send Reset Link" : isSignUp ? "Sign Up" : "Sign In")}
@@ -325,7 +334,7 @@ export default function AuthPage() {
           </form>
 
           {/* Footer toggle */}
-          <div className="mt-8 text-center space-y-3">
+          <div className="mt-6 sm:mt-8 text-center space-y-3">
             {isForgotPassword ? (
               <button
                 type="button"
@@ -374,10 +383,6 @@ export default function AuthPage() {
           </div>
 
         </motion.div>
-
-        {/* Ambient Glow */}
-        <div className="absolute -top-20 -right-20 size-[400px] bg-bridge-cyan/5 blur-[120px] rounded-full pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 size-[400px] bg-bridge-indigo/5 blur-[120px] rounded-full pointer-events-none" />
       </div>
     </div>
   );
