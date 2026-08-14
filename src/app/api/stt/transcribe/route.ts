@@ -12,12 +12,16 @@ export async function POST(req: NextRequest) {
     const groqApiKey = process.env.GROQ_API_KEY;
     const openaiApiKey = process.env.OPENAI_API_KEY;
 
-    // Option 1: Groq Whisper API (Ultra-fast, free tier available)
+    const language = (formData.get('language') as string) || 'en';
+
+    // Option 1: Groq Whisper API (Ultra-fast, high-accuracy model)
     if (groqApiKey) {
       const groqFormData = new FormData();
       groqFormData.append('file', file, 'audio.webm');
       groqFormData.append('model', 'whisper-large-v3-turbo');
       groqFormData.append('response_format', 'json');
+      groqFormData.append('language', language.split('-')[0] || 'en');
+      groqFormData.append('temperature', '0.0');
 
       const groqRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',

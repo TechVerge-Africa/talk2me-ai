@@ -33,6 +33,8 @@ import { MeetingService } from '@/services/supabase/meetings';
 import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
 import { GradientBackground } from '@/components/ui/gradient-background';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { getTimeGreetingPrefix } from '@/lib/greetings';
+
 
 // ── ICON HELPER ──────────────────────────────────────────────────────
 const renderWorkspaceIcon = (iconStr: string) => {
@@ -330,9 +332,14 @@ function DashboardContent() {
   const [joinWsModalOpen, setJoinWsModalOpen] = useState(false);
   const [joinWsCode, setJoinWsCode] = useState('');
 
-  // ── USER DETAILS ───────────────────────────────────────────────────
+  // ── USER DETAILS & GREETING ──────────────────────────────────────────
   const userName = profile?.full_name || user?.email?.split('@')[0] || 'Communicator';
   const userFirstName = userName.split(' ')[0];
+  const [greetingPrefix, setGreetingPrefix] = useState('Good morning');
+
+  useEffect(() => {
+    setGreetingPrefix(getTimeGreetingPrefix());
+  }, []);
 
   // Auth Protection
   useEffect(() => {
@@ -340,6 +347,7 @@ function DashboardContent() {
       router.push('/auth');
     }
   }, [user, authLoading, router]);
+
 
   if (authLoading || !user) {
     return (
@@ -610,7 +618,7 @@ function DashboardContent() {
           {/* Greeting Section */}
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
-              Good morning, {userFirstName}
+              {greetingPrefix}, {userFirstName}
             </h1>
             <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 font-medium">
               What would you like to do?
@@ -1212,7 +1220,7 @@ function DashboardContent() {
             <div className="max-w-4xl flex flex-col gap-6 sm:gap-8">
               {/* Header greeting */}
               <div className="flex flex-col gap-1">
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Good morning, {userFirstName}</h1>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">{greetingPrefix}, {userFirstName}</h1>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                   Here is what's happening in <strong className="text-slate-900 dark:text-white">{activeWorkspace.name}</strong>.
                 </p>

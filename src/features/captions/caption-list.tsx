@@ -99,7 +99,7 @@ export function CaptionList({ captions, size = 'md', sttStatus }: CaptionListPro
           </span>
         </div>
         <div className="text-[9px] text-muted-foreground/50 font-mono">
-          {sttStatus?.error ? sttStatus.error : 'Real-time Neural STT'}
+          {sttStatus?.error ? sttStatus.error : 'Groq Whisper STT (whisper-large-v3-turbo)'}
         </div>
       </div>
     </div>

@@ -788,7 +788,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }, { reliable: true });
   }, [room]);
 
-  // Local Web Speech STT Integration
+  // Local Groq Whisper AI STT Integration
   const handleLocalWebSpeech = useCallback((text: string, isFinal: boolean) => {
     const senderId = room?.localParticipant?.identity || 'me';
 
@@ -822,20 +822,23 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
 
     if (isFinal) {
-      TranscriptService.saveTranscript({
-        meeting_id: roomCode,
-        user_id: senderId,
-        content: text,
-        start_time: Date.now() - 3000,
-        end_time: Date.now(),
-      }).catch(err => console.error('Failed to save WebSpeech transcript:', err));
+      const targetMeetingId = meetingDbId;
+      if (targetMeetingId) {
+        TranscriptService.saveTranscript({
+          meeting_id: targetMeetingId,
+          user_id: user?.id || null,
+          content: text,
+          start_time: Date.now() - 3000,
+          end_time: Date.now(),
+        }).catch(err => console.error('Failed to save Groq transcript:', err));
+      }
     }
-  }, [room, roomCode]);
+  }, [room, roomCode, meetingDbId, user?.id]);
 
   const stt = useWebSpeechSTT({
     enabled: isAdmitted && micOn,
     language: 'en-US',
-    engine: 'webspeech',
+    engine: 'groq',
     onTranscript: handleLocalWebSpeech,
   });
 

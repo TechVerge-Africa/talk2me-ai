@@ -3,7 +3,7 @@ import { AppError } from '@/services/errors';
 
 export interface TranscriptEntry {
   meeting_id: string;
-  user_id: string;
+  user_id?: string | null;
   content: string;
   start_time: number;
   end_time: number;

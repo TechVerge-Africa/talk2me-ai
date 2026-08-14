@@ -5,6 +5,31 @@ export interface GreetingInfo {
 }
 
 /**
+ * Returns a time-of-day greeting prefix based on current local hour:
+ * 5am - 12pm: "Good morning"
+ * 12pm - 5pm: "Good afternoon"
+ * 5pm - 10pm: "Good evening"
+ * 10pm - 5am: "Good night"
+ */
+export function getTimeGreetingPrefix(date: Date = new Date()): string {
+  const hour = date.getHours();
+  if (hour >= 5 && hour < 12) {
+    return 'Good morning';
+  } else if (hour >= 12 && hour < 17) {
+    return 'Good afternoon';
+  } else if (hour >= 17 && hour < 22) {
+    return 'Good evening';
+  } else {
+    return 'Good night';
+  }
+}
+
+export function getTimeBasedGreeting(userName: string, date: Date = new Date()): string {
+  return `${getTimeGreetingPrefix(date)}, ${userName}`;
+}
+
+
+/**
  * Generates a dynamic, emotionally diverse greeting based on:
  * 1. Time since last visit (e.g. "It's been a while!" if > 48h away)
  * 2. Rapid return frequency (e.g. "Back so soon!" if < 3h)
