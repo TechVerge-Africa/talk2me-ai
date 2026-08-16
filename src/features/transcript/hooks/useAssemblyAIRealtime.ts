@@ -240,7 +240,13 @@ export function useAssemblyAIRealtime({
           const msgType = data.type || data.message_type;
           const text = (data.text || data.transcript || '').trim();
 
-          if ((msgType === 'PartialTranscript' || msgType === 'partial') && text) {
+          if (!text) return;
+
+          // AssemblyAI v3 Realtime STT emits type: "Turn" with end_of_turn boolean
+          const isInterim = msgType === 'PartialTranscript' || msgType === 'partial' || (msgType === 'Turn' && data.end_of_turn === false);
+          const isFinal = msgType === 'FinalTranscript' || msgType === 'final' || (msgType === 'Turn' && data.end_of_turn === true);
+
+          if (isInterim) {
             const result: AssemblyAIResult = {
               messageType: 'PartialTranscript',
               text,
@@ -252,7 +258,7 @@ export function useAssemblyAIRealtime({
               words: data.words || [],
             };
             onInterimResultRef.current?.(result);
-          } else if ((msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn') && text) {
+          } else if (isFinal) {
             const result: AssemblyAIResult = {
               messageType: 'FinalTranscript',
               text,
@@ -274,6 +280,7 @@ export function useAssemblyAIRealtime({
           console.warn('[AssemblyAI WS Message Parse Error]:', err);
         }
       };
+
 
 
       ws.onerror = (evt) => {
