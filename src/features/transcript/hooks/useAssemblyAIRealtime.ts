@@ -55,6 +55,7 @@ export function useAssemblyAIRealtime({
   const fallbackRecorderRef = useRef<MediaRecorder | null>(null);
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const fallbackActiveRef = useRef<boolean>(false);
+  const fallbackIntervalRef = useRef<number | null>(null);
 
   // Keep callback refs stable to prevent unnecessary re-subscriptions
   const onInterimResultRef = useRef(onInterimResult);
@@ -69,6 +70,10 @@ export function useAssemblyAIRealtime({
 
   const stopFallback = useCallback(() => {
     fallbackActiveRef.current = false;
+    if (fallbackIntervalRef.current !== null) {
+      window.clearInterval(fallbackIntervalRef.current);
+      fallbackIntervalRef.current = null;
+    }
     if (fallbackRecorderRef.current) {
       try { fallbackRecorderRef.current.stop(); } catch {}
       fallbackRecorderRef.current = null;
@@ -96,9 +101,11 @@ export function useAssemblyAIRealtime({
       const recorder = new MediaRecorder(fallbackStream, { mimeType: 'audio/webm;codecs=opus' });
       fallbackRecorderRef.current = recorder;
       recorder.ondataavailable = async (event) => {
+        // MediaRecorder timeslices can emit container fragments that are not
+        // independently decodable by Groq. Send only complete stop/start blobs.
         if (!event.data.size || !fallbackActiveRef.current) return;
         const formData = new FormData();
-        formData.append('file', event.data, 'caption.webm');
+        formData.append('file', event.data, `caption-${Date.now()}.webm`);
         formData.append('language', 'en');
         try {
           const response = await fetch('/api/stt/transcribe', { method: 'POST', body: formData });
@@ -112,9 +119,12 @@ export function useAssemblyAIRealtime({
         }
       };
       recorder.onstop = () => {
-        if (fallbackActiveRef.current && !isIntentionalStopRef.current) recorder.start(1500);
+        if (fallbackActiveRef.current && !isIntentionalStopRef.current) recorder.start();
       };
-      recorder.start(1500);
+      recorder.start();
+      fallbackIntervalRef.current = window.setInterval(() => {
+        if (fallbackActiveRef.current && recorder.state === 'recording') recorder.stop();
+      }, 1500);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Groq Whisper fallback failed';
       setError(message);

@@ -3,10 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const file = formData.get('file') as Blob | null;
+    const file = formData.get('file');
 
-    if (!file) {
-      return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
+    if (!(file instanceof Blob) || file.size === 0) {
+      return NextResponse.json({ error: 'A non-empty audio file is required' }, { status: 400 });
+    }
+
+    if (file.size > 25 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Audio file exceeds the 25 MB limit' }, { status: 413 });
+    }
+
+    const contentType = file.type.toLowerCase();
+    if (!contentType.startsWith('audio/') && contentType !== 'video/webm' && contentType !== 'application/octet-stream') {
+      return NextResponse.json({ error: 'Unsupported audio MIME type' }, { status: 415 });
     }
 
     const groqApiKey = process.env.GROQ_API_KEY;
@@ -17,7 +26,8 @@ export async function POST(req: NextRequest) {
     // Option 1: Groq Whisper API (Ultra-fast, high-accuracy model)
     if (groqApiKey) {
       const groqFormData = new FormData();
-      groqFormData.append('file', file, 'audio.webm');
+      const fileName = file instanceof File && file.name ? file.name : 'audio.webm';
+      groqFormData.append('file', file, fileName);
       groqFormData.append('model', 'whisper-large-v3-turbo');
       groqFormData.append('response_format', 'json');
       groqFormData.append('language', language.split('-')[0] || 'en');
@@ -34,8 +44,8 @@ export async function POST(req: NextRequest) {
 
       if (!groqRes.ok) {
         const errText = await groqRes.text();
-        console.error('Groq STT Error:', errText);
-        return NextResponse.json({ error: 'Groq STT transcription failed' }, { status: 500 });
+        console.error('Groq STT Error:', groqRes.status, errText);
+        return NextResponse.json({ error: 'Groq STT transcription failed', providerStatus: groqRes.status }, { status: 502 });
       }
 
       const data = await groqRes.json();
