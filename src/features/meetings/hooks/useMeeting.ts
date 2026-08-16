@@ -1010,7 +1010,10 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const localMicTrack = localMicPub?.track?.mediaStreamTrack;
 
   const assemblyAI = useAssemblyAIRealtime({
-    enabled: isAdmitted && micOn,
+    // Wait for LiveKit to publish the microphone track. Starting before the
+    // publication exists creates a second getUserMedia stream and leaves the
+    // caption session attached to the wrong lifecycle.
+    enabled: isAdmitted && micOn && !!localMicTrack,
     participantId: localParticipantId,
     participantName: localParticipantName,
     audioTrack: localMicTrack,
