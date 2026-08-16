@@ -48,19 +48,36 @@ export function useAssemblyAIRealtime({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const startTimeRef = useRef<number>(Date.now());
   const isIntentionalStopRef = useRef<boolean>(false);
+  const isConnectingRef = useRef<boolean>(false);
+
+  // Keep callback refs stable to prevent unnecessary re-subscriptions
+  const onInterimResultRef = useRef(onInterimResult);
+  const onFinalResultRef = useRef(onFinalResult);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onInterimResultRef.current = onInterimResult;
+    onFinalResultRef.current = onFinalResult;
+    onErrorRef.current = onError;
+  }, [onInterimResult, onFinalResult, onError]);
 
   const stopListening = useCallback(() => {
     isIntentionalStopRef.current = true;
+    isConnectingRef.current = false;
 
     // Stop PCM resampler
     if (resamplerRef.current) {
-      resamplerRef.current.stop();
+      try {
+        resamplerRef.current.stop();
+      } catch {}
       resamplerRef.current = null;
     }
 
     // Stop media stream tracks
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      try {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch {}
       mediaStreamRef.current = null;
     }
 
@@ -68,8 +85,8 @@ export function useAssemblyAIRealtime({
     if (wsRef.current) {
       try {
         if (wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ terminate_session: true }));
-          wsRef.current.close();
+          wsRef.current.send(JSON.stringify({ type: 'Terminate' }));
+          wsRef.current.close(1000, 'Normal closure');
         }
       } catch {}
       wsRef.current = null;
@@ -81,7 +98,9 @@ export function useAssemblyAIRealtime({
 
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
+    if (isConnectingRef.current || wsRef.current) return;
 
+    isConnectingRef.current = true;
     isIntentionalStopRef.current = false;
     setError(null);
 
@@ -99,34 +118,42 @@ export function useAssemblyAIRealtime({
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
-          noiseSuppression: false, // Turn off aggressive noise suppression for clean speech capture
+          noiseSuppression: false,
           autoGainControl: true,
           channelCount: 1,
         },
       });
+
+      if (isIntentionalStopRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        isConnectingRef.current = false;
+        return;
+      }
+
       mediaStreamRef.current = stream;
       startTimeRef.current = Date.now();
 
       if (tokenData.is_mock) {
-        // Mock mode setup
         setIsConnected(true);
         setIsListening(true);
+        isConnectingRef.current = false;
         return;
       }
 
       // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
-      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(tokenData.token)}&sample_rate=16000`;
+      const token = tokenData.token;
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        isConnectingRef.current = false;
         setIsConnected(true);
         setIsListening(true);
 
         // Initialize PCM Resampler and send binary audio frames over WebSocket
         const resampler = new PCMResampler((pcmArrayBuffer) => {
           if (ws.readyState === WebSocket.OPEN) {
-            // AssemblyAI v3 accepts raw binary PCM 16-bit LE buffers directly
             ws.send(pcmArrayBuffer);
           }
         });
@@ -151,7 +178,7 @@ export function useAssemblyAIRealtime({
               confidence: data.confidence || 0.9,
               words: data.words || [],
             };
-            onInterimResult?.(result);
+            onInterimResultRef.current?.(result);
           } else if ((msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn') && data.text) {
             const result: AssemblyAIResult = {
               messageType: 'FinalTranscript',
@@ -168,23 +195,25 @@ export function useAssemblyAIRealtime({
                 confidence: w.confidence || 0.98,
               })),
             };
-            onFinalResult?.(result);
+            onFinalResultRef.current?.(result);
           }
         } catch (err) {
           console.warn('[AssemblyAI WS Message Parse Error]:', err);
         }
       };
 
-
       ws.onerror = (evt) => {
-        console.error('[AssemblyAI WS Error]:', evt);
-        setError('AssemblyAI WebSocket connection error');
-        onError?.('AssemblyAI WebSocket connection error');
+        if (!isIntentionalStopRef.current) {
+          console.warn('[AssemblyAI WS Event]:', evt);
+        }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (evt) => {
+        isConnectingRef.current = false;
         setIsConnected(false);
         setIsListening(false);
+        wsRef.current = null;
+
         if (!isIntentionalStopRef.current && enabled) {
           // Reconnect attempt after 3s delay
           setTimeout(() => {
@@ -196,18 +225,19 @@ export function useAssemblyAIRealtime({
       };
 
     } catch (err: any) {
+      isConnectingRef.current = false;
       console.error('[AssemblyAI Start Error]:', err);
       setError(err?.message || 'Failed to start microphone audio stream');
-      onError?.(err?.message || 'Microphone error');
+      onErrorRef.current?.(err?.message || 'Microphone error');
       setIsListening(false);
       setIsConnected(false);
     }
-  }, [enabled, participantId, participantName, onError, onFinalResult, onInterimResult]);
+  }, [enabled, participantId, participantName]);
 
   useEffect(() => {
-    if (enabled && !isListening && !isIntentionalStopRef.current) {
+    if (enabled && !isListening && !isConnectingRef.current && !isIntentionalStopRef.current) {
       startListening();
-    } else if (!enabled && isListening) {
+    } else if (!enabled && (isListening || isConnectingRef.current)) {
       stopListening();
     }
   }, [enabled, isListening, startListening, stopListening]);
