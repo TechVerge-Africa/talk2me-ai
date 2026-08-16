@@ -91,34 +91,48 @@ export const TranscriptService = {
     }
   },
 
-
   /**
    * Fetches canonical transcripts for a specific meeting, ordered by start time
    */
   async getCanonicalTranscripts(meetingId: string): Promise<CanonicalTranscriptEntry[]> {
-    const { data, error } = await supabase
-      .from('transcripts')
-      .select('*')
-      .eq('meeting_id', meetingId)
-      .order('start_ms', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('transcripts')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .order('start_ms', { ascending: true });
 
-    if (error || !data) {
-      // Fallback query if start_ms doesn't exist
+      if (!error && data) {
+        return data.map((row: any) => ({
+          id: row.id,
+          meeting_id: row.meeting_id,
+          user_id: row.user_id,
+          speaker_id: row.speaker_id || row.user_id || 'unknown',
+          speaker_name: row.speaker_name || row.user_id || 'Speaker',
+          content: row.content,
+          start_ms: row.start_ms ?? Math.round((row.start_time || 0) * 1000),
+          end_ms: row.end_ms ?? Math.round((row.end_time || 0) * 1000),
+          words: row.words || [],
+          confidence: row.confidence || 1.0,
+          status: 'final',
+          turn_id: row.turn_id,
+          created_at: row.created_at,
+        }));
+      }
+
+      // Fallback query if start_ms column or index doesn't exist
       const legacyRes = await supabase
         .from('transcripts')
         .select('*')
         .eq('meeting_id', meetingId)
         .order('start_time', { ascending: true });
       
-      if (legacyRes.error) {
-        throw new AppError(
-          'Failed to load canonical transcripts.',
-          'TRANSCRIPT_FETCH_FAILED',
-          { cause: legacyRes.error }
-        );
+      if (legacyRes.error || !legacyRes.data) {
+        console.warn('[TranscriptService] Transcripts query warning:', legacyRes.error?.message);
+        return [];
       }
 
-      return (legacyRes.data || []).map((row: any) => ({
+      return legacyRes.data.map((row: any) => ({
         id: row.id,
         meeting_id: row.meeting_id,
         user_id: row.user_id,
@@ -132,23 +146,10 @@ export const TranscriptService = {
         status: 'final',
         created_at: row.created_at,
       }));
+    } catch (e) {
+      console.warn('[TranscriptService] Exception fetching transcripts:', e);
+      return [];
     }
-
-    return data.map((row: any) => ({
-      id: row.id,
-      meeting_id: row.meeting_id,
-      user_id: row.user_id,
-      speaker_id: row.speaker_id || row.user_id || 'unknown',
-      speaker_name: row.speaker_name || row.user_id || 'Speaker',
-      content: row.content,
-      start_ms: row.start_ms ?? Math.round((row.start_time || 0) * 1000),
-      end_ms: row.end_ms ?? Math.round((row.end_time || 0) * 1000),
-      words: row.words || [],
-      confidence: row.confidence || 1.0,
-      status: 'final',
-      turn_id: row.turn_id,
-      created_at: row.created_at,
-    }));
   },
 
   /**
