@@ -40,6 +40,10 @@ export class PCMResampler {
 
       this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
       
+      // Add Gain Boost node (1.8x multiplier) to make soft/quiet speaker voices significantly more sensitive
+      const inputGainNode = this.audioContext.createGain();
+      inputGainNode.gain.value = 1.8;
+
       // Use 4096 buffer size for optimal chunk frequency (~85ms latency)
       const bufferSize = 4096;
       this.scriptNode = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
@@ -67,9 +71,11 @@ export class PCMResampler {
       this.silenceGain = this.audioContext.createGain();
       this.silenceGain.gain.value = 0;
 
-      this.mediaStreamSource.connect(this.scriptNode);
+      this.mediaStreamSource.connect(inputGainNode);
+      inputGainNode.connect(this.scriptNode);
       this.scriptNode.connect(this.silenceGain);
       this.silenceGain.connect(this.audioContext.destination);
+
 
       this.isProcessing = true;
     } catch (err) {
