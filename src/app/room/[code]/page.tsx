@@ -854,17 +854,19 @@ function RoomContent({
   } = useMeeting(code, hostIdentity, () => onLeave(false), isAppAdmin);
 
   const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
-  const [transcriptOpen, setTranscriptOpen] = useState(() => {
+  const [captionsOn, setCaptionsOn] = useState(() => {
     try { return localStorage.getItem('t2_pref_captions') !== 'false'; } catch { return true; }
   });
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const handleToggleCaptions = useCallback(() => {
-    setTranscriptOpen(prev => {
+    setCaptionsOn(prev => {
       const next = !prev;
       try { localStorage.setItem('t2_pref_captions', String(next)); } catch {}
       return next;
     });
   }, []);
+
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'transcript' | 'decisions' | 'chat'>('transcript');
@@ -910,7 +912,7 @@ function RoomContent({
     if (isMe) return;
 
     // Check if chat is open/visible
-    const isChatVisible = chatModalOpen || (transcriptOpen && activeTab === 'chat');
+    const isChatVisible = chatModalOpen || (sidebarOpen && activeTab === 'chat');
     
     if (isChatVisible) {
       setTimeout(() => setUnreadCount(0), 0);
@@ -940,15 +942,16 @@ function RoomContent({
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, [messages, chatModalOpen, transcriptOpen, activeTab, localParticipant?.identity, participants]);
+  }, [messages, chatModalOpen, sidebarOpen, activeTab, localParticipant?.identity, participants]);
 
   // Reset unread count to 0 if chat becomes visible
   useEffect(() => {
-    const isChatVisible = chatModalOpen || (transcriptOpen && activeTab === 'chat');
+    const isChatVisible = chatModalOpen || (sidebarOpen && activeTab === 'chat');
     if (isChatVisible) {
       setTimeout(() => setUnreadCount(0), 0);
     }
-  }, [chatModalOpen, transcriptOpen, activeTab]);
+  }, [chatModalOpen, sidebarOpen, activeTab]);
+
 
   const shareRoom = useCallback(async () => {
     const url = `${window.location.origin}/room/${code}`;
@@ -1125,7 +1128,8 @@ function RoomContent({
   );
 
   // ─── Sidebar ───────────────────────────────────────────────────
-  const sidebar = transcriptOpen && !isDeafMode ? (
+  const sidebar = sidebarOpen && !isDeafMode ? (
+
     <div className="h-full bg-[#1c1f24] p-4 flex flex-col border-l border-white/5 relative z-20 w-80 sm:w-96">
       <div className="flex items-center gap-1 mb-4 p-1 bg-[#121417] border border-white/5 rounded-full">
         <button 
@@ -1452,7 +1456,7 @@ function RoomContent({
             onToggleChat={() => { setActiveTab('chat'); setChatModalOpen(v => !v); }}
             onEmergency={() => setEmojiOpen(v => !v)}
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
-            captionsOn={transcriptOpen} onToggleCaptions={handleToggleCaptions}
+            captionsOn={captionsOn} onToggleCaptions={handleToggleCaptions}
             onShare={shareRoom}
             onLeave={(endForAll) => onLeave(endForAll)}
             isHost={isHost}
@@ -1466,8 +1470,9 @@ function RoomContent({
         {/* Main active speaker video frame */}
         <div className="w-full h-full min-h-0 relative">
           {mainStage}
-          {/* Show captions only when transcript/captions are turned on */}
-          {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} activeInterims={activeInterims} size={captionSize} />}
+          {/* Show captions only when CC is turned on */}
+          {!isDeafMode && captionsOn && <RealTimeCaptionOverlay captions={captions} activeInterims={activeInterims} size={captionSize} />}
+
           
           {/* Floating Message Notification popup */}
           <AnimatePresence>
