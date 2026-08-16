@@ -81,6 +81,7 @@ export class PCMResampler {
     } catch (err) {
       console.error('[PCMResampler] Failed to start resampler:', err);
       this.stop();
+      throw err;
     }
   }
 
