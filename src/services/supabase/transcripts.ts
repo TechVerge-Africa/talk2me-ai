@@ -1,5 +1,4 @@
 import { supabase } from './client';
-import { AppError } from '@/services/errors';
 
 export interface TranscriptWord {
   text: string;
@@ -36,13 +35,40 @@ export interface MeetingDecisionEntry {
   created_at?: string;
 }
 
+/**
+ * Resolves a room_code (e.g. "S-788-5PD") or UUID string to a valid Supabase meetings UUID.
+ */
+async function resolveMeetingUuid(meetingIdOrCode: string): Promise<string | null> {
+  if (!meetingIdOrCode) return null;
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(meetingIdOrCode);
+  if (isUUID) return meetingIdOrCode;
+
+  try {
+    const { data } = await supabase
+      .from('meetings')
+      .select('id')
+      .eq('room_code', meetingIdOrCode)
+      .maybeSingle();
+
+    return data?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 export const TranscriptService = {
   /**
    * Saves a finalized canonical transcript turn to the database
    */
   async saveCanonicalTurn(entry: CanonicalTranscriptEntry): Promise<void> {
+    const dbMeetingUuid = await resolveMeetingUuid(entry.meeting_id);
+    if (!dbMeetingUuid) {
+      console.warn('[TranscriptService] Skipping save: meeting UUID not found for code:', entry.meeting_id);
+      return;
+    }
+
     const payload = {
-      meeting_id: entry.meeting_id,
+      meeting_id: dbMeetingUuid,
       user_id: entry.user_id || null,
       speaker_id: entry.speaker_id,
       speaker_name: entry.speaker_name,
@@ -66,7 +92,7 @@ export const TranscriptService = {
       console.warn('[TranscriptService] saveCanonicalTurn fallback warning:', error.message);
       // Fallback for missing new columns on older DB schemas
       const legacyPayload = {
-        meeting_id: entry.meeting_id,
+        meeting_id: dbMeetingUuid,
         user_id: entry.user_id || null,
         content: `${entry.speaker_name}: ${entry.content}`,
         start_time: entry.start_ms / 1000,
@@ -85,7 +111,11 @@ export const TranscriptService = {
    * Saves a chunk of transcription text (legacy compatibility)
    */
   async saveTranscript(entry: { meeting_id: string; user_id?: string | null; content: string; start_time: number; end_time: number; language?: string }): Promise<void> {
-    const { error } = await supabase.from('transcripts').insert([entry]);
+    const dbMeetingUuid = await resolveMeetingUuid(entry.meeting_id);
+    if (!dbMeetingUuid) return;
+
+    const payload = { ...entry, meeting_id: dbMeetingUuid };
+    const { error } = await supabase.from('transcripts').insert([payload]);
     if (error) {
       console.warn('[TranscriptService] saveTranscript error:', error.message);
     }
@@ -94,12 +124,17 @@ export const TranscriptService = {
   /**
    * Fetches canonical transcripts for a specific meeting, ordered by start time
    */
-  async getCanonicalTranscripts(meetingId: string): Promise<CanonicalTranscriptEntry[]> {
+  async getCanonicalTranscripts(meetingIdOrCode: string): Promise<CanonicalTranscriptEntry[]> {
     try {
+      const dbMeetingUuid = await resolveMeetingUuid(meetingIdOrCode);
+      if (!dbMeetingUuid) {
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('transcripts')
         .select('*')
-        .eq('meeting_id', meetingId)
+        .eq('meeting_id', dbMeetingUuid)
         .order('start_ms', { ascending: true });
 
       if (!error && data) {
@@ -124,11 +159,10 @@ export const TranscriptService = {
       const legacyRes = await supabase
         .from('transcripts')
         .select('*')
-        .eq('meeting_id', meetingId)
+        .eq('meeting_id', dbMeetingUuid)
         .order('start_time', { ascending: true });
       
       if (legacyRes.error || !legacyRes.data) {
-        console.warn('[TranscriptService] Transcripts query warning:', legacyRes.error?.message);
         return [];
       }
 
@@ -157,9 +191,14 @@ export const TranscriptService = {
    */
   async saveMeetingDecisions(decisions: MeetingDecisionEntry[]): Promise<void> {
     if (decisions.length === 0) return;
+
+    const dbMeetingUuid = await resolveMeetingUuid(decisions[0].meeting_id);
+    if (!dbMeetingUuid) return;
+
+    const payload = decisions.map(d => ({ ...d, meeting_id: dbMeetingUuid }));
     const { error } = await supabase
       .from('meeting_decisions')
-      .insert(decisions);
+      .insert(payload);
 
     if (error) {
       console.warn('[TranscriptService] saveMeetingDecisions notice:', error.message);
@@ -169,11 +208,14 @@ export const TranscriptService = {
   /**
    * Fetches saved meeting decisions & action items
    */
-  async getMeetingDecisions(meetingId: string): Promise<MeetingDecisionEntry[]> {
+  async getMeetingDecisions(meetingIdOrCode: string): Promise<MeetingDecisionEntry[]> {
+    const dbMeetingUuid = await resolveMeetingUuid(meetingIdOrCode);
+    if (!dbMeetingUuid) return [];
+
     const { data, error } = await supabase
       .from('meeting_decisions')
       .select('*')
-      .eq('meeting_id', meetingId)
+      .eq('meeting_id', dbMeetingUuid)
       .order('created_at', { ascending: true });
 
     if (error) {
