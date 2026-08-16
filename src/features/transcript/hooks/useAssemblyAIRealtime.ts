@@ -218,10 +218,9 @@ export function useAssemblyAIRealtime({
 
       // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
       const token = tokenData.token;
-      // AssemblyAI v3 accepts raw signed 16-bit little-endian PCM frames. The
-      // v3 WebSocket only requires the temporary token and sample rate; the
-      // legacy `encoding` query parameter causes the v3 session to close.
-      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000`;
+      // AssemblyAI v3 expects raw signed 16-bit little-endian PCM and needs
+      // the encoding and sample rate in the WebSocket query string.
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000&encoding=pcm_s16le`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
