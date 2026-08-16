@@ -44,8 +44,8 @@ export class PCMResampler {
       const inputGainNode = this.audioContext.createGain();
       inputGainNode.gain.value = 1.8;
 
-      // Use 4096 buffer size for optimal chunk frequency (~85ms latency)
-      const bufferSize = 4096;
+      // Keep frames near AssemblyAI's recommended 50ms audio chunks.
+      const bufferSize = 1024;
       this.scriptNode = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
 
       this.scriptNode.onaudioprocess = (event: AudioProcessingEvent) => {
