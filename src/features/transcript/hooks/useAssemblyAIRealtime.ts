@@ -52,6 +52,9 @@ export function useAssemblyAIRealtime({
   const startTimeRef = useRef<number>(Date.now());
   const isIntentionalStopRef = useRef<boolean>(false);
   const isConnectingRef = useRef<boolean>(false);
+  const fallbackRecorderRef = useRef<MediaRecorder | null>(null);
+  const fallbackStreamRef = useRef<MediaStream | null>(null);
+  const fallbackActiveRef = useRef<boolean>(false);
 
   // Keep callback refs stable to prevent unnecessary re-subscriptions
   const onInterimResultRef = useRef(onInterimResult);
@@ -64,9 +67,65 @@ export function useAssemblyAIRealtime({
     onErrorRef.current = onError;
   }, [onInterimResult, onFinalResult, onError]);
 
+  const stopFallback = useCallback(() => {
+    fallbackActiveRef.current = false;
+    if (fallbackRecorderRef.current) {
+      try { fallbackRecorderRef.current.stop(); } catch {}
+      fallbackRecorderRef.current = null;
+    }
+    if (fallbackStreamRef.current && !audioTrack) {
+      fallbackStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    fallbackStreamRef.current = null;
+  }, [audioTrack]);
+
+  const startGroqFallback = useCallback(async (stream?: MediaStream) => {
+    if (fallbackActiveRef.current || isIntentionalStopRef.current) return;
+    try {
+      const fallbackStream = stream ?? (audioTrack && audioTrack.readyState === 'live'
+        ? new MediaStream([audioTrack])
+        : await navigator.mediaDevices.getUserMedia({ audio: true }));
+      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        throw new Error('Groq fallback requires WebM audio support');
+      }
+      fallbackStreamRef.current = fallbackStream;
+      fallbackActiveRef.current = true;
+      setIsMockMode(true);
+      setIsConnected(true);
+      setIsListening(true);
+      const recorder = new MediaRecorder(fallbackStream, { mimeType: 'audio/webm;codecs=opus' });
+      fallbackRecorderRef.current = recorder;
+      recorder.ondataavailable = async (event) => {
+        if (!event.data.size || !fallbackActiveRef.current) return;
+        const formData = new FormData();
+        formData.append('file', event.data, 'caption.webm');
+        formData.append('language', 'en');
+        try {
+          const response = await fetch('/api/stt/transcribe', { method: 'POST', body: formData });
+          const data = await response.json();
+          const text = typeof data.text === 'string' ? data.text.trim() : '';
+          if (response.ok && text && fallbackActiveRef.current) {
+            onFinalResultRef.current?.({ messageType: 'FinalTranscript', text, speakerId: participantId, speakerName: participantName, audioStart: Date.now() - startTimeRef.current - 1500, audioEnd: Date.now() - startTimeRef.current, confidence: 0.9, words: [] });
+          }
+        } catch (error) {
+          console.warn('[Groq Whisper fallback]', error);
+        }
+      };
+      recorder.onstop = () => {
+        if (fallbackActiveRef.current && !isIntentionalStopRef.current) recorder.start(1500);
+      };
+      recorder.start(1500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Groq Whisper fallback failed';
+      setError(message);
+      onErrorRef.current?.(message);
+    }
+  }, [audioTrack, participantId, participantName]);
+
   const stopListening = useCallback(() => {
     isIntentionalStopRef.current = true;
     isConnectingRef.current = false;
+    stopFallback();
 
     // Stop WebSpeech fallback if active
     if (speechRecRef.current) {
@@ -105,7 +164,7 @@ export function useAssemblyAIRealtime({
 
     setIsListening(false);
     setIsConnected(false);
-  }, [audioTrack]);
+  }, [audioTrack, stopFallback]);
 
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -300,6 +359,7 @@ export function useAssemblyAIRealtime({
           console.warn('[AssemblyAI WS Event]:', message);
           setError(message);
           onErrorRef.current?.(message);
+          void startGroqFallback(mediaStreamRef.current ?? undefined);
         }
       };
 
@@ -309,13 +369,8 @@ export function useAssemblyAIRealtime({
         setIsListening(false);
         wsRef.current = null;
 
-        if (!isIntentionalStopRef.current && enabled) {
-          // Reconnect attempt after 3s delay
-          setTimeout(() => {
-            if (enabled && !isIntentionalStopRef.current) {
-              startListening();
-            }
-          }, 3000);
+        if (!isIntentionalStopRef.current && enabled && !fallbackActiveRef.current) {
+          void startGroqFallback(mediaStreamRef.current ?? undefined);
         }
       };
 
@@ -324,10 +379,11 @@ export function useAssemblyAIRealtime({
       console.error('[AssemblyAI Start Error]:', err);
       setError(err?.message || 'Failed to start microphone audio stream');
       onErrorRef.current?.(err?.message || 'Microphone error');
+      void startGroqFallback(mediaStreamRef.current ?? undefined);
       setIsListening(false);
       setIsConnected(false);
     }
-  }, [audioTrack, enabled, participantId, participantName, stopListening]);
+  }, [audioTrack, enabled, participantId, participantName, startGroqFallback, stopFallback, stopListening]);
 
   useEffect(() => {
     if (enabled && !isListening && !isConnectingRef.current && !isIntentionalStopRef.current) {
