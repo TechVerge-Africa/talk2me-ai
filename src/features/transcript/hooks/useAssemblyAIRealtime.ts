@@ -44,6 +44,7 @@ export function useAssemblyAIRealtime({
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const speechRecRef = useRef<any>(null);
   const resamplerRef = useRef<PCMResampler | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const startTimeRef = useRef<number>(Date.now());
@@ -64,6 +65,14 @@ export function useAssemblyAIRealtime({
   const stopListening = useCallback(() => {
     isIntentionalStopRef.current = true;
     isConnectingRef.current = false;
+
+    // Stop WebSpeech fallback if active
+    if (speechRecRef.current) {
+      try {
+        speechRecRef.current.stop();
+      } catch {}
+      speechRecRef.current = null;
+    }
 
     // Stop PCM resampler
     if (resamplerRef.current) {
@@ -98,7 +107,7 @@ export function useAssemblyAIRealtime({
 
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
-    if (isConnectingRef.current || wsRef.current) return;
+    if (isConnectingRef.current || wsRef.current || speechRecRef.current) return;
 
     isConnectingRef.current = true;
     isIntentionalStopRef.current = false;
@@ -111,7 +120,7 @@ export function useAssemblyAIRealtime({
 
       if (tokenData.is_mock) {
         setIsMockMode(true);
-        console.warn('[AssemblyAI Realtime] Running in mock transcriber mode.');
+        console.warn('[AssemblyAI Realtime] Running in fallback transcriber mode.');
       }
 
       // 2. Request High-Sensitivity Audio MediaStream
@@ -137,6 +146,62 @@ export function useAssemblyAIRealtime({
         setIsConnected(true);
         setIsListening(true);
         isConnectingRef.current = false;
+
+        // Attach WebSpeech API fallback for seamless local speech capture
+        const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRec) {
+          const rec = new SpeechRec();
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.lang = 'en-US';
+
+          rec.onresult = (e: any) => {
+            for (let i = e.resultIndex; i < e.results.length; i++) {
+              const res = e.results[i];
+              const text = res[0].transcript;
+              if (res.isFinal) {
+                onFinalResultRef.current?.({
+                  messageType: 'FinalTranscript',
+                  text: text.trim(),
+                  speakerId: participantId,
+                  speakerName: participantName,
+                  audioStart: Date.now() - startTimeRef.current - 1000,
+                  audioEnd: Date.now() - startTimeRef.current,
+                  confidence: res[0].confidence || 0.95,
+                  words: [],
+                });
+              } else {
+                onInterimResultRef.current?.({
+                  messageType: 'PartialTranscript',
+                  text: text.trim(),
+                  speakerId: participantId,
+                  speakerName: participantName,
+                  audioStart: Date.now() - startTimeRef.current,
+                  audioEnd: Date.now() - startTimeRef.current + 500,
+                  confidence: 0.9,
+                  words: [],
+                });
+              }
+            }
+          };
+
+          rec.onerror = (e: any) => {
+            console.warn('[WebSpeech Fallback Error]:', e);
+          };
+
+          rec.onend = () => {
+            if (!isIntentionalStopRef.current && enabled) {
+              try { rec.start(); } catch {}
+            }
+          };
+
+          try {
+            rec.start();
+            speechRecRef.current = rec;
+          } catch (e) {
+            console.warn('Failed to start WebSpeech fallback:', e);
+          }
+        }
         return;
       }
 
@@ -208,7 +273,7 @@ export function useAssemblyAIRealtime({
         }
       };
 
-      ws.onclose = (evt) => {
+      ws.onclose = () => {
         isConnectingRef.current = false;
         setIsConnected(false);
         setIsListening(false);

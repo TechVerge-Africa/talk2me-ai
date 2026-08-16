@@ -928,18 +928,38 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       result.text
     );
 
+    const displayName = result.speakerName || result.speakerId;
+    const newCap: Message = {
+      id: generateId('cap'),
+      meeting_id: roomCode,
+      sender_id: displayName,
+      content: result.text,
+      type: 'caption',
+      timestamp: new Date().toISOString(),
+      is_final: false,
+    };
+
+    // Update local captions state immediately for live overlay display
+    setCaptions(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.sender_id === displayName && !last.is_final) {
+        return [...prev.slice(0, -1), newCap];
+      }
+      return [...prev.slice(-50), newCap];
+    });
+
     // Broadcast live interim caption to room over LiveKit Data Channel
     if (room?.localParticipant) {
       publishRoomData(room.localParticipant, {
         type: 'caption',
-        id: generateId('cap'),
-        sender_id: result.speakerId,
+        id: newCap.id,
+        sender_id: displayName,
         content: result.text,
         is_final: false,
-        timestamp: new Date().toISOString(),
+        timestamp: newCap.timestamp,
       }, { reliable: false });
     }
-  }, [room]);
+  }, [room, roomCode]);
 
   const handleAssemblyAIFinal = useCallback((result: AssemblyAIResult) => {
     if (!transcriptEngineRef.current) return;
@@ -953,18 +973,39 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       result.confidence
     );
 
+    const displayName = result.speakerName || result.speakerId;
+    const finalCap: Message = {
+      id: generateId('cap'),
+      meeting_id: roomCode,
+      sender_id: displayName,
+      content: result.text,
+      type: 'caption',
+      timestamp: new Date().toISOString(),
+      is_final: true,
+    };
+
+    // Update local captions state immediately for final overlay display
+    setCaptions(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.sender_id === displayName && !last.is_final) {
+        return [...prev.slice(0, -1), finalCap];
+      }
+      return [...prev.slice(-50), finalCap];
+    });
+
     // Broadcast final caption to room over LiveKit Data Channel
     if (room?.localParticipant) {
       publishRoomData(room.localParticipant, {
         type: 'caption',
-        id: generateId('cap'),
-        sender_id: result.speakerId,
+        id: finalCap.id,
+        sender_id: displayName,
         content: result.text,
         is_final: true,
-        timestamp: new Date().toISOString(),
+        timestamp: finalCap.timestamp,
       }, { reliable: true });
     }
-  }, [room]);
+  }, [room, roomCode]);
+
 
   const assemblyAI = useAssemblyAIRealtime({
     enabled: isAdmitted && micOn,
