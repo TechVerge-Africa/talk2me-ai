@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       groqFormData.append('response_format', 'json');
       groqFormData.append('language', language.split('-')[0] || 'en');
       groqFormData.append('temperature', '0.0');
+      groqFormData.append('prompt', 'Transcribe every single spoken word accurately, including soft speech, quiet words, quick phrases, and ongoing dialogue.');
 
       const groqRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',

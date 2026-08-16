@@ -26,10 +26,16 @@ export interface UseWebSpeechSTTReturn {
   setLanguage: (lang: string) => void;
 }
 
+interface IWindowWithSpeech extends Window {
+  SpeechRecognition?: any;
+  webkitSpeechRecognition?: any;
+}
+
 /**
- * Universal Groq Whisper AI STT Hook for Talk2Me AI.
- * Uses MediaRecorder with 3-second audio slicing sent to Groq Whisper AI (whisper-large-v3-turbo).
- * Works reliably across all modern browsers (Chrome, Edge, Firefox, Safari, Brave).
+ * Universal Dual-Engine STT Hook for Talk2Me AI.
+ * Combines Browser Native WebSpeech (for real-time streaming zero-latency captions)
+ * with Groq/Gemini Whisper AI (with valid WebM container header slicing).
+ * Optimized for high microphone sensitivity to capture quiet speech and soft words.
  */
 export function useWebSpeechSTT({
   enabled = false,
@@ -47,34 +53,43 @@ export function useWebSpeechSTT({
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const headerBlobRef = useRef<Blob | null>(null);
+  const recognitionRef = useRef<any>(null);
   const isIntentionalStopRef = useRef<boolean>(false);
-  const chunkTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isTranscribingRef = useRef<boolean>(false);
-  const currentChunksRef = useRef<Blob[]>([]);
+  const isProcessingQueueRef = useRef<boolean>(false);
+  const audioQueueRef = useRef<Blob[]>([]);
 
-  const clearChunkTimer = useCallback(() => {
-    if (chunkTimerRef.current) {
-      clearInterval(chunkTimerRef.current);
-      chunkTimerRef.current = null;
-    }
-  }, []);
-
-  // Common Whisper silence hallucinations to filter out when silent audio is processed
+  // Filter out standalone Whisper silent artifacts (exact match only, never drop conversational speech)
   const isSilenceHallucination = (text: string): boolean => {
-    const lower = text.toLowerCase().trim().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "");
-    if (!lower || lower.length < 2) return true;
-    const hallucinations = [
-      'thank you', 'subtitles by', 'mbc news', 'music', 'silence',
-      'thanks for watching', 'subscribe', 'bye', 'amara.org', 'you',
-      'thank you for watching', 'thanks for listening'
+    const cleaned = text.trim();
+    if (!cleaned || cleaned.length < 1) return true;
+    const lower = cleaned.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "");
+    if (!lower || lower.length < 1) return true;
+
+    // Strict exact match for common Whisper artifacts on pure silence
+    const exactHallucinations = [
+      'subtitles by', 'mbc news', 'amara.org', 'thanks for watching',
+      'subscribe for more', 'captions by', 'translated by'
     ];
-    return hallucinations.some(h => lower === h || lower.startsWith(h));
+    return exactHallucinations.includes(lower);
   };
 
   const stopListening = useCallback(() => {
     isIntentionalStopRef.current = true;
-    clearChunkTimer();
+    audioQueueRef.current = [];
+    headerBlobRef.current = null;
 
+    // Stop Native WebSpeech Recognition if active
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.stop();
+      } catch {}
+      recognitionRef.current = null;
+    }
+
+    // Stop MediaRecorder if active
     if (mediaRecorderRef.current) {
       try {
         if (mediaRecorderRef.current.state !== 'inactive') {
@@ -84,6 +99,7 @@ export function useWebSpeechSTT({
       mediaRecorderRef.current = null;
     }
 
+    // Stop microphone tracks
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(t => t.stop());
       mediaStreamRef.current = null;
@@ -91,126 +107,190 @@ export function useWebSpeechSTT({
 
     setIsListening(false);
     setInterimText('');
-  }, [clearChunkTimer]);
+  }, []);
 
-  const sendAudioChunkToGroq = useCallback(async (audioBlob: Blob) => {
-    if (!audioBlob || audioBlob.size < 1200 || isTranscribingRef.current) return;
-    isTranscribingRef.current = true;
+  const processAudioQueue = useCallback(async () => {
+    if (isProcessingQueueRef.current || audioQueueRef.current.length === 0) return;
+    isProcessingQueueRef.current = true;
 
-    try {
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.webm');
-      formData.append('language', currentLanguage.split('-')[0] || 'en');
+    while (audioQueueRef.current.length > 0) {
+      const audioBlob = audioQueueRef.current.shift();
+      if (!audioBlob || audioBlob.size < 300) continue;
 
-      const res = await fetch('/api/stt/transcribe', {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'audio.webm');
+        formData.append('language', currentLanguage.split('-')[0] || 'en');
 
-      const data = await res.json();
-      if (data.text) {
-        const trimmed = data.text.trim();
-        if (trimmed.length > 0 && !isSilenceHallucination(trimmed)) {
-          setFinalText(trimmed);
-          setInterimText('');
-          onTranscript?.(trimmed, true);
+        const res = await fetch('/api/stt/transcribe', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = await res.json();
+        if (data.text) {
+          const trimmed = data.text.trim();
+          if (trimmed.length > 0 && !isSilenceHallucination(trimmed)) {
+            setFinalText(trimmed);
+            setInterimText('');
+            onTranscript?.(trimmed, true);
+          }
+        } else if (data.error && data.unconfigured && !recognitionRef.current) {
+          setError(data.error);
+          onError?.(data.error);
         }
-      } else if (data.error && data.unconfigured) {
-        setError(data.error);
-        onError?.(data.error);
+      } catch (err) {
+        console.warn('[Talk2Me STT] Queue chunk transcribe notice:', err);
       }
-    } catch (err) {
-      console.warn('[GroqSTT] Transcribe chunk error:', err);
-    } finally {
-      isTranscribingRef.current = false;
     }
+
+    isProcessingQueueRef.current = false;
   }, [currentLanguage, onError, onTranscript]);
 
-  const startListening = useCallback(async () => {
-    if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setIsSupported(false);
-      setError('Browser audio recording is not supported.');
-      return;
+  const enqueueAudioChunk = useCallback((audioBlob: Blob) => {
+    if (!audioBlob || audioBlob.size < 300) return;
+
+    // Save header from first chunk to assemble valid standalone WebM containers for subsequent chunks
+    if (!headerBlobRef.current) {
+      headerBlobRef.current = audioBlob;
+      audioQueueRef.current.push(audioBlob);
+    } else {
+      // Prepend header to new cluster chunk so backend FFmpeg/Whisper can decode it cleanly
+      const validWebmBlob = new Blob([headerBlobRef.current, audioBlob], { type: audioBlob.type || 'audio/webm' });
+      audioQueueRef.current.push(validWebmBlob);
     }
+
+    processAudioQueue();
+  }, [processAudioQueue]);
+
+  const startListening = useCallback(async () => {
+    if (typeof window === 'undefined') return;
 
     isIntentionalStopRef.current = false;
     setError(null);
+    audioQueueRef.current = [];
+    headerBlobRef.current = null;
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      mediaStreamRef.current = stream;
+    const win = window as IWindowWithSpeech;
+    const SpeechRecognitionClass = win.SpeechRecognition || win.webkitSpeechRecognition;
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : '';
+    let nativeStarted = false;
 
-      const options = mimeType ? { mimeType } : undefined;
-      const recorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = recorder;
-      currentChunksRef.current = [];
+    // 1. Try Browser Native WebSpeech Engine (instant, zero-latency streaming)
+    if (SpeechRecognitionClass) {
+      try {
+        const recognition = new SpeechRecognitionClass();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = currentLanguage;
 
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          currentChunksRef.current.push(e.data);
-        }
-      };
+        recognition.onstart = () => {
+          setIsListening(true);
+        };
 
-      recorder.onstop = () => {
-        if (currentChunksRef.current.length > 0) {
-          const audioBlob = new Blob(currentChunksRef.current, { type: mimeType || 'audio/webm' });
-          currentChunksRef.current = [];
-          sendAudioChunkToGroq(audioBlob);
-        }
-        
-        // If recording is still active, restart recorder for next audio window
-        if (!isIntentionalStopRef.current && mediaStreamRef.current && mediaStreamRef.current.active) {
-          try {
-            const newRecorder = new MediaRecorder(mediaStreamRef.current, options);
-            mediaRecorderRef.current = newRecorder;
-            newRecorder.ondataavailable = (e) => {
-              if (e.data && e.data.size > 0) {
-                currentChunksRef.current.push(e.data);
-              }
-            };
-            newRecorder.onstop = recorder.onstop;
-            newRecorder.start();
-          } catch (e) {
-            console.warn('[GroqSTT] Failed to restart recorder cycle:', e);
+        recognition.onresult = (event: any) => {
+          let currentInterim = '';
+          let currentFinal = '';
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              currentFinal += transcript;
+            } else {
+              currentInterim += transcript;
+            }
           }
-        }
-      };
 
-      recorder.start();
-      setIsListening(true);
-
-      // Rotate audio recording every 3 seconds for continuous header-valid WebM transcription
-      clearChunkTimer();
-      chunkTimerRef.current = setInterval(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-          try {
-            mediaRecorderRef.current.stop();
-          } catch (e) {
-            console.warn('[GroqSTT] Cycle stop error:', e);
+          if (currentInterim.trim()) {
+            setInterimText(currentInterim.trim());
+            onTranscript?.(currentInterim.trim(), false);
           }
-        }
-      }, 3000);
 
-    } catch (err) {
-      console.error('[GroqSTT] Mic access error:', err);
-      const msg = 'Microphone permission was denied or unavailable.';
-      setError(msg);
-      onError?.(msg);
-      setIsListening(false);
+          if (currentFinal.trim() && !isSilenceHallucination(currentFinal)) {
+            setFinalText(currentFinal.trim());
+            setInterimText('');
+            onTranscript?.(currentFinal.trim(), true);
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            console.warn('[Talk2Me STT] Native WebSpeech warning:', event.error);
+          }
+        };
+
+        recognition.onend = () => {
+          if (!isIntentionalStopRef.current && enabled) {
+            try {
+              recognition.start();
+            } catch {}
+          }
+        };
+
+        recognition.start();
+        recognitionRef.current = recognition;
+        nativeStarted = true;
+        setIsSupported(true);
+      } catch (err) {
+        console.warn('[Talk2Me STT] Failed to initialize WebSpeech recognition:', err);
+      }
     }
-  }, [clearChunkTimer, onError, sendAudioChunkToGroq]);
+
+    // 2. Start MediaRecorder High-Sensitivity Audio Recording (for Groq/Whisper API fallback or dual engine)
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: false, // Turn off aggressive noise suppression so quiet speech & soft words are preserved
+            autoGainControl: true,   // Automatically boost low volume spoken words for maximum microphone sensitivity
+            channelCount: 1,
+          },
+        });
+        mediaStreamRef.current = stream;
+
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+
+        const options = mimeType ? { mimeType } : undefined;
+        const recorder = new MediaRecorder(stream, options);
+        mediaRecorderRef.current = recorder;
+
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 300) {
+            enqueueAudioChunk(e.data);
+          }
+        };
+
+        recorder.onerror = (event) => {
+          console.warn('[Talk2Me STT] MediaRecorder error:', event);
+        };
+
+        recorder.onstop = () => {
+          if (!nativeStarted) {
+            setIsListening(false);
+          }
+        };
+
+        recorder.start(2500);
+        setIsListening(true);
+        setIsSupported(true);
+
+      } catch (err) {
+        console.warn('[Talk2Me STT] Mic access error:', err);
+        if (!nativeStarted) {
+          setError('Microphone access denied or audio recording failed.');
+          setIsSupported(false);
+        }
+      }
+    } else if (!nativeStarted) {
+      setIsSupported(false);
+      setError('Speech recognition and audio recording are not supported on this browser.');
+    }
+  }, [currentLanguage, enabled, enqueueAudioChunk, onTranscript]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -230,15 +310,14 @@ export function useWebSpeechSTT({
 
   useEffect(() => {
     return () => {
-      clearChunkTimer();
       stopListening();
     };
-  }, [clearChunkTimer, stopListening]);
+  }, [stopListening]);
 
   return {
     isSupported,
     isListening,
-    usingFallback: true, // Always uses high-accuracy Groq Whisper AI endpoint
+    usingFallback: !recognitionRef.current,
     interimText,
     finalText,
     currentLanguage,
@@ -249,4 +328,5 @@ export function useWebSpeechSTT({
     setLanguage: setCurrentLanguage,
   };
 }
+
 

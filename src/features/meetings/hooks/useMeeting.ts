@@ -3,14 +3,16 @@ import { RoomEvent, RemoteParticipant, LocalParticipant, Participant, Transcript
 import { useRoomContext } from '@livekit/components-react';
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
 import { Message } from '@/types/message';
-import { TranscriptService } from '@/services/supabase/transcripts';
 import { MeetingService } from '@/services/supabase/meetings';
 import { supabase } from '@/services/supabase/client';
 import { generateId } from '@/lib/ids';
 import { getAllParticipants, publishRoomData } from '@/lib/livekit-helpers';
 import { ParticipantRole, ParticipantStatus } from '@/types/meeting';
 import { useAuth } from '@/features/auth/use-auth';
-import { useWebSpeechSTT } from '@/hooks/useWebSpeechSTT';
+import { TranscriptEngine, InterimCaptionState } from '@/features/transcript/engine/transcript-engine';
+import { useAssemblyAIRealtime, AssemblyAIResult } from '@/features/transcript/hooks/useAssemblyAIRealtime';
+import { CanonicalTranscriptEntry, TranscriptService } from '@/services/supabase/transcripts';
+import { TranscriptAnalysisService, ExtractedDecisionItem } from '@/services/ai/transcript-analysis';
 
 export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void, isAppAdmin?: boolean) {
   const room = useRoomContext();
@@ -31,9 +33,20 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const [noiseReductionLevel, setNoiseReductionLevel] = useState(0);
   const [participants, setParticipants] = useState<(RemoteParticipant | LocalParticipant)[]>([]);
   const [captions, setCaptions] = useState<Message[]>([]);
+  const [canonicalTranscripts, setCanonicalTranscripts] = useState<CanonicalTranscriptEntry[]>([]);
+  const [activeInterims, setActiveInterims] = useState<InterimCaptionState[]>([]);
+  const [decisions, setDecisions] = useState<ExtractedDecisionItem[]>([]);
+  const [isAnalyzingDecisions, setIsAnalyzingDecisions] = useState(false);
+  const [highlightedMs, setHighlightedMs] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
+
+  const transcriptEngineRef = useRef<TranscriptEngine | null>(null);
+
+  if (!transcriptEngineRef.current) {
+    transcriptEngineRef.current = new TranscriptEngine(roomCode);
+  }
 
   // ─── ADMIN & SECURITY STATES ──────────────────────────────────────────
   const [meetingDbId, setMeetingDbId] = useState<string | null>(null);
@@ -669,7 +682,54 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
 
     publishRoomData(room.localParticipant, msg as unknown as Record<string, unknown>, publishOptions);
-  }, [room, roomCode, meetingDbId, isAdmitted]);
+
+    // Check if user mentioned @Talk2Me AI or @ai or @talk2me
+    const isAiMentioned = /@talk2me|@ai|@assistant/i.test(content);
+    if (isAiMentioned) {
+      const cleanQuery = content.replace(/@talk2me\s*ai|@talk2me|@ai|@assistant/gi, '').trim();
+
+      fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userQuery: cleanQuery || content,
+          canonicalTranscripts,
+          chatHistory: messages,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.text) {
+            const aiMsg: Message = {
+              id: generateId('ai_chat'),
+              meeting_id: roomCode,
+              sender_id: 'Talk2Me AI',
+              recipient_id: recipientId && recipientId !== 'everyone' ? recipientId : undefined,
+              content: data.text,
+              type: 'chat',
+              timestamp: new Date().toISOString(),
+            };
+
+            setMessages((prev) => [...prev, aiMsg]);
+
+            MeetingService.saveMeetingMessage({
+              room_code: roomCode,
+              meeting_id: meetingDbId || undefined,
+              sender_id: 'Talk2Me AI',
+              recipient_id: aiMsg.recipient_id,
+              content: data.text,
+              type: 'chat',
+            }).catch((e) => console.warn('Failed to persist AI message:', e));
+
+            if (room?.localParticipant) {
+              publishRoomData(room.localParticipant, aiMsg as unknown as Record<string, unknown>, publishOptions);
+            }
+          }
+        })
+        .catch((err) => console.error('Talk2Me AI Chat error:', err));
+    }
+  }, [room, roomCode, meetingDbId, isAdmitted, canonicalTranscripts, messages]);
+
 
   const requestMute = useCallback((targetId: string, source: 'mic' | 'cam', action: 'mute' | 'unmute' = 'mute') => {
     if (!room?.localParticipant) return;
@@ -835,12 +895,105 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
   }, [room, roomCode, meetingDbId, user?.id]);
 
-  const stt = useWebSpeechSTT({
+  const localParticipantId = room?.localParticipant?.identity || user?.id || 'local_participant';
+  const localParticipantName = localStorage.getItem('t2_display_name') || user?.user_metadata?.full_name || localParticipantId.split('@')[0];
+
+  // Subscribe to Transcript Engine updates
+  useEffect(() => {
+    if (!transcriptEngineRef.current) return;
+    const engine = transcriptEngineRef.current;
+    
+    engine.loadInitialTranscripts();
+    
+    const unsubscribe = engine.subscribe((canonical, interims) => {
+      setCanonicalTranscripts(canonical);
+      setActiveInterims(interims);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Pre-load saved AI decisions
+  useEffect(() => {
+    if (!meetingDbId) return;
+    TranscriptAnalysisService.getSavedDecisions(meetingDbId).then(setDecisions).catch(console.error);
+  }, [meetingDbId]);
+
+  // AssemblyAI Realtime Callbacks
+  const handleAssemblyAIInterim = useCallback((result: AssemblyAIResult) => {
+    if (!transcriptEngineRef.current) return;
+    transcriptEngineRef.current.processInterimResult(
+      result.speakerId,
+      result.speakerName,
+      result.text
+    );
+
+    // Broadcast live interim caption to room over LiveKit Data Channel
+    if (room?.localParticipant) {
+      publishRoomData(room.localParticipant, {
+        type: 'caption',
+        id: generateId('cap'),
+        sender_id: result.speakerId,
+        content: result.text,
+        is_final: false,
+        timestamp: new Date().toISOString(),
+      }, { reliable: false });
+    }
+  }, [room]);
+
+  const handleAssemblyAIFinal = useCallback((result: AssemblyAIResult) => {
+    if (!transcriptEngineRef.current) return;
+    transcriptEngineRef.current.processFinalResult(
+      result.speakerId,
+      result.speakerName,
+      result.text,
+      result.audioStart,
+      result.audioEnd,
+      result.words,
+      result.confidence
+    );
+
+    // Broadcast final caption to room over LiveKit Data Channel
+    if (room?.localParticipant) {
+      publishRoomData(room.localParticipant, {
+        type: 'caption',
+        id: generateId('cap'),
+        sender_id: result.speakerId,
+        content: result.text,
+        is_final: true,
+        timestamp: new Date().toISOString(),
+      }, { reliable: true });
+    }
+  }, [room]);
+
+  const assemblyAI = useAssemblyAIRealtime({
     enabled: isAdmitted && micOn,
-    language: 'en-US',
-    engine: 'groq',
-    onTranscript: handleLocalWebSpeech,
+    participantId: localParticipantId,
+    participantName: localParticipantName,
+    onInterimResult: handleAssemblyAIInterim,
+    onFinalResult: handleAssemblyAIFinal,
   });
+
+  const runAiAnalysis = useCallback(async () => {
+    if (!meetingDbId && !roomCode) return;
+    setIsAnalyzingDecisions(true);
+    try {
+      const extracted = await TranscriptAnalysisService.analyzeAndExtractDecisions(
+        meetingDbId || roomCode,
+        canonicalTranscripts
+      );
+      setDecisions(extracted);
+    } catch (err) {
+      console.error('Failed to analyze transcript:', err);
+    } finally {
+      setIsAnalyzingDecisions(false);
+    }
+  }, [meetingDbId, roomCode, canonicalTranscripts]);
+
+  const highlightEvidence = useCallback((timestampMs: number) => {
+    setHighlightedMs(timestampMs);
+    setTimeout(() => setHighlightedMs(null), 5000);
+  }, []);
 
   return {
     roomCode,
@@ -852,13 +1005,20 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     noiseReductionLevel,
     participants,
     captions,
+    canonicalTranscripts,
+    activeInterims,
+    decisions,
+    isAnalyzingDecisions,
+    highlightedMs,
+    runAiAnalysis,
+    highlightEvidence,
     messages,
     sttStatus: {
-      isSupported: stt.isSupported,
-      isListening: stt.isListening,
-      currentLanguage: stt.currentLanguage,
-      setLanguage: stt.setLanguage,
-      error: stt.error,
+      isSupported: true,
+      isListening: assemblyAI.isListening,
+      currentLanguage: 'en-US',
+      error: assemblyAI.error,
+      isMockMode: assemblyAI.isMockMode,
     },
     raisedHands,
     reactions,
@@ -890,3 +1050,4 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     stopParticipantScreenShare,
   };
 }
+

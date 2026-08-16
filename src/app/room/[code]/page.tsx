@@ -16,6 +16,8 @@ import { ControlDock } from '@/features/meetings/room/controls';
 import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { AiSignerView } from '@/features/accessibility/sign-language';
 import { CaptionList } from '@/features/captions/caption-list';
+import { CanonicalTranscriptView } from '@/features/transcript/components/canonical-transcript-view';
+import { AIDecisionsPanel } from '@/features/transcript/components/ai-decisions-panel';
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
@@ -842,7 +844,8 @@ function RoomContent({
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
-    captions, messages, participants, sttStatus,
+    captions, canonicalTranscripts, activeInterims, decisions, isAnalyzingDecisions, highlightedMs, runAiAnalysis, highlightEvidence,
+    messages, participants, sttStatus,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
 
@@ -864,7 +867,7 @@ function RoomContent({
   }, []);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'captions' | 'chat'>('captions');
+  const [activeTab, setActiveTab] = useState<'transcript' | 'decisions' | 'chat'>('transcript');
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [codeCopied, setCodeCopied] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -1123,23 +1126,33 @@ function RoomContent({
 
   // ─── Sidebar ───────────────────────────────────────────────────
   const sidebar = transcriptOpen && !isDeafMode ? (
-    <div className="h-full bg-[#1c1f24] p-5 flex flex-col border-l border-white/5 relative z-20">
-      <div className="flex items-center gap-1.5 mb-5 p-1 bg-[#121417] border border-white/5 rounded-full">
+    <div className="h-full bg-[#1c1f24] p-4 flex flex-col border-l border-white/5 relative z-20 w-80 sm:w-96">
+      <div className="flex items-center gap-1 mb-4 p-1 bg-[#121417] border border-white/5 rounded-full">
         <button 
-          onClick={() => setActiveTab('captions')} 
-          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-full transition-all ${
-            activeTab === 'captions' 
-              ? 'bg-[#2563eb] text-white shadow-md' 
+          onClick={() => setActiveTab('transcript')} 
+          className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
+            activeTab === 'transcript' 
+              ? 'bg-cyan-600 text-white shadow-md' 
               : 'text-white/40 hover:text-white/80'
           }`}
         >
-          Captions
+          Transcript
+        </button>
+        <button 
+          onClick={() => setActiveTab('decisions')} 
+          className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
+            activeTab === 'decisions' 
+              ? 'bg-emerald-600 text-white shadow-md' 
+              : 'text-white/40 hover:text-white/80'
+          }`}
+        >
+          AI Decisions
         </button>
         <button 
           onClick={() => setActiveTab('chat')} 
-          className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-full transition-all ${
+          className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
             activeTab === 'chat' 
-              ? 'bg-[#2563eb] text-white shadow-md' 
+              ? 'bg-blue-600 text-white shadow-md' 
               : 'text-white/40 hover:text-white/80'
           }`}
         >
@@ -1147,11 +1160,26 @@ function RoomContent({
         </button>
       </div>
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'captions'
-          ? <CaptionList captions={captions} size={captionSize} sttStatus={sttStatus} />
-          : <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
-        }
+        {activeTab === 'transcript' ? (
+          <CanonicalTranscriptView
+            transcripts={canonicalTranscripts}
+            highlightedMs={highlightedMs}
+          />
+        ) : activeTab === 'decisions' ? (
+          <AIDecisionsPanel
+            decisions={decisions}
+            isAnalyzing={isAnalyzingDecisions}
+            onRunAnalysis={runAiAnalysis}
+            onEvidenceClick={(timestampMs) => {
+              setActiveTab('transcript');
+              highlightEvidence(timestampMs);
+            }}
+          />
+        ) : (
+          <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
+        )}
       </div>
+
 
       {/* Guest sign-in nudge in sidebar */}
       {!isHost && (
@@ -1439,7 +1467,7 @@ function RoomContent({
         <div className="w-full h-full min-h-0 relative">
           {mainStage}
           {/* Show captions only when transcript/captions are turned on */}
-          {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} size={captionSize} />}
+          {!isDeafMode && transcriptOpen && <RealTimeCaptionOverlay captions={captions} activeInterims={activeInterims} size={captionSize} />}
           
           {/* Floating Message Notification popup */}
           <AnimatePresence>
