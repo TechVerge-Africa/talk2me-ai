@@ -120,6 +120,10 @@ export function useAssemblyAIRealtime({
       const tokenRes = await fetch('/api/assemblyai/token', { method: 'POST' });
       const tokenData = await tokenRes.json();
 
+      if (!tokenRes.ok || !tokenData.token) {
+        throw new Error(tokenData.error || 'Unable to obtain AssemblyAI session token');
+      }
+
       if (tokenData.is_mock) {
         setIsMockMode(true);
         console.warn('[AssemblyAI Realtime] Running in fallback transcriber mode.');
@@ -214,7 +218,10 @@ export function useAssemblyAIRealtime({
 
       // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
       const token = tokenData.token;
-      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000&encoding=pcm_s16le`;
+      // AssemblyAI v3 accepts raw signed 16-bit little-endian PCM frames. The
+      // v3 WebSocket only requires the temporary token and sample rate; the
+      // legacy `encoding` query parameter causes the v3 session to close.
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -231,7 +238,12 @@ export function useAssemblyAIRealtime({
         });
 
         resamplerRef.current = resampler;
-        resampler.start(stream);
+        void resampler.start(stream).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : 'Failed to process microphone audio';
+          setError(message);
+          onErrorRef.current?.(message);
+          stopListening();
+        });
       };
 
       ws.onmessage = (event) => {
@@ -283,9 +295,12 @@ export function useAssemblyAIRealtime({
 
 
 
-      ws.onerror = (evt) => {
+      ws.onerror = () => {
         if (!isIntentionalStopRef.current) {
-          console.warn('[AssemblyAI WS Event]:', evt);
+          const message = 'AssemblyAI realtime connection failed';
+          console.warn('[AssemblyAI WS Event]:', message);
+          setError(message);
+          onErrorRef.current?.(message);
         }
       };
 
@@ -313,7 +328,7 @@ export function useAssemblyAIRealtime({
       setIsListening(false);
       setIsConnected(false);
     }
-  }, [enabled, participantId, participantName]);
+  }, [audioTrack, enabled, participantId, participantName, stopListening]);
 
   useEffect(() => {
     if (enabled && !isListening && !isConnectingRef.current && !isIntentionalStopRef.current) {

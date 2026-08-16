@@ -41,13 +41,10 @@ export async function POST(req: NextRequest) {
       console.warn('[AssemblyAI v3 Token Warning]:', response.status, errText);
     }
 
-    return NextResponse.json({
-      token: apiKey,
-      expires_in: 600,
-      sample_rate: 16000,
-      word_boost: wordBoost,
-      is_mock: false,
-    });
+    return NextResponse.json(
+      { error: 'AssemblyAI temporary token request failed' },
+      { status: 502 },
+    );
   } catch (err) {
     console.error('[AssemblyAI Token Exception]:', err);
     return NextResponse.json({ error: 'Failed to generate AssemblyAI token' }, { status: 500 });

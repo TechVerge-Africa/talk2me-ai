@@ -304,8 +304,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       }
     }
     return () => { room.off('connected', onConnected); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room]);
+    }, [camOn, isAdmitted, micOn, room]);
 
   // Handle local participant mute state when in unadmitted lobby
   useEffect(() => {
