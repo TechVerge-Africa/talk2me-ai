@@ -7,6 +7,7 @@ export class PCMResampler {
   private audioContext: AudioContext | null = null;
   private mediaStreamSource: MediaStreamAudioSourceNode | null = null;
   private scriptNode: ScriptProcessorNode | null = null;
+  private silenceGain: GainNode | null = null;
   private onPCMDataCallback: ((pcmBuffer: ArrayBuffer) => void) | null = null;
   private targetSampleRate = 16000;
   private isProcessing = false;
@@ -46,13 +47,21 @@ export class PCMResampler {
         const pcm16 = this.float32ToPCM16(resampledData);
 
         if (pcm16.byteLength > 0 && this.onPCMDataCallback) {
-          this.onPCMDataCallback(pcm16.buffer.slice(0) as ArrayBuffer);
+          const slice = pcm16.buffer.slice(
+            pcm16.byteOffset,
+            pcm16.byteOffset + pcm16.byteLength
+          );
+          this.onPCMDataCallback(slice as ArrayBuffer);
         }
-
       };
 
+      // Mute local monitoring to prevent microphone echo in user speakers while keeping audio graph running
+      this.silenceGain = this.audioContext.createGain();
+      this.silenceGain.gain.value = 0;
+
       this.mediaStreamSource.connect(this.scriptNode);
-      this.scriptNode.connect(this.audioContext.destination);
+      this.scriptNode.connect(this.silenceGain);
+      this.silenceGain.connect(this.audioContext.destination);
 
       this.isProcessing = true;
     } catch (err) {
@@ -73,6 +82,13 @@ export class PCMResampler {
         this.scriptNode.disconnect();
       } catch {}
       this.scriptNode = null;
+    }
+
+    if (this.silenceGain) {
+      try {
+        this.silenceGain.disconnect();
+      } catch {}
+      this.silenceGain = null;
     }
 
     if (this.mediaStreamSource) {
