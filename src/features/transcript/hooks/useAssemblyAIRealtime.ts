@@ -25,6 +25,7 @@ export interface UseAssemblyAIRealtimeOptions {
   enabled?: boolean;
   participantId: string;
   participantName: string;
+  audioTrack?: MediaStreamTrack | null;
   onInterimResult?: (result: AssemblyAIResult) => void;
   onFinalResult?: (result: AssemblyAIResult) => void;
   onError?: (error: string) => void;
@@ -34,6 +35,7 @@ export function useAssemblyAIRealtime({
   enabled = false,
   participantId,
   participantName,
+  audioTrack,
   onInterimResult,
   onFinalResult,
   onError,
@@ -82,8 +84,8 @@ export function useAssemblyAIRealtime({
       resamplerRef.current = null;
     }
 
-    // Stop media stream tracks
-    if (mediaStreamRef.current) {
+    // Stop media stream tracks only if created internally
+    if (mediaStreamRef.current && !audioTrack) {
       try {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
       } catch {}
@@ -103,7 +105,7 @@ export function useAssemblyAIRealtime({
 
     setIsListening(false);
     setIsConnected(false);
-  }, []);
+  }, [audioTrack]);
 
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -123,18 +125,23 @@ export function useAssemblyAIRealtime({
         console.warn('[AssemblyAI Realtime] Running in fallback transcriber mode.');
       }
 
-      // 2. Request High-Sensitivity Audio MediaStream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: false,
-          autoGainControl: true,
-          channelCount: 1,
-        },
-      });
+      // 2. Obtain Audio MediaStream (Reuse existing LiveKit audioTrack if provided)
+      let stream: MediaStream;
+      if (audioTrack && audioTrack.readyState === 'live') {
+        stream = new MediaStream([audioTrack]);
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: false,
+            autoGainControl: true,
+            channelCount: 1,
+          },
+        });
+      }
 
       if (isIntentionalStopRef.current) {
-        stream.getTracks().forEach(t => t.stop());
+        if (!audioTrack) stream.getTracks().forEach(t => t.stop());
         isConnectingRef.current = false;
         return;
       }

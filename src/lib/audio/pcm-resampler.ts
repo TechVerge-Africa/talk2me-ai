@@ -27,8 +27,16 @@ export class PCMResampler {
       this.audioContext = new AudioCtx();
       
       if (this.audioContext.state === 'suspended') {
-        await this.audioContext.resume();
+        const resumeCtx = () => {
+          this.audioContext?.resume();
+          window.removeEventListener('click', resumeCtx);
+          window.removeEventListener('touchstart', resumeCtx);
+        };
+        window.addEventListener('click', resumeCtx);
+        window.addEventListener('touchstart', resumeCtx);
+        await this.audioContext.resume().catch(() => {});
       }
+
 
       this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
       

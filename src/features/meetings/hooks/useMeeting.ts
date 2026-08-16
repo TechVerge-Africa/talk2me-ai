@@ -1007,13 +1007,18 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   }, [room, roomCode]);
 
 
+  const localMicPub = room?.localParticipant?.getTrackPublication(Track.Source.Microphone);
+  const localMicTrack = localMicPub?.track?.mediaStreamTrack;
+
   const assemblyAI = useAssemblyAIRealtime({
     enabled: isAdmitted && micOn,
     participantId: localParticipantId,
     participantName: localParticipantName,
+    audioTrack: localMicTrack,
     onInterimResult: handleAssemblyAIInterim,
     onFinalResult: handleAssemblyAIFinal,
   });
+
 
   const runAiAnalysis = useCallback(async () => {
     if (!meetingDbId && !roomCode) return;
