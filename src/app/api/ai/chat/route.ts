@@ -48,10 +48,11 @@ ${chatContext}
     if (GeminiService.getApiKey()) {
       try {
         const geminiResult = await GeminiService.generateContent(userPrompt, {
-          model: 'gemini-1.5-flash',
+          model: 'gemini-2.5-flash',
           systemInstruction,
           temperature: 0.3,
         });
+
 
         if (geminiResult.text) {
           return NextResponse.json({ text: geminiResult.text });

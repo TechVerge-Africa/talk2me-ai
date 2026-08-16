@@ -56,9 +56,10 @@ ${transcriptText}
     if (GeminiService.getApiKey()) {
       try {
         const result = await GeminiService.generateContent(prompt, {
-          model: 'gemini-1.5-flash',
+          model: 'gemini-2.5-flash',
           responseMimeType: 'application/json',
         });
+
         const parsed = JSON.parse(result.text || '{}');
         return NextResponse.json({ decisions: parsed.decisions || [] });
       } catch (geminiErr) {
