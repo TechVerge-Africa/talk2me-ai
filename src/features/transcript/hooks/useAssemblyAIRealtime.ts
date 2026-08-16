@@ -214,7 +214,7 @@ export function useAssemblyAIRealtime({
 
       // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
       const token = tokenData.token;
-      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000`;
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000&encoding=pcm_s16le`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -238,11 +238,12 @@ export function useAssemblyAIRealtime({
         try {
           const data = JSON.parse(event.data);
           const msgType = data.type || data.message_type;
+          const text = (data.text || data.transcript || '').trim();
 
-          if ((msgType === 'PartialTranscript' || msgType === 'partial') && data.text) {
+          if ((msgType === 'PartialTranscript' || msgType === 'partial') && text) {
             const result: AssemblyAIResult = {
               messageType: 'PartialTranscript',
-              text: data.text.trim(),
+              text,
               speakerId: participantId,
               speakerName: participantName,
               audioStart: data.audio_start || (Date.now() - startTimeRef.current),
@@ -251,10 +252,10 @@ export function useAssemblyAIRealtime({
               words: data.words || [],
             };
             onInterimResultRef.current?.(result);
-          } else if ((msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn') && data.text) {
+          } else if ((msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn') && text) {
             const result: AssemblyAIResult = {
               messageType: 'FinalTranscript',
-              text: data.text.trim(),
+              text,
               speakerId: participantId,
               speakerName: participantName,
               audioStart: data.audio_start || (Date.now() - startTimeRef.current - 2000),
@@ -273,6 +274,7 @@ export function useAssemblyAIRealtime({
           console.warn('[AssemblyAI WS Message Parse Error]:', err);
         }
       };
+
 
       ws.onerror = (evt) => {
         if (!isIntentionalStopRef.current) {
