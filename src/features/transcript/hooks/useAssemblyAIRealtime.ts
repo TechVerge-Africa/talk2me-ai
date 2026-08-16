@@ -114,8 +114,8 @@ export function useAssemblyAIRealtime({
         return;
       }
 
-      // 3. Construct AssemblyAI Realtime WebSocket URL
-      const wsUrl = `wss://api.assemblyai.com/v2/realtime/ws?sample_rate=16000&token=${encodeURIComponent(tokenData.token)}`;
+      // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
+      const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(tokenData.token)}&sample_rate=16000`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -126,9 +126,8 @@ export function useAssemblyAIRealtime({
         // Initialize PCM Resampler and send binary audio frames over WebSocket
         const resampler = new PCMResampler((pcmArrayBuffer) => {
           if (ws.readyState === WebSocket.OPEN) {
-            // AssemblyAI expects base64 or raw binary PCM frames
-            const base64Audio = Buffer.from(pcmArrayBuffer).toString('base64');
-            ws.send(JSON.stringify({ audio_data: base64Audio }));
+            // AssemblyAI v3 accepts raw binary PCM 16-bit LE buffers directly
+            ws.send(pcmArrayBuffer);
           }
         });
 
@@ -139,8 +138,9 @@ export function useAssemblyAIRealtime({
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          const msgType = data.type || data.message_type;
 
-          if (data.message_type === 'PartialTranscript' && data.text) {
+          if ((msgType === 'PartialTranscript' || msgType === 'partial') && data.text) {
             const result: AssemblyAIResult = {
               messageType: 'PartialTranscript',
               text: data.text.trim(),
@@ -152,7 +152,7 @@ export function useAssemblyAIRealtime({
               words: data.words || [],
             };
             onInterimResult?.(result);
-          } else if (data.message_type === 'FinalTranscript' && data.text) {
+          } else if ((msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn') && data.text) {
             const result: AssemblyAIResult = {
               messageType: 'FinalTranscript',
               text: data.text.trim(),
@@ -174,6 +174,7 @@ export function useAssemblyAIRealtime({
           console.warn('[AssemblyAI WS Message Parse Error]:', err);
         }
       };
+
 
       ws.onerror = (evt) => {
         console.error('[AssemblyAI WS Error]:', evt);

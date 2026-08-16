@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({
         token: 'dev_mock_assemblyai_token',
-        expires_in: 3600,
+        expires_in: 600,
         sample_rate: 16000,
         word_boost: wordBoost,
         is_mock: true,
@@ -17,39 +17,33 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Try temporary token generation endpoint
-    try {
-      const response = await fetch('https://api.assemblyai.com/v2/realtime/token', {
-        method: 'POST',
-        headers: {
-          Authorization: apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          expires_in_seconds: 3600,
-        }),
-      });
+    // AssemblyAI v3 Realtime Token endpoint
+    const response = await fetch('https://streaming.assemblyai.com/v3/token?expires_in_seconds=600', {
+      method: 'GET',
+      headers: {
+        Authorization: apiKey,
+      },
+    });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.token) {
-          return NextResponse.json({
-            token: data.token,
-            expires_in: 3600,
-            sample_rate: 16000,
-            word_boost: wordBoost,
-            is_mock: false,
-          });
-        }
+    if (response.ok) {
+      const data = await response.json();
+      if (data.token) {
+        return NextResponse.json({
+          token: data.token,
+          expires_in: 600,
+          sample_rate: 16000,
+          word_boost: wordBoost,
+          is_mock: false,
+        });
       }
-    } catch (e) {
-      console.warn('[AssemblyAI Token Fetch Warning]:', e);
+    } else {
+      const errText = await response.text();
+      console.warn('[AssemblyAI v3 Token Warning]:', response.status, errText);
     }
 
-    // Direct token authorization payload
     return NextResponse.json({
       token: apiKey,
-      expires_in: 3600,
+      expires_in: 600,
       sample_rate: 16000,
       word_boost: wordBoost,
       is_mock: false,
