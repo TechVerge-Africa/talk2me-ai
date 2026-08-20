@@ -17,7 +17,7 @@ import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { AiSignerView } from '@/features/accessibility/sign-language';
 import { CaptionList } from '@/features/captions/caption-list';
 import { CanonicalTranscriptView } from '@/features/transcript/components/canonical-transcript-view';
-import { AIDecisionsPanel } from '@/features/transcript/components/ai-decisions-panel';
+
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
@@ -867,9 +867,9 @@ function RoomContent({
     });
   }, []);
 
-  const [chatModalOpen, setChatModalOpen] = useState(false);
+
   const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'transcript' | 'decisions' | 'chat'>('transcript');
+  const [activeTab, setActiveTab] = useState<'transcript' | 'chat'>('transcript');
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [codeCopied, setCodeCopied] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -912,7 +912,7 @@ function RoomContent({
     if (isMe) return;
 
     // Check if chat is open/visible
-    const isChatVisible = chatModalOpen || (sidebarOpen && activeTab === 'chat');
+    const isChatVisible = sidebarOpen && activeTab === 'chat';
     
     if (isChatVisible) {
       setTimeout(() => setUnreadCount(0), 0);
@@ -942,15 +942,15 @@ function RoomContent({
     }, 4000);
 
     return () => clearTimeout(timer);
-  }, [messages, chatModalOpen, sidebarOpen, activeTab, localParticipant?.identity, participants]);
+  }, [messages, sidebarOpen, activeTab, localParticipant?.identity, participants]);
 
   // Reset unread count to 0 if chat becomes visible
   useEffect(() => {
-    const isChatVisible = chatModalOpen || (sidebarOpen && activeTab === 'chat');
+    const isChatVisible = sidebarOpen && activeTab === 'chat';
     if (isChatVisible) {
       setTimeout(() => setUnreadCount(0), 0);
     }
-  }, [chatModalOpen, sidebarOpen, activeTab]);
+  }, [sidebarOpen, activeTab]);
 
 
   const shareRoom = useCallback(async () => {
@@ -1130,8 +1130,8 @@ function RoomContent({
   // ─── Sidebar ───────────────────────────────────────────────────
   const sidebar = sidebarOpen && !isDeafMode ? (
 
-    <div className="h-full bg-[#1c1f24] p-4 flex flex-col border-l border-white/5 relative z-20 w-80 sm:w-96">
-      <div className="flex items-center gap-1 mb-4 p-1 bg-[#121417] border border-white/5 rounded-full">
+    <div className="h-full p-4 flex flex-col relative z-20">
+      <div className="flex items-center gap-1 mb-4 p-1 bg-white/5 border border-white/10 rounded-full backdrop-blur-sm">
         <button 
           onClick={() => setActiveTab('transcript')} 
           className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
@@ -1142,16 +1142,7 @@ function RoomContent({
         >
           Transcript
         </button>
-        <button 
-          onClick={() => setActiveTab('decisions')} 
-          className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
-            activeTab === 'decisions' 
-              ? 'bg-emerald-600 text-white shadow-md' 
-              : 'text-white/40 hover:text-white/80'
-          }`}
-        >
-          AI Decisions
-        </button>
+
         <button 
           onClick={() => setActiveTab('chat')} 
           className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
@@ -1163,24 +1154,17 @@ function RoomContent({
           Chat
         </button>
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {activeTab === 'transcript' ? (
           <CanonicalTranscriptView
             transcripts={canonicalTranscripts}
             highlightedMs={highlightedMs}
           />
-        ) : activeTab === 'decisions' ? (
-          <AIDecisionsPanel
-            decisions={decisions}
-            isAnalyzing={isAnalyzingDecisions}
-            onRunAnalysis={runAiAnalysis}
-            onEvidenceClick={(timestampMs) => {
-              setActiveTab('transcript');
-              highlightEvidence(timestampMs);
-            }}
-          />
+
         ) : (
-          <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
+          <div className="h-full min-h-[300px]">
+            <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
+          </div>
         )}
       </div>
 
@@ -1452,8 +1436,8 @@ function RoomContent({
             onToggleTranscript={() => toggleRaiseHand()}
             onToggleDeaf={toggleDeafMode}
             onToggleParticipants={() => setParticipantsOpen(v => !v)}
-            onAi={() => { setActiveTab('chat'); setChatModalOpen(true); }}
-            onToggleChat={() => { setActiveTab('chat'); setChatModalOpen(v => !v); }}
+            onAi={() => { if (sidebarOpen && activeTab === 'chat') { setSidebarOpen(false); } else { setActiveTab('chat'); setSidebarOpen(true); } }}
+            onToggleChat={() => { if (sidebarOpen && activeTab === 'chat') { setSidebarOpen(false); } else { setActiveTab('chat'); setSidebarOpen(true); } }}
             onEmergency={() => setEmojiOpen(v => !v)}
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
             captionsOn={captionsOn} onToggleCaptions={handleToggleCaptions}
@@ -1484,7 +1468,7 @@ function RoomContent({
                 className="absolute top-4 right-4 z-40 max-w-xs sm:max-w-sm bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-2xl flex items-start gap-3 pointer-events-auto cursor-pointer"
                 onClick={() => {
                   setActiveTab('chat');
-                  setChatModalOpen(true);
+                  setSidebarOpen(true);
                   setActiveNotification(null);
                 }}
               >
@@ -1587,28 +1571,7 @@ function RoomContent({
       {/* Floating reactions animation overlay */}
       <FloatingReactionsOverlay reactions={reactions} />
 
-      {/* Mobile Chat Modal */}
-      {chatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setChatModalOpen(false)} />
-          <div className="relative w-full sm:w-[560px] h-[60vh] sm:h-[70vh] rounded-2xl bg-[#1c1f24] border border-white/10 text-white shadow-2xl overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-3.5 border-b border-white/10 bg-[#121417]">
-              <div className="text-sm font-bold text-white flex items-center gap-2">
-                <span>Meeting Chat</span>
-              </div>
-              <button 
-                onClick={() => setChatModalOpen(false)} 
-                className="size-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white grid place-items-center transition-all cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-3 sm:p-4 h-[calc(100%-56px)] flex-1 overflow-hidden bg-[#1c1f24]">
-              <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
-            </div>
-          </div>
-        </div>
-      )}
+
     </>
   );
 }
