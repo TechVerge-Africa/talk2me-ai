@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkspaceWordBoost } from '@/lib/transcript/vocabulary';
 
-export async function POST(req: NextRequest) {
+async function handleTokenRequest() {
   try {
     const apiKey = process.env.ASSEMBLYAI_API_KEY;
     const wordBoost = getWorkspaceWordBoost();
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // AssemblyAI v3 Realtime Token endpoint
+    // AssemblyAI v3 Realtime Token endpoint (expects GET with expires_in_seconds query parameter)
     const response = await fetch('https://streaming.assemblyai.com/v3/token?expires_in_seconds=600', {
       method: 'GET',
       headers: {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       if (data.token) {
         return NextResponse.json({
           token: data.token,
-          expires_in: 600,
+          expires_in: data.expires_in_seconds || 600,
           sample_rate: 16000,
           word_boost: wordBoost,
           is_mock: false,
@@ -50,3 +50,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate AssemblyAI token' }, { status: 500 });
   }
 }
+
+export async function GET() {
+  return handleTokenRequest();
+}
+
+export async function POST() {
+  return handleTokenRequest();
+}
+

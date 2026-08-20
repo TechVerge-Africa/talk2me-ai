@@ -254,7 +254,31 @@ export const MeetingService = {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Try to insert (works for anon & auth users if row doesn't exist)
+    // 1. Check if participant already exists for (meeting_id, identity)
+    const { data: existingData } = await supabase
+      .from('meeting_participants')
+      .select('*')
+      .eq('meeting_id', params.meeting_id)
+      .eq('identity', params.identity)
+      .maybeSingle();
+
+    if (existingData) {
+      // 2. If row exists, attempt update (or return existing if update fails due to guest RLS)
+      const { data: updateData, error: updateError } = await supabase
+        .from('meeting_participants')
+        .update(payload)
+        .eq('meeting_id', params.meeting_id)
+        .eq('identity', params.identity)
+        .select()
+        .maybeSingle();
+
+      if (updateError || !updateData) {
+        return existingData as MeetingParticipant;
+      }
+      return updateData as MeetingParticipant;
+    }
+
+    // 3. Row doesn't exist yet, insert new participant
     const { data: insertData, error: insertError } = await supabase
       .from('meeting_participants')
       .insert([payload])
@@ -262,30 +286,15 @@ export const MeetingService = {
       .maybeSingle();
 
     if (insertError) {
-      // 23505 = unique_violation
+      // Fallback for concurrent inserts: if unique_violation, fetch existing row
       if (insertError.code === '23505') {
-        // 2. Try to update (works for auth users)
-        const { data: updateData, error: updateError } = await supabase
+        const { data: fallbackData } = await supabase
           .from('meeting_participants')
-          .update(payload)
+          .select('*')
           .eq('meeting_id', params.meeting_id)
           .eq('identity', params.identity)
-          .select()
           .maybeSingle();
-
-        if (updateError || !updateData) {
-          // 3. If update fails due to RLS (anon user), just fetch existing row
-          const { data: existingData, error: fetchError } = await supabase
-            .from('meeting_participants')
-            .select('*')
-            .eq('meeting_id', params.meeting_id)
-            .eq('identity', params.identity)
-            .single();
-            
-          if (fetchError) throw fetchError;
-          return existingData as MeetingParticipant;
-        }
-        return updateData as MeetingParticipant;
+        if (fallbackData) return fallbackData as MeetingParticipant;
       }
       throw insertError;
     }

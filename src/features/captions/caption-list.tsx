@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, memo } from "react";
 import { Message } from "@/types/message";
 
 interface CaptionListProps {
@@ -14,34 +14,40 @@ interface CaptionListProps {
   };
 }
 
-export function CaptionList({ captions, size = 'md', sttStatus }: CaptionListProps) {
+export const CaptionList = memo(function CaptionList({ captions, size = 'md', sttStatus }: CaptionListProps) {
   const textSizeClass = size === 'sm' ? 'text-xs' : size === 'lg' ? 'text-lg' : 'text-sm';
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
     }
   }, [captions]);
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">
-        <span>Accessibility Hub // Live Captions</span>
+    <div className="h-full flex flex-col font-sans">
+      <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-400/90 mb-4 pb-2 border-b border-cyan-500/20">
+        <div className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-cyan-400 animate-pulse" />
+          <span>Live Transcripts & CC</span>
+        </div>
         {sttStatus?.currentLanguage && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground/80 font-mono">
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-mono">
             {sttStatus.currentLanguage}
           </span>
         )}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-6 pr-2 scrollbar-hide">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin scrollbar-thumb-cyan-500/20 hover:scrollbar-thumb-cyan-500/40">
         {captions.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-40 text-center p-6 space-y-3">
-            <div className="size-2 rounded-full bg-bridge-cyan/80 animate-ping mb-2" />
-            <p className="text-xs uppercase tracking-wider font-semibold">Waiting for audio signals...</p>
-            <p className="text-[11px] text-muted-foreground max-w-xs leading-normal">
-              Speak into your microphone or wait for other participants to speak. Captions will render in real time.
+          <div className="h-full flex flex-col items-center justify-center opacity-50 text-center p-6 space-y-3">
+            <div className="size-3 rounded-full bg-cyan-400/80 animate-ping mb-2" />
+            <p className="text-xs uppercase tracking-widest font-semibold text-cyan-300">Listening for audio signals...</p>
+            <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed">
+              Speak into your microphone. Transcripts will render live with speaker identification.
             </p>
           </div>
         ) : (
@@ -52,17 +58,20 @@ export function CaptionList({ captions, size = 'md', sttStatus }: CaptionListPro
             return (
               <div 
                 key={cap.id} 
-                className={`animate-in fade-in slide-in-from-bottom-2 duration-500 transition-opacity ${
-                  isLast ? "opacity-100 scale-100" : "opacity-60 hover:opacity-100"
+                className={`p-3 rounded-xl border transition-all duration-300 ${
+                  isLast 
+                    ? "bg-slate-900/80 border-cyan-500/40 shadow-[0_4px_20px_rgba(0,180,216,0.15)] scale-[1.01]" 
+                    : "bg-slate-950/40 border-border/40 opacity-70 hover:opacity-100 hover:border-cyan-500/20"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-bridge-cyan px-2 py-0.5 bg-bridge-cyan/10 rounded border border-bridge-cyan/20">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-cyan-300 px-2 py-0.5 bg-cyan-500/10 rounded-md border border-cyan-400/30">
                       {senderName}
                     </span>
                     {!cap.is_final && (
-                      <span className="text-[9px] text-amber-400/90 font-medium animate-pulse">
+                      <span className="text-[9px] text-amber-400 font-mono font-medium animate-pulse flex items-center gap-1">
+                        <span className="size-1 rounded-full bg-amber-400" />
                         Speaking...
                       </span>
                     )}
@@ -71,7 +80,7 @@ export function CaptionList({ captions, size = 'md', sttStatus }: CaptionListPro
                     {new Date(cap.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </div>
-                <p className={`${textSizeClass} font-medium leading-relaxed tracking-tight border-l-2 border-bridge-cyan/40 pl-3 text-foreground/90`}>
+                <p className={`${textSizeClass} font-medium leading-relaxed tracking-wide text-foreground/90 pl-1`}>
                   {cap.content}
                 </p>
               </div>
@@ -80,29 +89,28 @@ export function CaptionList({ captions, size = 'md', sttStatus }: CaptionListPro
         )}
       </div>
       
-      {/* Footer / Active Diagnostic Indicator */}
-      <div className="mt-4 pt-4 border-t border-border/50 flex items-center justify-between text-xs">
+      {/* Diagnostic Indicator Footer */}
+      <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
           <span className={`size-2 rounded-full ${
             sttStatus?.error 
-              ? 'bg-rose-500' 
+              ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]' 
               : sttStatus?.isListening 
-              ? 'bg-emerald-500 animate-pulse' 
+              ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' 
               : 'bg-amber-400'
           }`} />
           <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             {sttStatus?.error 
               ? 'STT Error' 
               : sttStatus?.isListening 
-              ? 'STT Active' 
+              ? 'Real-Time STT Active' 
               : 'STT Ready'}
           </span>
         </div>
-        <div className="text-[9px] text-muted-foreground/50 font-mono">
-          {sttStatus?.error ? sttStatus.error : 'Groq Whisper STT (whisper-large-v3-turbo)'}
+        <div className="text-[9px] text-cyan-400/80 font-mono bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/20">
+          AssemblyAI Universal-3 Pro
         </div>
       </div>
     </div>
   );
-}
-
+});

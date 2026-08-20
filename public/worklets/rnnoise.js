@@ -14,7 +14,7 @@ var bA = async function(h = {}) {
       $ = new URL(".", _).href;
     } catch {
     }
-    if (!(typeof window == "object" || typeof WorkerGlobalScope < "u")) throw new Error("not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)");
+    if (!(typeof window == "object" || typeof WorkerGlobalScope < "u" || typeof AudioWorkletGlobalScope < "u" || typeof globalThis.registerProcessor < "u")) throw new Error("not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)");
   }
   var AA = console.log.bind(console), I = console.error.bind(console);
   v(!0, "worker environment detected but not enabled at build time.  Add `worker` to `-sENVIRONMENT` to enable."), v(!0, "node environment detected but not enabled at build time.  Add `node` to `-sENVIRONMENT` to enable."), v(!0, "shell environment detected but not enabled at build time.  Add `shell` to `-sENVIRONMENT` to enable.");

@@ -920,6 +920,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
 
   // AssemblyAI Realtime Callbacks
   const handleAssemblyAIInterim = useCallback((result: AssemblyAIResult) => {
+    console.log('📥 [STT Debug] useMeeting received interim:', result.text);
     if (!transcriptEngineRef.current) return;
     transcriptEngineRef.current.processInterimResult(
       result.speakerId,
@@ -961,6 +962,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   }, [room, roomCode]);
 
   const handleAssemblyAIFinal = useCallback((result: AssemblyAIResult) => {
+    console.log('💾 [STT Debug] useMeeting received final:', result.text);
     if (!transcriptEngineRef.current) return;
     transcriptEngineRef.current.processFinalResult(
       result.speakerId,
@@ -1006,20 +1008,50 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   }, [room, roomCode]);
 
 
-  const localMicPub = room?.localParticipant?.getTrackPublication(Track.Source.Microphone);
-  const localMicTrack = localMicPub?.track?.mediaStreamTrack;
+  const [localMicTrack, setLocalMicTrack] = useState<MediaStreamTrack | null>(null);
+
+  // Sync local mic track reactively whenever track is published, unpublished, or room connects
+  useEffect(() => {
+    if (!room?.localParticipant) return;
+
+    const syncMicTrack = () => {
+      const pub = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      const mediaTrack = pub?.track?.mediaStreamTrack || null;
+      setLocalMicTrack(mediaTrack);
+    };
+
+    syncMicTrack();
+
+    const handleTrackPublished = (pub: { source: Track.Source }) => {
+      if (pub.source === Track.Source.Microphone) {
+        syncMicTrack();
+      }
+    };
+
+    const handleTrackUnpublished = (pub: { source: Track.Source }) => {
+      if (pub.source === Track.Source.Microphone) {
+        syncMicTrack();
+      }
+    };
+
+    room.on(RoomEvent.LocalTrackPublished, handleTrackPublished);
+    room.on(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
+
+    return () => {
+      room.off(RoomEvent.LocalTrackPublished, handleTrackPublished);
+      room.off(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
+    };
+  }, [room, room?.localParticipant, micOn]);
 
   const assemblyAI = useAssemblyAIRealtime({
-    // Wait for LiveKit to publish the microphone track. Starting before the
-    // publication exists creates a second getUserMedia stream and leaves the
-    // caption session attached to the wrong lifecycle.
-    enabled: isAdmitted && micOn && !!localMicTrack,
+    enabled: isAdmitted && micOn,
     participantId: localParticipantId,
     participantName: localParticipantName,
     audioTrack: localMicTrack,
     onInterimResult: handleAssemblyAIInterim,
     onFinalResult: handleAssemblyAIFinal,
   });
+
 
 
   const runAiAnalysis = useCallback(async () => {

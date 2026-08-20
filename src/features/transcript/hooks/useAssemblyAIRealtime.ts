@@ -84,13 +84,21 @@ export function useAssemblyAIRealtime({
     fallbackStreamRef.current = null;
   }, [audioTrack]);
 
+  const headerBlobRef = useRef<Blob | null>(null);
+
   const startGroqFallback = useCallback(async (stream?: MediaStream) => {
     if (fallbackActiveRef.current || isIntentionalStopRef.current) return;
     try {
+      headerBlobRef.current = null;
       const fallbackStream = stream ?? (audioTrack && audioTrack.readyState === 'live'
         ? new MediaStream([audioTrack])
         : await navigator.mediaDevices.getUserMedia({ audio: true }));
-      if (!MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : '';
+      if (!mimeType) {
         throw new Error('Groq fallback requires WebM audio support');
       }
       fallbackStreamRef.current = fallbackStream;
@@ -98,20 +106,29 @@ export function useAssemblyAIRealtime({
       setIsMockMode(true);
       setIsConnected(true);
       setIsListening(true);
-      const recorder = new MediaRecorder(fallbackStream, { mimeType: 'audio/webm;codecs=opus' });
+      const recorder = new MediaRecorder(fallbackStream, { mimeType });
       fallbackRecorderRef.current = recorder;
       recorder.ondataavailable = async (event) => {
-        // MediaRecorder timeslices can emit container fragments that are not
-        // independently decodable by Groq. Send only complete stop/start blobs.
-        if (!event.data.size || !fallbackActiveRef.current) return;
+        if (!event.data || !event.data.size || !fallbackActiveRef.current) return;
+        
+        let sendBlob: Blob;
+        if (!headerBlobRef.current) {
+          headerBlobRef.current = event.data;
+          sendBlob = event.data;
+        } else {
+          sendBlob = new Blob([headerBlobRef.current, event.data], { type: mimeType });
+        }
+
         const formData = new FormData();
-        formData.append('file', event.data, `caption-${Date.now()}.webm`);
+        formData.append('file', sendBlob, `caption-${Date.now()}.webm`);
         formData.append('language', 'en');
         try {
           const response = await fetch('/api/stt/transcribe', { method: 'POST', body: formData });
           const data = await response.json();
           const text = typeof data.text === 'string' ? data.text.trim() : '';
-          if (response.ok && text && fallbackActiveRef.current) {
+          // Filter out Whisper silent artifacts
+          const isArtifact = /^(thank you\.|subtitles by|thanks for watching|subscribe for more)$/i.test(text);
+          if (response.ok && text && !isArtifact && fallbackActiveRef.current) {
             onFinalResultRef.current?.({ messageType: 'FinalTranscript', text, speakerId: participantId, speakerName: participantName, audioStart: Date.now() - startTimeRef.current - 1500, audioEnd: Date.now() - startTimeRef.current, confidence: 0.9, words: [] });
           }
         } catch (error) {
@@ -119,12 +136,14 @@ export function useAssemblyAIRealtime({
         }
       };
       recorder.onstop = () => {
-        if (fallbackActiveRef.current && !isIntentionalStopRef.current) recorder.start();
+        if (fallbackActiveRef.current && !isIntentionalStopRef.current) {
+          try { recorder.start(); } catch {}
+        }
       };
       recorder.start();
       fallbackIntervalRef.current = window.setInterval(() => {
         if (fallbackActiveRef.current && recorder.state === 'recording') recorder.stop();
-      }, 1500);
+      }, 2000);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Groq Whisper fallback failed';
       setError(message);
@@ -186,7 +205,7 @@ export function useAssemblyAIRealtime({
 
     try {
       // 1. Fetch AssemblyAI Temporary Token
-      const tokenRes = await fetch('/api/assemblyai/token', { method: 'POST' });
+      const tokenRes = await fetch('/api/assemblyai/token');
       const tokenData = await tokenRes.json();
 
       if (!tokenRes.ok || !tokenData.token) {
@@ -287,8 +306,7 @@ export function useAssemblyAIRealtime({
 
       // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
       const token = tokenData.token;
-      // AssemblyAI v3 expects raw signed 16-bit little-endian PCM and needs
-      // the encoding and sample rate in the WebSocket query string.
+      console.log('🔑 [STT Debug] Token fetched successfully. Connecting to AssemblyAI v3 WS...');
       const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000&encoding=pcm_s16le`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -297,17 +315,25 @@ export function useAssemblyAIRealtime({
         isConnectingRef.current = false;
         setIsConnected(true);
         setIsListening(true);
+        console.log('🚀 [STT Debug] WebSocket connected to AssemblyAI!');
+
+        let pcmChunkCount = 0;
 
         // Initialize PCM Resampler and send binary audio frames over WebSocket
         const resampler = new PCMResampler((pcmArrayBuffer) => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(pcmArrayBuffer);
+            pcmChunkCount++;
+            if (pcmChunkCount % 30 === 0) {
+              console.log(`🔊 [STT Debug] Audio streaming active. Sent ${pcmChunkCount} PCM frames to AssemblyAI.`);
+            }
           }
         });
 
         resamplerRef.current = resampler;
         void resampler.start(stream).catch((err: unknown) => {
           const message = err instanceof Error ? err.message : 'Failed to process microphone audio';
+          console.error('❌ [STT Debug] PCMResampler start error:', message);
           setError(message);
           onErrorRef.current?.(message);
           stopListening();
@@ -318,15 +344,17 @@ export function useAssemblyAIRealtime({
         try {
           const data = JSON.parse(event.data);
           const msgType = data.type || data.message_type;
-          const text = (data.text || data.transcript || '').trim();
+          console.log(`📩 [STT Debug] WS Msg [${msgType}]:`, data);
 
+          const text = (data.text || data.transcript || '').trim();
           if (!text) return;
 
           // AssemblyAI v3 Realtime STT emits type: "Turn" with end_of_turn boolean
           const isInterim = msgType === 'PartialTranscript' || msgType === 'partial' || (msgType === 'Turn' && data.end_of_turn === false);
-          const isFinal = msgType === 'FinalTranscript' || msgType === 'final' || (msgType === 'Turn' && data.end_of_turn === true);
+          const isFinal = msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn' || !msgType;
 
           if (isInterim) {
+            console.log(`🗣️ [STT Debug] Interim Transcript: "${text}" (${participantName})`);
             const result: AssemblyAIResult = {
               messageType: 'PartialTranscript',
               text,
@@ -339,6 +367,7 @@ export function useAssemblyAIRealtime({
             };
             onInterimResultRef.current?.(result);
           } else if (isFinal) {
+            console.log(`🎯 [STT Debug] Final Transcript: "${text}" (${participantName})`);
             const result: AssemblyAIResult = {
               messageType: 'FinalTranscript',
               text,
@@ -357,29 +386,29 @@ export function useAssemblyAIRealtime({
             onFinalResultRef.current?.(result);
           }
         } catch (err) {
-          console.warn('[AssemblyAI WS Message Parse Error]:', err);
+          console.warn('⚠️ [STT Debug] WS Message Parse Error:', err);
         }
       };
 
-
-
-      ws.onerror = () => {
+      ws.onerror = (evt) => {
         if (!isIntentionalStopRef.current) {
           const message = 'AssemblyAI realtime connection failed';
-          console.warn('[AssemblyAI WS Event]:', message);
+          console.error('❌ [STT Debug] WebSocket error:', evt);
           setError(message);
           onErrorRef.current?.(message);
           void startGroqFallback(mediaStreamRef.current ?? undefined);
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (evt) => {
         isConnectingRef.current = false;
         setIsConnected(false);
         setIsListening(false);
         wsRef.current = null;
+        console.warn(`⚠️ [STT Debug] WebSocket closed with code: ${evt.code}, reason: "${evt.reason}"`);
 
         if (!isIntentionalStopRef.current && enabled && !fallbackActiveRef.current) {
+          console.log('🔄 [STT Debug] Triggering Groq STT fallback...');
           void startGroqFallback(mediaStreamRef.current ?? undefined);
         }
       };
@@ -396,12 +425,29 @@ export function useAssemblyAIRealtime({
   }, [audioTrack, enabled, participantId, participantName, startGroqFallback, stopFallback, stopListening]);
 
   useEffect(() => {
-    if (enabled && !isListening && !isConnectingRef.current && !isIntentionalStopRef.current) {
+    console.log('🎙️ [STT Debug] Hook Effect:', { enabled, isListening, isConnecting: isConnectingRef.current, isIntentionalStop: isIntentionalStopRef.current });
+    if (enabled && !isListening && !isConnectingRef.current) {
       startListening();
     } else if (!enabled && (isListening || isConnectingRef.current)) {
       stopListening();
     }
   }, [enabled, isListening, startListening, stopListening]);
+
+  // Re-attach listener if audioTrack changes while enabled
+  const prevTrackRef = useRef(audioTrack);
+  useEffect(() => {
+    if (enabled && prevTrackRef.current !== audioTrack) {
+      prevTrackRef.current = audioTrack;
+      if (isListening || isConnectingRef.current) {
+        stopListening();
+        // Allow microtask tick for cleanup before re-starting
+        queueMicrotask(() => {
+          isIntentionalStopRef.current = false;
+          startListening();
+        });
+      }
+    }
+  }, [audioTrack, enabled, isListening, startListening, stopListening]);
 
   useEffect(() => {
     return () => {

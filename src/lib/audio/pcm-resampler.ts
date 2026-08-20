@@ -12,6 +12,13 @@ export class PCMResampler {
   private targetSampleRate = 16000;
   private isProcessing = false;
 
+  // Pre-allocate a 32,000 sample (2 second) zero-GC ring buffer for 16kHz Int16 audio
+  private pcmBufferQueue = new Int16Array(32000);
+  private pcmBufferOffset = 0;
+  // AssemblyAI v3 requires audio frame duration between 50ms and 1000ms.
+  // 100ms at 16,000 Hz = 1600 samples (3200 bytes of 16-bit PCM).
+  private targetChunkSamples = 1600;
+
   constructor(onPCMData: (pcmBuffer: ArrayBuffer) => void) {
     this.onPCMDataCallback = onPCMData;
   }
@@ -23,6 +30,7 @@ export class PCMResampler {
     if (this.isProcessing) return;
 
     try {
+      this.pcmBufferOffset = 0;
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.audioContext = new AudioCtx();
       
@@ -37,15 +45,13 @@ export class PCMResampler {
         await this.audioContext.resume().catch(() => {});
       }
 
-
       this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
       
       // Add Gain Boost node (1.8x multiplier) to make soft/quiet speaker voices significantly more sensitive
       const inputGainNode = this.audioContext.createGain();
       inputGainNode.gain.value = 1.8;
 
-      // Keep frames near AssemblyAI's recommended 50ms audio chunks.
-      const bufferSize = 1024;
+      const bufferSize = 2048;
       this.scriptNode = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
 
       this.scriptNode.onaudioprocess = (event: AudioProcessingEvent) => {
@@ -58,12 +64,28 @@ export class PCMResampler {
         const resampledData = this.resampleTo16kHz(inputData, inputSampleRate, this.targetSampleRate);
         const pcm16 = this.float32ToPCM16(resampledData);
 
-        if (pcm16.byteLength > 0 && this.onPCMDataCallback) {
-          const slice = pcm16.buffer.slice(
-            pcm16.byteOffset,
-            pcm16.byteOffset + pcm16.byteLength
-          );
-          this.onPCMDataCallback(slice as ArrayBuffer);
+        // Copy incoming Int16 samples directly into zero-GC pre-allocated ring buffer
+        if (this.pcmBufferOffset + pcm16.length <= this.pcmBufferQueue.length) {
+          this.pcmBufferQueue.set(pcm16, this.pcmBufferOffset);
+          this.pcmBufferOffset += pcm16.length;
+        } else {
+          // Fallback reset if overflow occurs
+          this.pcmBufferOffset = 0;
+        }
+
+        // Emit exact 100ms audio chunks (1,600 samples / 3,200 bytes) without allocating new JS arrays
+        while (this.pcmBufferOffset >= this.targetChunkSamples) {
+          const chunkSamples = this.pcmBufferQueue.subarray(0, this.targetChunkSamples);
+          if (this.onPCMDataCallback) {
+            const slice = chunkSamples.buffer.slice(
+              chunkSamples.byteOffset,
+              chunkSamples.byteOffset + chunkSamples.byteLength
+            );
+            this.onPCMDataCallback(slice as ArrayBuffer);
+          }
+          // Shift remaining samples to the front in-place using TypedArray.copyWithin
+          this.pcmBufferQueue.copyWithin(0, this.targetChunkSamples, this.pcmBufferOffset);
+          this.pcmBufferOffset -= this.targetChunkSamples;
         }
       };
 
@@ -75,7 +97,6 @@ export class PCMResampler {
       inputGainNode.connect(this.scriptNode);
       this.scriptNode.connect(this.silenceGain);
       this.silenceGain.connect(this.audioContext.destination);
-
 
       this.isProcessing = true;
     } catch (err) {
@@ -90,6 +111,7 @@ export class PCMResampler {
    */
   public stop(): void {
     this.isProcessing = false;
+    this.pcmBufferOffset = 0;
 
     if (this.scriptNode) {
       try {
