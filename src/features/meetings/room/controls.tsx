@@ -33,6 +33,7 @@ interface ControlDockProps {
   participantCount?: number;
   participantsOpen?: boolean;
   unreadCount?: number;
+  chatOpen?: boolean;
   aiNoiseOn?: boolean;
   noiseReductionLevel?: number;
   onToggleAiNoise?: () => void;
@@ -49,6 +50,7 @@ export function ControlDock({
   onToggleChat,
   captionsOn, onToggleCaptions,
   unreadCount = 0,
+  chatOpen = false,
   aiNoiseOn = false,
   noiseReductionLevel = 0,
   onToggleAiNoise,
@@ -409,9 +411,9 @@ export function ControlDock({
               </span>
             )}
           </button>
-          <button onClick={onAi} title="Chat" aria-label="Toggle Chat Panel" className={`${idleBtn} relative`}>
+          <button onClick={onAi} title={chatOpen ? "Close Chat" : "Open Chat"} aria-label="Toggle Chat Panel" aria-pressed={chatOpen} className={`${chatOpen ? activeBtn("bg-blue-600 hover:bg-blue-700") : idleBtn} relative`}>
             <MessageSquare className="size-5" />
-            {unreadCount > 0 && (
+            {unreadCount > 0 && !chatOpen && (
               <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-[#ea4335] text-white text-[9px] font-bold flex items-center justify-center border border-[#1f2228]">
                 {unreadCount}
               </span>

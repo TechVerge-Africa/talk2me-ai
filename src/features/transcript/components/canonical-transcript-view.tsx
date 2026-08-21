@@ -55,27 +55,69 @@ export function CanonicalTranscriptView({
 
   return (
     <div className="h-full flex flex-col bg-background/50 rounded-xl border border-border/40 overflow-hidden shadow-sm">
-      {/* Header & Search Bar */}
-      <div className="p-3 border-b border-border/40 bg-muted/20 flex flex-col gap-2">
+      {/* ── Animated header ── */}
+      <div className="px-4 pt-4 pb-3 border-b border-white/[0.06] flex flex-col gap-3 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-cyan-400 animate-pulse" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
-              Canonical Transcript // AssemblyAI Engine
-            </h3>
+
+          {/* Left: waveform + label */}
+          <div className="flex items-center gap-3">
+
+            {/* Animated equalizer bars */}
+            <div className="flex items-end gap-[3px] h-5" aria-hidden="true">
+              {[
+                'animate-[wave_1.0s_ease-in-out_infinite] h-2',
+                'animate-[wave_1.0s_ease-in-out_0.15s_infinite] h-4',
+                'animate-[wave_1.0s_ease-in-out_0.3s_infinite] h-3',
+                'animate-[wave_1.0s_ease-in-out_0.1s_infinite] h-5',
+                'animate-[wave_1.0s_ease-in-out_0.25s_infinite] h-2.5',
+                'animate-[wave_1.0s_ease-in-out_0.4s_infinite] h-3.5',
+              ].map((cls, i) => (
+                <span
+                  key={i}
+                  className={`w-[3px] rounded-full bg-gradient-to-t from-cyan-500 to-teal-300 ${cls}`}
+                  style={{ minHeight: '4px' }}
+                />
+              ))}
+            </div>
+
+            {/* Shimmer gradient label */}
+            <span
+              className="text-[11px] font-black uppercase tracking-[0.18em] bg-gradient-to-r from-cyan-300 via-teal-200 to-cyan-400 bg-clip-text text-transparent"
+              style={{
+                backgroundSize: '200% auto',
+                animation: 'shimmer 3s linear infinite',
+              }}
+            >
+              Live Transcript
+            </span>
           </div>
-          <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/30">
-            {transcripts.length} {transcripts.length === 1 ? 'Turn' : 'Turns'}
-          </span>
+
+          {/* Right: live dot + count */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
+              <span className="relative flex size-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full size-1.5 bg-cyan-400" />
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-cyan-400">Live</span>
+            </div>
+            <span className="text-[10px] font-mono text-white/30 bg-white/5 px-2 py-0.5 rounded border border-white/5">
+              {transcripts.length} {transcripts.length === 1 ? 'turn' : 'turns'}
+            </span>
+          </div>
         </div>
 
+        {/* Search */}
         <input
           type="text"
-          placeholder="Search transcripts or speakers..."
+          placeholder="Search speakers or text…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-1.5 text-xs bg-background/80 border border-border/50 rounded-lg text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-cyan-500/50 transition-colors"
+          className="w-full px-3 py-1.5 text-xs bg-white/[0.04] border border-white/10 rounded-lg text-white/80 placeholder:text-white/25 focus:outline-none focus:border-cyan-500/50 focus:bg-white/[0.07] transition-all"
         />
+
+        {/* Thin glow separator */}
+        <div className="absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
       </div>
 
       {/* Transcript Turns Scroll Area */}

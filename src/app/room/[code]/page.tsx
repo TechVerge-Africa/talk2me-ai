@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, Search, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2 } from 'lucide-react';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
@@ -844,7 +844,7 @@ function RoomContent({
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
-    captions, canonicalTranscripts, activeInterims, decisions, isAnalyzingDecisions, highlightedMs, runAiAnalysis, highlightEvidence,
+    captions, canonicalTranscripts, activeInterims, highlightedMs,
     messages, participants, sttStatus,
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
@@ -857,7 +857,7 @@ function RoomContent({
   const [captionsOn, setCaptionsOn] = useState(() => {
     try { return localStorage.getItem('t2_pref_captions') !== 'false'; } catch { return true; }
   });
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleToggleCaptions = useCallback(() => {
     setCaptionsOn(prev => {
@@ -1042,7 +1042,7 @@ function RoomContent({
   };
   const topbar = (
     <div className={`transition-transform duration-300 ${showTopbar ? 'translate-y-0' : '-translate-y-full'}`}>
-      <div className="px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between border-b border-white/5 bg-[#181b20]/95 backdrop-blur-xl relative z-40">
+      <div className="px-3 sm:px-5 h-14 flex items-center justify-between border-b border-white/5 bg-[#181b20]/95 backdrop-blur-xl relative z-40">
 
         {/* Left — Logo + (on desktop) room title + timer */}
         <div className="flex items-center gap-2.5">
@@ -1062,11 +1062,7 @@ function RoomContent({
           </div>
         </div>
 
-        {/* Middle — Search (desktop only) */}
-        <div className="hidden lg:flex items-center gap-2.5 px-4 py-2 bg-[#1e2227] border border-white/5 rounded-full w-64 xl:w-80 text-white/40 text-xs shadow-inner">
-          <Search className="size-3.5 text-white/30" />
-          <span className="truncate">Search messages...</span>
-        </div>
+
 
         {/* Right */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -1129,57 +1125,60 @@ function RoomContent({
 
   // ─── Sidebar ───────────────────────────────────────────────────
   const sidebar = sidebarOpen && !isDeafMode ? (
+    <div className="flex flex-col h-full">
 
-    <div className="h-full p-4 flex flex-col relative z-20">
-      <div className="flex items-center gap-1 mb-4 p-1 bg-white/5 border border-white/10 rounded-full backdrop-blur-sm">
-        <button 
-          onClick={() => setActiveTab('transcript')} 
-          className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
-            activeTab === 'transcript' 
-              ? 'bg-cyan-600 text-white shadow-md' 
-              : 'text-white/40 hover:text-white/80'
-          }`}
-        >
-          Transcript
-        </button>
+      {/* Drag handle — mobile only */}
+      <div className="flex justify-center pt-3 pb-1 sm:hidden">
+        <div className="w-10 h-1 rounded-full bg-white/20" />
+      </div>
 
-        <button 
-          onClick={() => setActiveTab('chat')} 
-          className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
-            activeTab === 'chat' 
-              ? 'bg-blue-600 text-white shadow-md' 
-              : 'text-white/40 hover:text-white/80'
-          }`}
+      {/* Header: tabs + close */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.07] flex-shrink-0">
+        <div className="flex items-center gap-1 flex-1 p-1 bg-white/[0.06] border border-white/10 rounded-full">
+          <button
+            onClick={() => setActiveTab('transcript')}
+            className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
+              activeTab === 'transcript'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            Transcript
+          </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
+              activeTab === 'chat'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            Chat
+          </button>
+        </div>
+        {/* Close button */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close panel"
+          className="size-8 flex-shrink-0 flex items-center justify-center rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-white/50 hover:text-white transition-all active:scale-90"
         >
-          Chat
+          <X className="size-3.5" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 pb-safe">
         {activeTab === 'transcript' ? (
           <CanonicalTranscriptView
             transcripts={canonicalTranscripts}
             highlightedMs={highlightedMs}
           />
-
         ) : (
-          <div className="h-full min-h-[300px]">
+          <div className="h-full">
             <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
           </div>
         )}
       </div>
-
-
-      {/* Guest sign-in nudge in sidebar */}
-      {!isHost && (
-        <div className="mt-4 pt-4 border-t border-white/5">
-          <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 text-center">
-            <p className="text-[10px] text-white/55 mb-2">Sign in to host your own meetings</p>
-            <a href="/auth" className="text-[10px] font-black uppercase tracking-wider text-blue-400 flex items-center justify-center gap-1">
-              <LogIn className="size-3" /> Create Account
-            </a>
-          </div>
-        </div>
-      )}
     </div>
   ) : null;
 
@@ -1438,6 +1437,7 @@ function RoomContent({
             onToggleParticipants={() => setParticipantsOpen(v => !v)}
             onAi={() => { if (sidebarOpen && activeTab === 'chat') { setSidebarOpen(false); } else { setActiveTab('chat'); setSidebarOpen(true); } }}
             onToggleChat={() => { if (sidebarOpen && activeTab === 'chat') { setSidebarOpen(false); } else { setActiveTab('chat'); setSidebarOpen(true); } }}
+            chatOpen={sidebarOpen && activeTab === 'chat'}
             onEmergency={() => setEmojiOpen(v => !v)}
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
             captionsOn={captionsOn} onToggleCaptions={handleToggleCaptions}

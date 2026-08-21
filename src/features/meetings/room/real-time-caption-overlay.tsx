@@ -33,7 +33,7 @@ export const RealTimeCaptionOverlay = memo(function RealTimeCaptionOverlay({ cap
 
   if (!displayText || isIdle) {
     return (
-      <div className="absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 w-full max-w-xs sm:max-w-md px-4 z-40 pointer-events-none animate-in fade-in duration-300">
+      <div className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 w-full max-w-xs sm:max-w-md px-4 z-40 pointer-events-none animate-in fade-in duration-300">
         <div className="bg-black/40 backdrop-blur-md border border-white/10 rounded-full px-4 py-1.5 text-xs text-white/70 text-center font-medium flex items-center justify-center gap-2.5 shadow-lg mx-auto w-fit transition-all duration-300">
           <span className="relative flex size-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
@@ -53,7 +53,7 @@ export const RealTimeCaptionOverlay = memo(function RealTimeCaptionOverlay({ cap
 
   return (
     <div 
-      className="absolute bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 w-full max-w-xl sm:max-w-2xl px-4 z-40 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300"
+      className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 w-full max-w-xl sm:max-w-2xl px-4 z-40 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300"
       role="status"
       aria-live="polite"
       aria-atomic="true"
