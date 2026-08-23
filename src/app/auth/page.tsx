@@ -120,14 +120,13 @@ export default function AuthPage() {
       onClick={(e) => {
         if (e.target === e.currentTarget) handleClose();
       }}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-start sm:justify-center p-3 sm:p-6 overflow-y-auto bg-black/75 backdrop-blur-md animate-in fade-in duration-200 min-h-screen py-6 sm:py-10"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
     >
       <AiWaveBackground className="opacity-20 pointer-events-none" />
-      
-      <div className="relative w-full max-w-xl my-auto overflow-hidden rounded-3xl sm:rounded-[40px]">
-        {/* Ambient Glow - safely clipped inside container */}
-        <div className="absolute -top-20 -right-20 size-[350px] sm:size-[400px] bg-bridge-cyan/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 size-[350px] sm:size-[400px] bg-bridge-indigo/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none" />
+
+      {/* Centering wrapper - allows scrolling on short screens */}
+      <div className="flex min-h-full flex-col items-center justify-center p-4 sm:p-6 py-8 sm:py-12">
+      <div className="relative w-full max-w-xl">
 
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -383,6 +382,7 @@ export default function AuthPage() {
           </div>
 
         </motion.div>
+      </div>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GROQ_ANTI_HALLUCINATION_PROMPT } from '@/lib/audio/stt-hallucination-filter';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       groqFormData.append('response_format', 'json');
       groqFormData.append('language', language.split('-')[0] || 'en');
       groqFormData.append('temperature', '0.0');
-      groqFormData.append('prompt', 'Transcribe every single spoken word accurately, including soft speech, quiet words, quick phrases, and ongoing dialogue.');
+      groqFormData.append('prompt', GROQ_ANTI_HALLUCINATION_PROMPT);
 
       const groqRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',

@@ -13,6 +13,7 @@ import { TranscriptEngine, InterimCaptionState } from '@/features/transcript/eng
 import { useAssemblyAIRealtime, AssemblyAIResult } from '@/features/transcript/hooks/useAssemblyAIRealtime';
 import { CanonicalTranscriptEntry, TranscriptService } from '@/services/supabase/transcripts';
 import { TranscriptAnalysisService, ExtractedDecisionItem } from '@/services/ai/transcript-analysis';
+import { cleanRepeatedPhrases } from '@/lib/audio/stt-hallucination-filter';
 
 export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void, isAppAdmin?: boolean) {
   const room = useRoomContext();
@@ -920,12 +921,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
 
   // AssemblyAI Realtime Callbacks
   const handleAssemblyAIInterim = useCallback((result: AssemblyAIResult) => {
-    console.log('📥 [STT Debug] useMeeting received interim:', result.text);
+    const cleanedContent = cleanRepeatedPhrases(result.text);
+    if (!cleanedContent) return;
+    console.log('📥 [STT Debug] useMeeting received interim:', cleanedContent);
     if (!transcriptEngineRef.current) return;
     transcriptEngineRef.current.processInterimResult(
       result.speakerId,
       result.speakerName,
-      result.text
+      cleanedContent
     );
 
     const displayName = result.speakerName || result.speakerId;
@@ -933,7 +936,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       id: generateId('cap'),
       meeting_id: roomCode,
       sender_id: displayName,
-      content: result.text,
+      content: cleanedContent,
       type: 'caption',
       timestamp: new Date().toISOString(),
       is_final: false,
@@ -954,7 +957,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         type: 'caption',
         id: newCap.id,
         sender_id: displayName,
-        content: result.text,
+        content: cleanedContent,
         is_final: false,
         timestamp: newCap.timestamp,
       }, { reliable: false });
@@ -962,12 +965,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   }, [room, roomCode]);
 
   const handleAssemblyAIFinal = useCallback((result: AssemblyAIResult) => {
-    console.log('💾 [STT Debug] useMeeting received final:', result.text);
+    const cleanedContent = cleanRepeatedPhrases(result.text);
+    if (!cleanedContent) return;
+    console.log('💾 [STT Debug] useMeeting received final:', cleanedContent);
     if (!transcriptEngineRef.current) return;
     transcriptEngineRef.current.processFinalResult(
       result.speakerId,
       result.speakerName,
-      result.text,
+      cleanedContent,
       result.audioStart,
       result.audioEnd,
       result.words,
@@ -979,7 +984,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       id: generateId('cap'),
       meeting_id: roomCode,
       sender_id: displayName,
-      content: result.text,
+      content: cleanedContent,
       type: 'caption',
       timestamp: new Date().toISOString(),
       is_final: true,
@@ -1000,7 +1005,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         type: 'caption',
         id: finalCap.id,
         sender_id: displayName,
-        content: result.text,
+        content: cleanedContent,
         is_final: true,
         timestamp: finalCap.timestamp,
       }, { reliable: true });

@@ -2,6 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { PCMResampler } from '@/lib/audio/pcm-resampler';
+import {
+  isKnownHallucination,
+  isPhysicallyImpossible,
+  RepetitionDetector,
+  MIN_AUDIBLE_BLOB_BYTES,
+  GROQ_ANTI_HALLUCINATION_PROMPT,
+} from '@/lib/audio/stt-hallucination-filter';
 
 export interface AssemblyAIWord {
   text: string;
@@ -57,6 +64,27 @@ export function useAssemblyAIRealtime({
   const fallbackActiveRef = useRef<boolean>(false);
   const fallbackIntervalRef = useRef<number | null>(null);
 
+  // ── Hallucination guards ────────────────────────────────────────
+  const repetitionDetector = useRef(new RepetitionDetector(6));
+
+  const shouldAcceptFinal = useCallback((text: string, durationMs = 3000): boolean => {
+    if (!text.trim()) return false;
+    if (isKnownHallucination(text)) {
+      console.warn('[STT Filter] Blocked hallucination:', JSON.stringify(text));
+      return false;
+    }
+    if (isPhysicallyImpossible(text, durationMs)) {
+      console.warn('[STT Filter] Impossible transcript (word count):', text);
+      return false;
+    }
+    if (repetitionDetector.current.isRepetitionLoop(text)) {
+      console.warn('[STT Filter] Repetition loop, discarding:', JSON.stringify(text));
+      return false;
+    }
+    repetitionDetector.current.commit(text);
+    return true;
+  }, []);
+
   // Keep callback refs stable to prevent unnecessary re-subscriptions
   const onInterimResultRef = useRef(onInterimResult);
   const onFinalResultRef = useRef(onFinalResult);
@@ -110,7 +138,8 @@ export function useAssemblyAIRealtime({
       fallbackRecorderRef.current = recorder;
       recorder.ondataavailable = async (event) => {
         if (!event.data || !event.data.size || !fallbackActiveRef.current) return;
-        
+
+        // ── Blob size gate — skip near-silent micro-chunks ──
         let sendBlob: Blob;
         if (!headerBlobRef.current) {
           headerBlobRef.current = event.data;
@@ -119,17 +148,32 @@ export function useAssemblyAIRealtime({
           sendBlob = new Blob([headerBlobRef.current, event.data], { type: mimeType });
         }
 
+        if (sendBlob.size < MIN_AUDIBLE_BLOB_BYTES) {
+          console.debug('[STT Filter] Groq fallback: blob too small, skipping:', sendBlob.size);
+          return;
+        }
+
+        const chunkStart = Date.now();
         const formData = new FormData();
         formData.append('file', sendBlob, `caption-${Date.now()}.webm`);
         formData.append('language', 'en');
+        formData.append('prompt', GROQ_ANTI_HALLUCINATION_PROMPT);
         try {
           const response = await fetch('/api/stt/transcribe', { method: 'POST', body: formData });
           const data = await response.json();
           const text = typeof data.text === 'string' ? data.text.trim() : '';
-          // Filter out Whisper silent artifacts
-          const isArtifact = /^(thank you\.|subtitles by|thanks for watching|subscribe for more)$/i.test(text);
-          if (response.ok && text && !isArtifact && fallbackActiveRef.current) {
-            onFinalResultRef.current?.({ messageType: 'FinalTranscript', text, speakerId: participantId, speakerName: participantName, audioStart: Date.now() - startTimeRef.current - 1500, audioEnd: Date.now() - startTimeRef.current, confidence: 0.9, words: [] });
+          const durationMs = Date.now() - chunkStart + 2000; // approx audio duration
+          if (response.ok && text && fallbackActiveRef.current && shouldAcceptFinal(text, durationMs)) {
+            onFinalResultRef.current?.({
+              messageType: 'FinalTranscript',
+              text,
+              speakerId: participantId,
+              speakerName: participantName,
+              audioStart: Date.now() - startTimeRef.current - 2000,
+              audioEnd: Date.now() - startTimeRef.current,
+              confidence: 0.9,
+              words: [],
+            });
           }
         } catch (error) {
           console.warn('[Groq Whisper fallback]', error);
@@ -257,11 +301,13 @@ export function useAssemblyAIRealtime({
           rec.onresult = (e: any) => {
             for (let i = e.resultIndex; i < e.results.length; i++) {
               const res = e.results[i];
-              const text = res[0].transcript;
+              const text = (res[0].transcript || '').trim();
+              if (!text) continue;
               if (res.isFinal) {
+                if (!shouldAcceptFinal(text, 3000)) continue;
                 onFinalResultRef.current?.({
                   messageType: 'FinalTranscript',
-                  text: text.trim(),
+                  text,
                   speakerId: participantId,
                   speakerName: participantName,
                   audioStart: Date.now() - startTimeRef.current - 1000,
@@ -270,9 +316,11 @@ export function useAssemblyAIRealtime({
                   words: [],
                 });
               } else {
+                // Interims: only block known hallucinations (don't check repetition on partials)
+                if (isKnownHallucination(text)) continue;
                 onInterimResultRef.current?.({
                   messageType: 'PartialTranscript',
-                  text: text.trim(),
+                  text,
                   speakerId: participantId,
                   speakerName: participantName,
                   audioStart: Date.now() - startTimeRef.current,
@@ -354,7 +402,12 @@ export function useAssemblyAIRealtime({
           const isFinal = msgType === 'FinalTranscript' || msgType === 'final' || msgType === 'Turn' || !msgType;
 
           if (isInterim) {
-            console.log(`🗣️ [STT Debug] Interim Transcript: "${text}" (${participantName})`);
+            console.log(`🗣️ [STT Debug] Interim: "${text}"`);
+            // Block known hallucinations on interims; skip repetition check (partials evolve)
+            if (isKnownHallucination(text)) {
+              console.warn('[STT Filter] Blocked interim hallucination:', text);
+              return;
+            }
             const result: AssemblyAIResult = {
               messageType: 'PartialTranscript',
               text,
@@ -367,7 +420,11 @@ export function useAssemblyAIRealtime({
             };
             onInterimResultRef.current?.(result);
           } else if (isFinal) {
-            console.log(`🎯 [STT Debug] Final Transcript: "${text}" (${participantName})`);
+            const durationMs = data.audio_end && data.audio_start
+              ? data.audio_end - data.audio_start
+              : 3000;
+            if (!shouldAcceptFinal(text, durationMs)) return;
+            console.log(`🎯 [STT Debug] Final: "${text}"`);
             const result: AssemblyAIResult = {
               messageType: 'FinalTranscript',
               text,

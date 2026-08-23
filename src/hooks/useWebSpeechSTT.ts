@@ -1,6 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  isKnownHallucination,
+  isPhysicallyImpossible,
+  RepetitionDetector,
+  MIN_AUDIBLE_BLOB_BYTES,
+} from '@/lib/audio/stt-hallucination-filter';
 
 export type STTEngineType = 'groq' | 'whisper_local' | 'webspeech';
 
@@ -35,7 +41,11 @@ interface IWindowWithSpeech extends Window {
  * Universal Dual-Engine STT Hook for Talk2Me AI.
  * Combines Browser Native WebSpeech (for real-time streaming zero-latency captions)
  * with Groq/Gemini Whisper AI (with valid WebM container header slicing).
- * Optimized for high microphone sensitivity to capture quiet speech and soft words.
+ * Includes multi-layer hallucination suppression:
+ *   • Known-artifact blocklist
+ *   • Repetition / loop detector (Dice bigram similarity)
+ *   • Physical word-count impossibility guard
+ *   • Minimum blob size gate (8 KB)
  */
 export function useWebSpeechSTT({
   enabled = false,
@@ -57,29 +67,51 @@ export function useWebSpeechSTT({
   const recognitionRef = useRef<any>(null);
   const isIntentionalStopRef = useRef<boolean>(false);
   const isProcessingQueueRef = useRef<boolean>(false);
-  const audioQueueRef = useRef<Blob[]>([]);
+  const audioQueueRef = useRef<{ blob: Blob; capturedAt: number }[]>([]);
 
-  // Filter out standalone Whisper silent artifacts (exact match only, never drop conversational speech)
-  const isSilenceHallucination = (text: string): boolean => {
-    const cleaned = text.trim();
-    if (!cleaned || cleaned.length < 1) return true;
-    const lower = cleaned.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "");
-    if (!lower || lower.length < 1) return true;
+  // ── Hallucination guards ──────────────────────────────────────────
+  const repetitionDetector = useRef(new RepetitionDetector(6));
 
-    // Strict exact match for common Whisper artifacts on pure silence
-    const exactHallucinations = [
-      'subtitles by', 'mbc news', 'amara.org', 'thanks for watching',
-      'subscribe for more', 'captions by', 'translated by'
-    ];
-    return exactHallucinations.includes(lower);
-  };
+  /**
+   * Central accept/reject decision for any final text.
+   * Returns true if the text should be committed to the UI.
+   */
+  const shouldAccept = useCallback((
+    text: string,
+    durationMs: number = 3000,
+  ): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed) return false;
 
+    if (isKnownHallucination(trimmed)) {
+      console.warn('[STT Filter] Blocked known hallucination:', JSON.stringify(trimmed));
+      return false;
+    }
+
+    if (isPhysicallyImpossible(trimmed, durationMs)) {
+      console.warn('[STT Filter] Physically impossible transcript (too many words for duration):', trimmed);
+      return false;
+    }
+
+    if (repetitionDetector.current.isRepetitionLoop(trimmed)) {
+      console.warn('[STT Filter] Repetition loop detected, discarding:', JSON.stringify(trimmed));
+      return false;
+    }
+
+    return true;
+  }, []);
+
+  const commitText = useCallback((text: string) => {
+    repetitionDetector.current.commit(text);
+  }, []);
+
+  // ── Stop ─────────────────────────────────────────────────────────
   const stopListening = useCallback(() => {
     isIntentionalStopRef.current = true;
     audioQueueRef.current = [];
     headerBlobRef.current = null;
+    repetitionDetector.current.reset();
 
-    // Stop Native WebSpeech Recognition if active
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onend = null;
@@ -89,7 +121,6 @@ export function useWebSpeechSTT({
       recognitionRef.current = null;
     }
 
-    // Stop MediaRecorder if active
     if (mediaRecorderRef.current) {
       try {
         if (mediaRecorderRef.current.state !== 'inactive') {
@@ -99,7 +130,6 @@ export function useWebSpeechSTT({
       mediaRecorderRef.current = null;
     }
 
-    // Stop microphone tracks
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(t => t.stop());
       mediaStreamRef.current = null;
@@ -109,14 +139,24 @@ export function useWebSpeechSTT({
     setInterimText('');
   }, []);
 
+  // ── Groq/Whisper queue processor ─────────────────────────────────
   const processAudioQueue = useCallback(async () => {
     if (isProcessingQueueRef.current || audioQueueRef.current.length === 0) return;
     isProcessingQueueRef.current = true;
 
     while (audioQueueRef.current.length > 0) {
-      const audioBlob = audioQueueRef.current.shift();
-      if (!audioBlob || audioBlob.size < 300) continue;
+      const item = audioQueueRef.current.shift();
+      if (!item) continue;
 
+      const { blob: audioBlob, capturedAt } = item;
+
+      // ── Layer 2: min blob size gate ───────────────────────────────
+      if (audioBlob.size < MIN_AUDIBLE_BLOB_BYTES) {
+        console.debug('[STT Filter] Blob too small, skipping:', audioBlob.size, 'bytes');
+        continue;
+      }
+
+      const requestStart = Date.now();
       try {
         const formData = new FormData();
         formData.append('file', audioBlob, 'audio.webm');
@@ -130,7 +170,10 @@ export function useWebSpeechSTT({
         const data = await res.json();
         if (data.text) {
           const trimmed = data.text.trim();
-          if (trimmed.length > 0 && !isSilenceHallucination(trimmed)) {
+          const durationMs = Date.now() - capturedAt; // approx chunk duration
+
+          if (trimmed.length > 0 && shouldAccept(trimmed, durationMs)) {
+            commitText(trimmed);
             setFinalText(trimmed);
             setInterimText('');
             onTranscript?.(trimmed, true);
@@ -142,27 +185,35 @@ export function useWebSpeechSTT({
       } catch (err) {
         console.warn('[Talk2Me STT] Queue chunk transcribe notice:', err);
       }
+
+      void requestStart; // suppress unused warning
     }
 
     isProcessingQueueRef.current = false;
-  }, [currentLanguage, onError, onTranscript]);
+  }, [currentLanguage, onError, onTranscript, shouldAccept, commitText]);
 
   const enqueueAudioChunk = useCallback((audioBlob: Blob) => {
-    if (!audioBlob || audioBlob.size < 300) return;
+    // ── Layer 2a: immediate blob size gate (saves bandwidth) ─────────
+    if (!audioBlob || audioBlob.size < MIN_AUDIBLE_BLOB_BYTES) {
+      console.debug('[STT Filter] Dropping under-size chunk:', audioBlob?.size ?? 0, 'bytes');
+      return;
+    }
 
-    // Save header from first chunk to assemble valid standalone WebM containers for subsequent chunks
     if (!headerBlobRef.current) {
       headerBlobRef.current = audioBlob;
-      audioQueueRef.current.push(audioBlob);
+      audioQueueRef.current.push({ blob: audioBlob, capturedAt: Date.now() });
     } else {
-      // Prepend header to new cluster chunk so backend FFmpeg/Whisper can decode it cleanly
-      const validWebmBlob = new Blob([headerBlobRef.current, audioBlob], { type: audioBlob.type || 'audio/webm' });
-      audioQueueRef.current.push(validWebmBlob);
+      // Prepend header so backend FFmpeg/Whisper can decode each chunk standalone
+      const validWebmBlob = new Blob([headerBlobRef.current, audioBlob], {
+        type: audioBlob.type || 'audio/webm',
+      });
+      audioQueueRef.current.push({ blob: validWebmBlob, capturedAt: Date.now() });
     }
 
     processAudioQueue();
   }, [processAudioQueue]);
 
+  // ── Start ─────────────────────────────────────────────────────────
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
 
@@ -170,13 +221,14 @@ export function useWebSpeechSTT({
     setError(null);
     audioQueueRef.current = [];
     headerBlobRef.current = null;
+    repetitionDetector.current.reset();
 
     const win = window as IWindowWithSpeech;
     const SpeechRecognitionClass = win.SpeechRecognition || win.webkitSpeechRecognition;
 
     let nativeStarted = false;
 
-    // 1. Try Browser Native WebSpeech Engine (instant, zero-latency streaming)
+    // 1. Browser Native WebSpeech (instant, zero-latency streaming)
     if (SpeechRecognitionClass) {
       try {
         const recognition = new SpeechRecognitionClass();
@@ -202,11 +254,13 @@ export function useWebSpeechSTT({
           }
 
           if (currentInterim.trim()) {
+            // Interims are shown as-is (filtering only on finals)
             setInterimText(currentInterim.trim());
             onTranscript?.(currentInterim.trim(), false);
           }
 
-          if (currentFinal.trim() && !isSilenceHallucination(currentFinal)) {
+          if (currentFinal.trim() && shouldAccept(currentFinal, 3000)) {
+            commitText(currentFinal.trim());
             setFinalText(currentFinal.trim());
             setInterimText('');
             onTranscript?.(currentFinal.trim(), true);
@@ -236,14 +290,14 @@ export function useWebSpeechSTT({
       }
     }
 
-    // 2. Start MediaRecorder High-Sensitivity Audio Recording (for Groq/Whisper API fallback or dual engine)
+    // 2. MediaRecorder High-Sensitivity Audio (Groq/Whisper API fallback / dual engine)
     if (navigator.mediaDevices?.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
-            noiseSuppression: false, // Turn off aggressive noise suppression so quiet speech & soft words are preserved
-            autoGainControl: true,   // Automatically boost low volume spoken words for maximum microphone sensitivity
+            noiseSuppression: false, // Keep off — aggressive suppression can cause hallucination
+            autoGainControl: true,
             channelCount: 1,
           },
         });
@@ -260,7 +314,7 @@ export function useWebSpeechSTT({
         mediaRecorderRef.current = recorder;
 
         recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 300) {
+          if (e.data && e.data.size > 0) {
             enqueueAudioChunk(e.data);
           }
         };
@@ -275,10 +329,10 @@ export function useWebSpeechSTT({
           }
         };
 
-        recorder.start(2500);
+        // ── 3 seconds per chunk: more audio context → fewer incomplete-utterance artifacts ──
+        recorder.start(3000);
         setIsListening(true);
         setIsSupported(true);
-
       } catch (err) {
         console.warn('[Talk2Me STT] Mic access error:', err);
         if (!nativeStarted) {
@@ -290,7 +344,7 @@ export function useWebSpeechSTT({
       setIsSupported(false);
       setError('Speech recognition and audio recording are not supported on this browser.');
     }
-  }, [currentLanguage, enabled, enqueueAudioChunk, onTranscript]);
+  }, [currentLanguage, enabled, enqueueAudioChunk, onTranscript, shouldAccept, commitText]);
 
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -328,5 +382,3 @@ export function useWebSpeechSTT({
     setLanguage: setCurrentLanguage,
   };
 }
-
-

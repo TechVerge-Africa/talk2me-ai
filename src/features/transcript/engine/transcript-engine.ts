@@ -1,4 +1,5 @@
 import { CanonicalTranscriptEntry, TranscriptService, TranscriptWord } from '@/services/supabase/transcripts';
+import { cleanRepeatedPhrases, mergeContinuousText } from '@/lib/audio/stt-hallucination-filter';
 
 export interface InterimCaptionState {
   speakerId: string;
@@ -50,13 +51,14 @@ export class TranscriptEngine {
    * Processes incoming interim transcript update from AssemblyAI Realtime.
    */
   public processInterimResult(speakerId: string, speakerName: string, text: string): void {
-    if (!text.trim()) {
+    const cleanedText = cleanRepeatedPhrases(text);
+    if (!cleanedText) {
       this.activeInterimMap.delete(speakerId);
     } else {
       this.activeInterimMap.set(speakerId, {
         speakerId,
         speakerName,
-        text: text.trim(),
+        text: cleanedText,
         isFinal: false,
         timestamp: new Date().toISOString(),
       });
@@ -78,8 +80,8 @@ export class TranscriptEngine {
     words: TranscriptWord[],
     confidence: number = 0.98
   ): Promise<CanonicalTranscriptEntry | null> {
-    const trimmedText = text.trim();
-    if (!trimmedText) return null;
+    const cleanedText = cleanRepeatedPhrases(text);
+    if (!cleanedText) return null;
 
     // Clear interim text for this speaker upon receiving final result
     this.activeInterimMap.delete(speakerId);
@@ -96,9 +98,14 @@ export class TranscriptEngine {
       lastTurn.speaker_id === speakerId &&
       (startMs - lastTurn.end_ms <= this.turnTimeoutMs || Math.abs(startMs - lastTurn.start_ms) < 15000)
     ) {
-      // Append text to existing turn
+      const updatedContent = mergeContinuousText(lastTurn.content, cleanedText);
+
+      // If merged content is identical to existing content, skip saving duplicate chunk
+      if (updatedContent === lastTurn.content) {
+        return lastTurn;
+      }
+
       const updatedWords = [...lastTurn.words, ...words];
-      const updatedContent = `${lastTurn.content} ${trimmedText}`;
       const updatedEndMs = Math.max(lastTurn.end_ms, endMs);
 
       targetTurn = {
@@ -118,10 +125,10 @@ export class TranscriptEngine {
         meeting_id: this.meetingId,
         speaker_id: speakerId,
         speaker_name: speakerName,
-        content: trimmedText,
+        content: cleanedText,
         start_ms: startMs,
         end_ms: endMs,
-        words: words.length > 0 ? words : [{ text: trimmedText, start: startMs, end: endMs, confidence }],
+        words: words.length > 0 ? words : [{ text: cleanedText, start: startMs, end: endMs, confidence }],
         confidence: confidence,
         status: 'final',
         turn_id: newTurnId,
