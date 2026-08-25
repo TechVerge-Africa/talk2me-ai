@@ -41,6 +41,8 @@ import {
   DbWorkspaceMessage,
   DbWorkspaceChannel
 } from '@/services/supabase/workspaces';
+import { MentionAutocomplete, MentionCandidate } from '@/components/ui/mention-autocomplete';
+import { FormattedChatMessage } from '@/components/ui/formatted-chat-message';
 import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
 import { GradientBackground } from '@/components/ui/gradient-background';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -91,6 +93,7 @@ function DashboardContent() {
   const [chatInputText, setChatInputText] = useState<string>('');
   const [askAiInput, setAskAiInput] = useState<string>('');
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+  const chatInputRef = React.useRef<HTMLInputElement>(null);
 
   // Mobile menu drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -125,13 +128,54 @@ function DashboardContent() {
   useEffect(() => {
     if (user) {
       fetchWorkspaces();
+
+      const joinCode = searchParams.get('join');
+      if (joinCode) {
+        setJoinInviteCode(joinCode.trim());
+        setShowJoinWsModal(true);
+      }
     }
-  }, [user]);
+  }, [user, searchParams]);
 
   // Active Workspace Data Object
   const currentWorkspaceData = useMemo(() => {
     return workspacesData.find((w) => w.workspace.id === activeWorkspaceId) || workspacesData[0] || null;
   }, [workspacesData, activeWorkspaceId]);
+
+  const mentionCandidates: MentionCandidate[] = useMemo(() => {
+    const candidates: MentionCandidate[] = [
+      {
+        id: 'ai-assistant',
+        handle: 'Talk2Me',
+        name: 'Talk2Me AI',
+        description: 'AI Workspace Copilot (query transcripts & team docs)',
+        type: 'ai',
+      },
+      {
+        id: 'everyone',
+        handle: 'everyone',
+        name: 'Everyone in channel',
+        description: 'Notify all workspace members in this channel',
+        type: 'all',
+      },
+    ];
+
+    if (currentWorkspaceData?.members) {
+      currentWorkspaceData.members.forEach((m) => {
+        const rawName = m.profile?.full_name || 'Member';
+        const handle = rawName.replace(/\s+/g, '');
+        candidates.push({
+          id: m.user_id,
+          handle,
+          name: rawName,
+          description: m.role ? `Workspace ${m.role}` : 'Workspace Member',
+          type: 'member',
+        });
+      });
+    }
+
+    return candidates;
+  }, [currentWorkspaceData]);
 
   // Real-Time Subscriptions for Active Workspace Chat Messages
   useEffect(() => {
@@ -767,7 +811,9 @@ function DashboardContent() {
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-slate-800 dark:text-slate-200 leading-relaxed">{msg.content}</p>
+                      <p className="text-slate-800 dark:text-slate-200 leading-relaxed">
+                        <FormattedChatMessage content={msg.content} />
+                      </p>
                     </div>
                   ))
                 )}
@@ -780,13 +826,20 @@ function DashboardContent() {
               </div>
 
               {/* Input Box */}
-              <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 bg-slate-50 dark:bg-slate-900/80">
+              <div className="relative p-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 bg-slate-50 dark:bg-slate-900/80">
+                <MentionAutocomplete
+                  inputValue={chatInputText}
+                  onSelectMention={(newText) => setChatInputText(newText)}
+                  candidates={mentionCandidates}
+                  inputRef={chatInputRef}
+                />
                 <input
+                  ref={chatInputRef}
                   type="text"
                   value={chatInputText}
                   onChange={(e) => setChatInputText(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                  placeholder="Send message or type @Talk2Me..."
+                  placeholder="Send message or type @ to tag AI or members..."
                   className="flex-1 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
                 />
                 <button
@@ -876,23 +929,37 @@ function DashboardContent() {
                 </div>
                 <div>
                   <label className="text-xs font-bold uppercase text-slate-400 block mb-1">Invite Code</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
                       type="text"
                       value={workspace?.invite_code || ''}
                       readOnly
                       className="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-mono font-bold"
                     />
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(workspace?.invite_code || '');
-                        setCopiedWsCode(true);
-                        setTimeout(() => setCopiedWsCode(false), 2000);
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold"
-                    >
-                      {copiedWsCode ? 'Copied!' : 'Copy Code'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(workspace?.invite_code || '');
+                          setCopiedWsCode(true);
+                          setTimeout(() => setCopiedWsCode(false), 2000);
+                        }}
+                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all"
+                      >
+                        {copiedWsCode ? 'Copied Code!' : 'Copy Code'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          const inviteUrl = `${window.location.origin}/dashboard?join=${workspace?.invite_code || ''}`;
+                          navigator.clipboard.writeText(inviteUrl);
+                          setCopiedWsCode(true);
+                          setTimeout(() => setCopiedWsCode(false), 2000);
+                        }}
+                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-white/10 text-slate-800 dark:text-white hover:bg-slate-300 dark:hover:bg-white/20 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Share2 className="size-3.5" />
+                        Copy Link
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

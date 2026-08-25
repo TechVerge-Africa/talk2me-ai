@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Message } from "@/types/message";
 import { Send, Users, User, ChevronDown, Lock, Sparkles, Bot } from "lucide-react";
 import type { Participant } from "livekit-client";
+import { MentionAutocomplete, MentionCandidate } from "@/components/ui/mention-autocomplete";
+import { FormattedChatMessage } from "@/components/ui/formatted-chat-message";
 
 interface ChatPanelProps {
   messages: Message[];
@@ -20,7 +22,41 @@ export function ChatPanel({
   const [recipient, setRecipient] = useState<"everyone" | string>("everyone");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const mentionCandidates: MentionCandidate[] = useMemo(() => {
+    const candidates: MentionCandidate[] = [
+      {
+        id: "ai-assistant",
+        handle: "Talk2Me AI",
+        name: "Talk2Me AI",
+        description: "AI Meeting Assistant (asks questions/summaries)",
+        type: "ai",
+      },
+      {
+        id: "everyone",
+        handle: "everyone",
+        name: "Everyone in room",
+        description: "Broadcast message to all meeting participants",
+        type: "all",
+      },
+    ];
+
+    participants.forEach((p) => {
+      if (p.identity !== localParticipantIdentity) {
+        candidates.push({
+          id: p.identity,
+          handle: p.identity,
+          name: p.identity,
+          description: "Meeting Participant",
+          type: "member",
+        });
+      }
+    });
+
+    return candidates;
+  }, [participants, localParticipantIdentity]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -131,6 +167,7 @@ export function ChatPanel({
                       {formatTime(msg.timestamp)}
                     </span>
                   </div>
+
                   <div
                     className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] leading-relaxed border shadow-md transition-all ${
                       isAi
@@ -144,7 +181,7 @@ export function ChatPanel({
                           }`
                     }`}
                   >
-                    {msg.content}
+                    <FormattedChatMessage content={msg.content} />
                   </div>
                 </div>
               );
@@ -247,13 +284,22 @@ export function ChatPanel({
             </button>
           </div>
 
+          {/* Mention Autocomplete Popover */}
+          <MentionAutocomplete
+            inputValue={input}
+            onSelectMention={(newText) => setInput(newText)}
+            candidates={mentionCandidates}
+            inputRef={chatInputRef}
+          />
+
           {/* Text input area */}
           <div className="flex items-center gap-2 pl-1">
             <input
+              ref={chatInputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={recipient === "everyone" ? "Write a message or type @Talk2Me AI..." : `Send private message to ${selectedParticipant?.identity || recipient}...`}
+              placeholder={recipient === "everyone" ? "Write a message or type @ to tag..." : `Send private message to ${selectedParticipant?.identity || recipient}...`}
               className="flex-1 bg-transparent border-0 text-white placeholder:text-white/35 py-1 text-sm focus:outline-none focus:ring-0 outline-none"
             />
             <button
