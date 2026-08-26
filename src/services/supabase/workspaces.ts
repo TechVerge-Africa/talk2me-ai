@@ -77,15 +77,10 @@ export const WorkspaceService = {
 
     const workspaceIds = (memberRows || []).map((m: { workspace_id: string }) => m.workspace_id);
 
+    // New users with no workspaces: return empty list so the UI can show
+    // a proper onboarding prompt (Create or Join workspace).
     if (workspaceIds.length === 0) {
-      // Create a default starter workspace for new users
-      const starter = await this.createWorkspace({
-        name: 'Talk2Me Team',
-        topic: 'Product roadmap & real-time collaboration',
-        icon: 'rocket',
-        userId,
-      });
-      return [starter];
+      return [];
     }
 
     // Fetch all workspaces details
@@ -196,12 +191,16 @@ export const WorkspaceService = {
       throw new Error(wsErr?.message || 'Failed to create workspace');
     }
 
-    // 2. Add owner to workspace_members
-    await supabase.from('workspace_members').insert({
-      workspace_id: ws.id,
-      user_id: params.userId,
-      role: 'owner',
-    });
+    // 2. Add owner to workspace_members — read back the inserted row to get its real ID
+    const { data: ownerMemberRow } = await supabase
+      .from('workspace_members')
+      .insert({
+        workspace_id: ws.id,
+        user_id: params.userId,
+        role: 'owner',
+      })
+      .select('id, workspace_id, user_id, role, joined_at')
+      .single();
 
     // 3. Create default channels (# General, # Product, # Engineering)
     const defaultChannels = ['# General', '# Product', '# Engineering'];
@@ -217,46 +216,43 @@ export const WorkspaceService = {
       .select();
 
     // 4. Send welcome message in # General
-    const welcomeMsg: DbWorkspaceMessage = {
-      id: '',
-      workspace_id: ws.id,
-      channel_name: '# General',
-      sender_id: 'talk2me-ai',
-      sender_name: 'Talk2Me AI',
-      content: `Welcome to ${ws.name}! 🚀 Use @Talk2Me anywhere in chat or visit the Talk2Me AI tab to query workspace meeting transcripts and team knowledge.`,
-      is_ai: true,
-      sources: ['Workspace Setup'],
-      created_at: new Date().toISOString(),
-    };
-
     const { data: savedMsg } = await supabase
       .from('workspace_messages')
       .insert({
         workspace_id: ws.id,
         channel_name: '# General',
-        sender_id: welcomeMsg.sender_id,
-        sender_name: welcomeMsg.sender_name,
-        content: welcomeMsg.content,
+        sender_id: 'talk2me-ai',
+        sender_name: 'Talk2Me AI',
+        content: `Welcome to ${ws.name}! 🚀 Use @Talk2Me anywhere in chat or visit the Talk2Me AI tab to query workspace meeting transcripts and team knowledge.`,
         is_ai: true,
-        sources: welcomeMsg.sources,
+        sources: ['Workspace Setup'],
       })
       .select()
       .single();
 
-    return {
-      workspace: ws as DbWorkspace,
-      members: [
-        {
-          id: 'owner-mem',
+    const ownerMember: DbWorkspaceMember = ownerMemberRow
+      ? {
+          id: ownerMemberRow.id,
+          workspace_id: ownerMemberRow.workspace_id,
+          user_id: ownerMemberRow.user_id,
+          role: ownerMemberRow.role,
+          joined_at: ownerMemberRow.joined_at,
+        }
+      : {
+          // Fallback: only if the select failed
+          id: `${ws.id}-owner`,
           workspace_id: ws.id,
           user_id: params.userId,
           role: 'owner',
           joined_at: new Date().toISOString(),
-        },
-      ],
+        };
+
+    return {
+      workspace: ws as DbWorkspace,
+      members: [ownerMember],
       channels: (channels as DbWorkspaceChannel[]) || [],
       messages: {
-        '# General': savedMsg ? [savedMsg as DbWorkspaceMessage] : [welcomeMsg],
+        '# General': savedMsg ? [savedMsg as DbWorkspaceMessage] : [],
       },
     };
   },
@@ -384,4 +380,72 @@ export const WorkspaceService = {
       supabase.removeChannel(subscription);
     };
   },
+
+  /**
+   * Subscribes to real-time membership changes for a workspace.
+   * Calls onMemberJoined with a fully-shaped DbWorkspaceMember (including profile)
+   * whenever someone joins. Calls onMemberLeft with the user_id when someone leaves.
+   */
+  subscribeToWorkspaceMembers(
+    workspaceId: string,
+    onMemberJoined: (member: DbWorkspaceMember) => void,
+    onMemberLeft?: (userId: string) => void
+  ) {
+    const subscription = supabase
+      .channel(`ws-members-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'workspace_members',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        async (payload: any) => {
+          const raw = payload.new;
+          // Fetch profile separately — postgres_changes payloads don't include joins
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('full_name, avatar_url, role')
+            .eq('id', raw.user_id)
+            .maybeSingle();
+
+          const member: DbWorkspaceMember = {
+            id: raw.id,
+            workspace_id: raw.workspace_id,
+            user_id: raw.user_id,
+            role: raw.role,
+            joined_at: raw.joined_at,
+            profile: profileData
+              ? {
+                  full_name: profileData.full_name,
+                  avatar_url: profileData.avatar_url,
+                  role: profileData.role,
+                }
+              : undefined,
+          };
+          onMemberJoined(member);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'workspace_members',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload: any) => {
+          if (onMemberLeft) {
+            onMemberLeft(payload.old?.user_id as string);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  },
 };
+

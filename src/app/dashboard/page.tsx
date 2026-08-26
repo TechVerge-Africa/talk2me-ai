@@ -389,6 +389,44 @@ function DashboardContent() {
     };
   }, [activeWorkspaceId]);
 
+  // Real-Time Subscriptions for Workspace Members (join / leave)
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+
+    const unsubscribe = WorkspaceService.subscribeToWorkspaceMembers(
+      activeWorkspaceId,
+      // On member joined
+      (newMember) => {
+        setWorkspacesData((prevList) =>
+          prevList.map((item) => {
+            if (item.workspace.id !== activeWorkspaceId) return item;
+            // De-duplicate: skip if user already in list
+            if (item.members.some((m) => m.user_id === newMember.user_id)) {
+              return item;
+            }
+            return { ...item, members: [...item.members, newMember] };
+          })
+        );
+      },
+      // On member left
+      (userId) => {
+        setWorkspacesData((prevList) =>
+          prevList.map((item) => {
+            if (item.workspace.id !== activeWorkspaceId) return item;
+            return {
+              ...item,
+              members: item.members.filter((m) => m.user_id !== userId),
+            };
+          })
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeWorkspaceId]);
+
   // Handle Workspace Creation
   const handleCreateWorkspace = async () => {
     if (!newWsName.trim() || !user) return;
@@ -676,6 +714,141 @@ function DashboardContent() {
     );
   }
 
+  // ── No workspaces: show onboarding screen ──────────────────────────────
+  if (!isLoadingWorkspaces && workspacesData.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans">
+        <GradientBackground />
+        {/* Minimal header */}
+        <header className="h-16 border-b border-slate-200 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30">
+          <Link href="/" className="flex items-center gap-2 font-black text-lg text-slate-900 dark:text-white">
+            <Video className="size-5 text-indigo-500" /> Talk2Me AI
+          </Link>
+          <ThemeToggle />
+        </header>
+
+        {/* Onboarding content */}
+        <main className="flex-1 grid place-items-center px-4 py-16">
+          <div className="max-w-lg w-full flex flex-col items-center text-center gap-8">
+            {/* Icon + headline */}
+            <div className="size-20 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center shadow-xl shadow-indigo-500/30">
+              <Building2 className="size-10 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white">
+                Welcome to Talk2Me AI
+              </h1>
+              <p className="mt-3 text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
+                You're not part of any workspace yet. Create your own or join one with an invite code.
+              </p>
+            </div>
+
+            {/* CTAs */}
+            <div className="w-full grid sm:grid-cols-2 gap-4">
+              <button
+                onClick={() => setShowCreateWsModal(true)}
+                className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 transition-all group"
+              >
+                <div className="size-12 rounded-xl bg-indigo-600 group-hover:scale-110 transition-transform grid place-items-center shadow-md">
+                  <Plus className="size-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-extrabold text-slate-900 dark:text-white">Create Workspace</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Start fresh with your own team</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setShowJoinWsModal(true)}
+                className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-cyan-500 bg-cyan-50 dark:bg-cyan-950/40 hover:bg-cyan-100 dark:hover:bg-cyan-950/60 transition-all group"
+              >
+                <div className="size-12 rounded-xl bg-cyan-600 group-hover:scale-110 transition-transform grid place-items-center shadow-md">
+                  <Compass className="size-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-extrabold text-slate-900 dark:text-white">Join Workspace</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Enter an invite code to join</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </main>
+
+        {/* Re-use the same Create Workspace modal */}
+        {showCreateWsModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-4">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Building2 className="size-5 text-indigo-500" /> New Workspace
+                </h2>
+                <button onClick={() => setShowCreateWsModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <X className="size-4 text-slate-400" />
+                </button>
+              </div>
+              <input
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="e.g. Engineering Lead Team"
+                value={newWsName}
+                onChange={(e) => setNewWsName(e.target.value)}
+              />
+              <input
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="e.g. AI Product Development & Syncs"
+                value={newWsTopic}
+                onChange={(e) => setNewWsTopic(e.target.value)}
+              />
+              <button
+                onClick={handleCreateWorkspace}
+                disabled={!newWsName.trim() || isCreatingWs}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+              >
+                {isCreatingWs ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                {isCreatingWs ? 'Creating...' : 'Create Workspace'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Re-use the same Join Workspace modal */}
+        {showJoinWsModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-4">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col gap-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Compass className="size-5 text-cyan-500" /> Join Workspace
+                </h2>
+                <button onClick={() => setShowJoinWsModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <X className="size-4 text-slate-400" />
+                </button>
+              </div>
+              <input
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                placeholder="e.g. WS-A1B2C3"
+                value={joinInviteCode}
+                onChange={(e) => setJoinInviteCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleJoinWorkspace()}
+              />
+              {joinError && (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <AlertCircle className="size-3.5" /> {joinError}
+                </p>
+              )}
+              <button
+                onClick={handleJoinWorkspace}
+                disabled={!joinInviteCode.trim() || isJoiningWs}
+                className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
+              >
+                {isJoiningWs ? <Loader2 className="size-4 animate-spin" /> : <Compass className="size-4" />}
+                {isJoiningWs ? 'Joining...' : 'Join Workspace'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const workspace = currentWorkspaceData?.workspace;
   const members = currentWorkspaceData?.members || [];
   const channels = currentWorkspaceData?.channels || [];
@@ -683,6 +856,7 @@ function DashboardContent() {
   const askAiMessages = currentWorkspaceData?.messages['🤖 Ask AI'] || [];
 
   return (
+
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans transition-colors duration-300">
       <GradientBackground />
 
