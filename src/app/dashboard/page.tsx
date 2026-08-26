@@ -15,6 +15,7 @@ import {
   Loader2,
   Building2,
   Users,
+  User,
   Settings,
   ArrowRight,
   Send,
@@ -83,10 +84,49 @@ type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, updateProfile, signOut } = useAuth();
 
   // Navigation tab & selection state
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
+
+  // ── Profile / Username Editing State ─────────────────────────────────
+  const [usernameInput, setUsernameInput] = useState<string>('');
+  const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState<boolean>(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+
+  const userDisplayName = useMemo(() => {
+    return profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  }, [profile, user]);
+
+  useEffect(() => {
+    const name = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || '';
+    if (name) {
+      setUsernameInput(name);
+    }
+  }, [profile, user]);
+
+  const handleSaveProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!usernameInput.trim()) {
+      setProfileSaveError('Username cannot be empty');
+      return;
+    }
+    setIsSavingProfile(true);
+    setProfileSaveError(null);
+    setProfileSaveSuccess(false);
+
+    try {
+      await updateProfile({ full_name: usernameInput.trim() });
+      setProfileSaveSuccess(true);
+      setTimeout(() => setProfileSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setProfileSaveError(err?.message || 'Failed to update username');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   // ── Meetings Tab State ─────────────────────────────────────────────────
   type WorkspaceMeeting = Awaited<ReturnType<typeof MeetingService.getWorkspaceMeetings>>[number];
@@ -530,7 +570,7 @@ function DashboardContent() {
     const textToSend = chatInputText.trim();
     setChatInputText('');
 
-    const senderName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Member';
+    const senderName = userDisplayName;
 
     try {
       // 1. Send User Message
@@ -602,7 +642,7 @@ function DashboardContent() {
     setAskAiInput('');
     setIsAiThinking(true);
 
-    const senderName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'You';
+    const senderName = userDisplayName;
 
     try {
       // Send user query to Ask AI channel
@@ -979,7 +1019,7 @@ function DashboardContent() {
               aria-haspopup="true"
               aria-expanded={showProfileDropdown}
             >
-              {user?.email?.slice(0, 2) || 'US'}
+              {userDisplayName.slice(0, 2)}
             </button>
 
             {/* Dropdown Panel */}
@@ -990,17 +1030,17 @@ function DashboardContent() {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -6 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full mt-2.5 w-60 z-50 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/60 dark:shadow-slate-950/60 overflow-hidden"
+                  className="absolute right-0 top-full mt-2.5 w-64 z-50 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/60 dark:shadow-slate-950/60 overflow-hidden"
                 >
                   {/* User info header */}
                   <div className="px-4 py-3.5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border-b border-slate-200 dark:border-slate-700/60">
                     <div className="flex items-center gap-3">
                       <div className="size-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-sm font-black uppercase shadow-md flex-shrink-0">
-                        {user?.email?.slice(0, 2) || 'US'}
+                        {userDisplayName.slice(0, 2)}
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                          {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'}
+                          {userDisplayName}
                         </p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                           {user?.email || ''}
@@ -1010,7 +1050,18 @@ function DashboardContent() {
                   </div>
 
                   {/* Actions */}
-                  <div className="p-2">
+                  <div className="p-2 space-y-0.5">
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        setShowProfileModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <User className="size-3.5 text-indigo-500" />
+                      Edit Username / Profile
+                    </button>
+
                     <button
                       onClick={() => {
                         setShowProfileDropdown(false);
@@ -1226,7 +1277,7 @@ function DashboardContent() {
             {/* Greeting Section */}
             <div className="flex flex-col gap-2">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
-                {timeGreeting}, {user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
+                {timeGreeting}, {userDisplayName.split(' ')[0]}
               </h1>
               <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 font-medium">
                 What would you like to do?
@@ -2106,11 +2157,84 @@ function DashboardContent() {
           {/* TAB 5: SETTINGS */}
           {activeTab === 'settings' && (
             <div className="max-w-5xl flex flex-col gap-8">
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">Workspace Settings</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">Settings</h1>
 
-              {/* Workspace Info */}
+              {/* 1. User Profile & Account Settings */}
+              <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-5 shadow-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-4">
+                  <div>
+                    <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                      <User className="size-5 text-indigo-600 dark:text-indigo-400" /> My Profile & Account
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Update your display username across Talk2Me AI meetings and chat workspaces.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSaveProfile} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-400 block mb-1">
+                      Username / Full Name
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <input
+                        type="text"
+                        value={usernameInput}
+                        onChange={(e) => setUsernameInput(e.target.value)}
+                        placeholder="e.g. Alex Rivera or @alexr"
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-white text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSavingProfile}
+                        className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {isSavingProfile ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" /> Saving...
+                          </>
+                        ) : profileSaveSuccess ? (
+                          <>
+                            <Check className="size-4 text-emerald-300" /> Saved!
+                          </>
+                        ) : (
+                          'Save Username'
+                        )}
+                      </button>
+                    </div>
+                    {profileSaveError && (
+                      <p className="text-xs text-red-500 font-semibold mt-1 flex items-center gap-1">
+                        <AlertCircle className="size-3.5" /> {profileSaveError}
+                      </p>
+                    )}
+                    {profileSaveSuccess && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-1 flex items-center gap-1">
+                        <CheckCircle2 className="size-3.5" /> Username updated successfully!
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-400 block mb-1">Email Address</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={user?.email || ''}
+                        readOnly
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs font-mono"
+                      />
+                      <span className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1 shrink-0">
+                        <CheckCircle2 className="size-3.5" /> Verified
+                      </span>
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              {/* 2. Workspace Info */}
               <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
-                <h2 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">General</h2>
+                <h2 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Workspace General</h2>
                 <div>
                   <label className="text-xs font-bold uppercase text-slate-400 block mb-1">Workspace Name</label>
                   <input
@@ -2354,6 +2478,98 @@ function DashboardContent() {
           })}
         </nav>
       )}
+
+      {/* ── EDIT USERNAME / PROFILE MODAL ── */}
+      <AnimatePresence>
+        {showProfileModal && (
+          <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-slate-950/70 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <h3 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <User className="size-5 text-indigo-600 dark:text-indigo-400" /> Edit Profile & Username
+                </h3>
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                    Username / Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    placeholder="e.g. Alex Rivera or @alexr"
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-white text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="text"
+                    value={user?.email || ''}
+                    readOnly
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 text-xs font-mono"
+                  />
+                </div>
+
+                {profileSaveError && (
+                  <p className="text-xs text-red-500 font-semibold flex items-center gap-1">
+                    <AlertCircle className="size-3.5" /> {profileSaveError}
+                  </p>
+                )}
+
+                {profileSaveSuccess && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="size-3.5" /> Username updated successfully!
+                  </p>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileModal(false)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingProfile}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isSavingProfile ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Saving...
+                      </>
+                    ) : profileSaveSuccess ? (
+                      <>
+                        <Check className="size-4 text-emerald-300" /> Saved!
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ── SIGN OUT CONFIRMATION MODAL ── */}
       <AnimatePresence>

@@ -79,6 +79,18 @@ export function useAuth() {
 
   const updateProfile = async (updates: { full_name?: string }) => {
     if (!user) throw new Error('Not authenticated');
+    
+    // 1. Update Supabase auth user_metadata
+    if (updates.full_name !== undefined) {
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: updates.full_name },
+      });
+      if (authError) {
+        console.warn('[updateProfile] Auth metadata update notice:', authError.message);
+      }
+    }
+
+    // 2. Upsert into public.profiles table
     const { error } = await supabase
       .from('profiles')
       .upsert({
@@ -86,9 +98,11 @@ export function useAuth() {
         full_name: updates.full_name,
         updated_at: new Date().toISOString(),
       });
+
     if (error) {
       throw new Error(error.message);
     }
+
     await fetchProfile(user.id);
   };
 
