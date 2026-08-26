@@ -733,13 +733,15 @@ function HidableSelfView({
   absolute = false, 
   raised, 
   reactions,
-  dragConstraints
+  dragConstraints,
+  controlsVisible = true,
 }: { 
   participant: LocalParticipant; 
   absolute?: boolean; 
   raised?: boolean; 
   reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[];
   dragConstraints?: React.RefObject<HTMLDivElement | null>;
+  controlsVisible?: boolean;
 }) {
   const [hidden, setHidden] = useState(false);
 
@@ -748,16 +750,18 @@ function HidableSelfView({
   const pipStyle: React.CSSProperties = {
     position: absolute ? 'absolute' : 'fixed',
     right: 12,
-    bottom: 'calc(var(--dock-h, 120px) + 8px)',
+    bottom: controlsVisible ? 'calc(var(--dock-h, 120px) + 8px)' : '16px',
     width: 'clamp(100px, 22vw, 160px)',
     height: 'clamp(130px, 28vw, 210px)',
     zIndex: absolute ? 40 : 60,
+    transition: 'bottom 0.3s ease-in-out, opacity 0.3s ease-in-out',
   };
   const miniStyle: React.CSSProperties = {
     position: absolute ? 'absolute' : 'fixed',
     right: 12,
-    bottom: 'calc(var(--dock-h, 120px) + 8px)',
+    bottom: controlsVisible ? 'calc(var(--dock-h, 120px) + 8px)' : '16px',
     zIndex: absolute ? 40 : 60,
+    transition: 'bottom 0.3s ease-in-out, opacity 0.3s ease-in-out',
   };
 
   const containerVariants = {
@@ -1008,6 +1012,88 @@ function RoomContent({
   const [_mobileMenuOpen, _setMobileMenuOpen] = useState(false);
   const [roomMode, setRoomMode] = useState<'call' | 'onthego'>('call');
 
+  // Auto-hide controls, topbar, dock, and padding when user is focused & inactive (no movement/touch/scroll for 3.5s)
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const activityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const tapCooldownRef = useRef<number>(0);
+
+  const resetInactivityTimer = useCallback(() => {
+    setControlsVisible(true);
+    if (activityTimeoutRef.current) {
+      clearTimeout(activityTimeoutRef.current);
+    }
+    // Do not auto-hide controls if any interactive side panel, popup, or menu is open
+    if (sidebarOpen || participantsOpen || emojiOpen || viewMenuOpen) {
+      return;
+    }
+    activityTimeoutRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, 3500);
+  }, [sidebarOpen, participantsOpen, emojiOpen, viewMenuOpen]);
+
+  const toggleControls = useCallback(() => {
+    tapCooldownRef.current = Date.now() + 400; // Ignore synthetic mousemove immediately following a tap
+    setControlsVisible(prev => {
+      const next = !prev;
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+      if (next) {
+        if (!sidebarOpen && !participantsOpen && !emojiOpen && !viewMenuOpen) {
+          activityTimeoutRef.current = setTimeout(() => {
+            setControlsVisible(false);
+          }, 3500);
+        }
+      }
+      return next;
+    });
+  }, [sidebarOpen, participantsOpen, emojiOpen, viewMenuOpen]);
+
+  const handleScreenTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target) {
+      // Don't toggle if tapping interactive buttons, inputs, links, popovers, or dock controls
+      if (target.closest('button, input, a, select, textarea, [role="button"], .pointer-events-auto')) {
+        resetInactivityTimer();
+        return;
+      }
+    }
+    // Screen tap toggles visibility: hides controls if visible, shows controls if hidden
+    toggleControls();
+  }, [toggleControls, resetInactivityTimer]);
+
+  useEffect(() => {
+    if (sidebarOpen || participantsOpen || emojiOpen || viewMenuOpen) {
+      setControlsVisible(true);
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+      return;
+    }
+
+    resetInactivityTimer();
+
+    const handleActivity = () => {
+      if (Date.now() < tapCooldownRef.current) return;
+      resetInactivityTimer();
+    };
+
+    window.addEventListener('mousemove', handleActivity, { passive: true });
+    window.addEventListener('pointermove', handleActivity, { passive: true });
+    window.addEventListener('scroll', handleActivity, { capture: true, passive: true });
+    window.addEventListener('keydown', handleActivity, { passive: true });
+
+    return () => {
+      if (activityTimeoutRef.current) {
+        clearTimeout(activityTimeoutRef.current);
+      }
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('pointermove', handleActivity);
+      window.removeEventListener('scroll', handleActivity, { capture: true });
+      window.removeEventListener('keydown', handleActivity);
+    };
+  }, [resetInactivityTimer, sidebarOpen, participantsOpen, emojiOpen, viewMenuOpen]);
+
   // Auto-disable camera when entering On-the-Go / Low-Bandwidth Mode to save bandwidth
   useEffect(() => {
     if (roomMode === 'onthego' && camOn) {
@@ -1041,7 +1127,7 @@ function RoomContent({
     setViewMode('grid');
   };
   const topbar = (
-    <div className={`transition-transform duration-300 ${showTopbar ? 'translate-y-0' : '-translate-y-full'}`}>
+    <div className={`transition-transform duration-300 ${showTopbar && controlsVisible ? 'translate-y-0' : '-translate-y-full'}`}>
       <div className="px-3 sm:px-5 h-14 flex items-center justify-between border-b border-white/5 bg-[#181b20]/95 backdrop-blur-xl relative z-40">
 
         {/* Left — Logo + (on desktop) room title + timer */}
@@ -1369,7 +1455,7 @@ function RoomContent({
     <div ref={selfViewConstraintsRef} className="relative flex-1 w-full h-full min-h-0">
       <ScreenShareView className="w-full h-full rounded-none" />
       {localParticipant && (
-        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} dragConstraints={selfViewConstraintsRef} />
+        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} dragConstraints={selfViewConstraintsRef} controlsVisible={controlsVisible} />
       )}
     </div>
   ) : (
@@ -1395,7 +1481,7 @@ function RoomContent({
       </div>
       {/* Self-view PiP (only in grid view) */}
       {localParticipant && viewMode !== 'focus' && (
-        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} dragConstraints={selfViewConstraintsRef} />
+        <HidableSelfView participant={localParticipant} absolute raised={!!raisedHands[localParticipant.identity]} reactions={reactions.filter(r => r.sender_id === localParticipant.identity)} dragConstraints={selfViewConstraintsRef} controlsVisible={controlsVisible} />
       )}
     </div>
   );
@@ -1423,7 +1509,7 @@ function RoomContent({
           roomCode={code}
         />
       )}
-      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar}
+      <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar} controlsVisible={controlsVisible}
         dock={
           <ControlDock
             code={code}
@@ -1451,8 +1537,12 @@ function RoomContent({
           />
         }
       >
-        {/* Main active speaker video frame */}
-        <div className="w-full h-full min-h-0 relative">
+        {/* Main active speaker video frame — tap to toggle controls */}
+        <div
+          className="w-full h-full min-h-0 relative"
+          onClick={handleScreenTap}
+          onTouchEnd={handleScreenTap}
+        >
           {mainStage}
           {/* Show captions only when CC is turned on */}
           {!isDeafMode && captionsOn && <RealTimeCaptionOverlay captions={captions} activeInterims={activeInterims} size={captionSize} />}
@@ -1498,7 +1588,9 @@ function RoomContent({
       </MeetingLayout>
 
       {/* Floating Admission Request list (real admission flow) */}
-      <div className="fixed left-6 top-20 z-50 flex flex-col gap-3 pointer-events-auto">
+      <div className={`fixed left-6 top-20 z-50 flex flex-col gap-3 pointer-events-auto transition-all duration-300 ${
+        controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
+      }`}>
         <AnimatePresence>
           {isAdmin && joinRequests.map((req) => (
             <motion.div
@@ -1533,8 +1625,8 @@ function RoomContent({
       </div>
 
       {/* Floating show-topbar button when topbar is hidden */}
-      {!showTopbar && (
-        <button onClick={() => setShowTopbar(true)} title="Show topbar" className="fixed top-3 right-3 z-50 bg-black/30 backdrop-blur rounded-full p-2 pointer-events-auto">
+      {!showTopbar && controlsVisible && (
+        <button onClick={() => setShowTopbar(true)} title="Show topbar" className="fixed top-3 right-3 z-50 bg-black/30 backdrop-blur rounded-full p-2 pointer-events-auto transition-opacity duration-300">
           <Eye className="size-5 text-white" />
         </button>
       )}

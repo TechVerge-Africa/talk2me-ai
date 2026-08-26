@@ -1,13 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GeminiService } from '@/services/ai/gemini-service';
+import { WorkspaceMemoryService } from '@/services/supabase/memory';
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, userQuery, workspaceName, workspaceTopic, canonicalTranscripts, meetingDecisions, chatHistory } = await req.json();
+    const {
+      prompt,
+      userQuery,
+      workspaceId,
+      workspaceName,
+      workspaceTopic,
+      canonicalTranscripts,
+      meetingDecisions,
+      chatHistory,
+      workspaceMemories: incomingMemories,
+    } = await req.json();
 
     const query = userQuery || prompt || '';
     if (!query.trim()) {
       return NextResponse.json({ text: "Hi! I'm Talk2Me AI. How can I help you with this meeting or workspace project?" });
+    }
+
+    // Retrieve persistent long-term memories if workspaceId is provided and incomingMemories wasn't passed directly
+    let memoriesList = incomingMemories || [];
+    if ((!memoriesList || memoriesList.length === 0) && workspaceId) {
+      try {
+        memoriesList = await WorkspaceMemoryService.getWorkspaceMemories(workspaceId);
+      } catch (memErr) {
+        console.warn('[AI Chat Route] Memory fetch error:', memErr);
+      }
+    }
+
+    // Format long-term memories context
+    let memoryContext = 'No long-term workspace memories stored yet.';
+    if (Array.isArray(memoriesList) && memoriesList.length > 0) {
+      memoryContext = memoriesList
+        .map((m: any) => `• [${(m.category || 'FACT').toUpperCase()}] ${m.title}: ${m.content} (tags: ${(m.tags || []).join(', ') || 'none'})`)
+        .join('\n');
     }
 
     // Format canonical transcripts for context
@@ -39,9 +68,13 @@ You are Talk2Me AI, an intelligent, friendly, and highly accurate AI co-pilot in
 ${workspaceName ? `Active Workspace: ${workspaceName} (${workspaceTopic || 'General'})` : ''}
 
 Your capabilities:
-1. Answer participant and team questions using the Workspace Meeting Transcripts, Key Decisions, and Recent Chat History provided below.
-2. Provide concise summaries, action item tracking, decision history, or technical/business insights.
-3. Be helpful, clear, and direct. Use a modern, professional, and warm conversational tone.
+1. Answer participant and team questions using the Workspace Long-Term Memory Bank, Meeting Transcripts, Key Decisions, and Recent Chat History provided below.
+2. Recall persistent team preferences, architectural decisions, system specs, and project action items.
+3. Provide concise summaries, action item tracking, decision history, or technical/business insights.
+4. Be helpful, clear, and direct. Use a modern, professional, and warm conversational tone.
+
+Workspace Long-Term Memory Bank:
+${memoryContext}
 
 Workspace Meeting Transcripts Context:
 ${transcriptContext}
@@ -66,6 +99,9 @@ ${chatContext}
         if (geminiResult.text) {
           // Identify source references if available
           const sources: string[] = [];
+          if (Array.isArray(memoriesList) && memoriesList.length > 0) {
+            sources.push('Workspace AI Memory');
+          }
           if (Array.isArray(canonicalTranscripts) && canonicalTranscripts.length > 0) {
             sources.push('Meeting Transcripts');
           }
@@ -88,8 +124,8 @@ ${chatContext}
 
     // Fallback response if no Gemini API key is configured or API call fails
     return NextResponse.json({
-      text: `[Talk2Me AI]: I analyzed your query: "${query}". Based on workspace records, your team is actively collaborating! (Configure GEMINI_API_KEY in .env.local for full LLM generative capabilities)`,
-      sources: ['Workspace Records'],
+      text: `[Talk2Me AI]: I analyzed your query: "${query}". Based on workspace memories and records, your team has ${Array.isArray(memoriesList) ? memoriesList.length : 0} long-term memory item(s) saved! (Configure GEMINI_API_KEY in .env.local for full LLM generative capabilities)`,
+      sources: ['Workspace AI Memory'],
     });
 
   } catch (err) {
@@ -97,3 +133,4 @@ ${chatContext}
     return NextResponse.json({ text: "Sorry, I ran into an error processing your request." }, { status: 500 });
   }
 }
+

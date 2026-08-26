@@ -30,10 +30,15 @@ import {
   Compass,
   Hash,
   Share2,
-  AlertCircle
+  AlertCircle,
+  Brain,
+  Trash2,
+  Tag,
+  Filter
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
+import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
 import {
   WorkspaceService,
@@ -41,6 +46,11 @@ import {
   DbWorkspaceMessage,
   DbWorkspaceChannel
 } from '@/services/supabase/workspaces';
+import {
+  WorkspaceMemoryService,
+  DbWorkspaceMemory,
+  MemoryCategory
+} from '@/services/supabase/memory';
 import { MentionAutocomplete, MentionCandidate } from '@/components/ui/mention-autocomplete';
 import { FormattedChatMessage } from '@/components/ui/formatted-chat-message';
 import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
@@ -56,7 +66,7 @@ const renderWorkspaceIcon = (iconStr: string) => {
   return <Rocket className="size-5 text-indigo-600 dark:text-indigo-400" />;
 };
 
-type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
+type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'memory' | 'settings';
 
 function DashboardContent() {
   const router = useRouter();
@@ -98,6 +108,127 @@ function DashboardContent() {
   // Mobile menu drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [copiedWsCode, setCopiedWsCode] = useState<boolean>(false);
+
+  // Memory Bank State
+  const [memories, setMemories] = useState<DbWorkspaceMemory[]>([]);
+  const [memoryCategoryFilter, setMemoryCategoryFilter] = useState<string>('all');
+  const [memorySearchQuery, setMemorySearchQuery] = useState<string>('');
+  const [showAddMemoryModal, setShowAddMemoryModal] = useState<boolean>(false);
+  const [newMemoryTitle, setNewMemoryTitle] = useState<string>('');
+  const [newMemoryContent, setNewMemoryContent] = useState<string>('');
+  const [newMemoryCategory, setNewMemoryCategory] = useState<MemoryCategory>('fact');
+  const [newMemoryTags, setNewMemoryTags] = useState<string>('');
+  const [isSavingMemory, setIsSavingMemory] = useState<boolean>(false);
+  const [isExtractingAiMemory, setIsExtractingAiMemory] = useState<boolean>(false);
+
+  // Sync workspace memories when active workspace changes
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+
+    WorkspaceMemoryService.getWorkspaceMemories(activeWorkspaceId).then(setMemories);
+
+    const channel = supabase
+      .channel(`workspace-memories-${activeWorkspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'workspace_memories',
+          filter: `workspace_id=eq.${activeWorkspaceId}`,
+        },
+        () => {
+          WorkspaceMemoryService.getWorkspaceMemories(activeWorkspaceId).then(setMemories);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeWorkspaceId]);
+
+  const handleCreateMemory = async () => {
+    if (!activeWorkspaceId || !newMemoryTitle.trim() || !newMemoryContent.trim()) return;
+    setIsSavingMemory(true);
+    try {
+      const tagsArr = newMemoryTags.split(',').map((t) => t.trim()).filter(Boolean);
+      const created = await WorkspaceMemoryService.createMemory({
+        workspace_id: activeWorkspaceId,
+        category: newMemoryCategory,
+        title: newMemoryTitle.trim(),
+        content: newMemoryContent.trim(),
+        tags: tagsArr,
+        source_type: 'manual',
+        created_by: user?.id,
+      });
+      if (created) {
+        setMemories((prev) => [created, ...prev]);
+        setShowAddMemoryModal(false);
+        setNewMemoryTitle('');
+        setNewMemoryContent('');
+        setNewMemoryTags('');
+      }
+    } catch (err) {
+      console.error('[handleCreateMemory] Error:', err);
+    } finally {
+      setIsSavingMemory(false);
+    }
+  };
+
+  const handleExtractAiMemory = async () => {
+    if (!activeWorkspaceId || !currentWorkspaceData) return;
+    setIsExtractingAiMemory(true);
+    try {
+      const activeChannelMsgs = currentWorkspaceData.messages[selectedChannel] || [];
+      const chatText = activeChannelMsgs.map((m) => `${m.sender_name}: ${m.content}`).join('\n');
+
+      if (!chatText.trim()) return;
+
+      const res = await fetch('/api/ai/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'extract',
+          workspace_id: activeWorkspaceId,
+          text: chatText,
+          context_type: 'chat',
+          created_by: user?.id,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.memories) && data.memories.length > 0) {
+          setMemories((prev) => [...data.memories, ...prev]);
+        }
+      }
+    } catch (err) {
+      console.error('[handleExtractAiMemory] Error:', err);
+    } finally {
+      setIsExtractingAiMemory(false);
+    }
+  };
+
+  const handleDeleteMemory = async (id: string) => {
+    const success = await WorkspaceMemoryService.deleteMemory(id);
+    if (success) {
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+    }
+  };
+
+  const filteredMemories = useMemo(() => {
+    return memories.filter((m) => {
+      const matchesCategory = memoryCategoryFilter === 'all' || m.category === memoryCategoryFilter;
+      const query = memorySearchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !query ||
+        m.title.toLowerCase().includes(query) ||
+        m.content.toLowerCase().includes(query) ||
+        m.tags.some((t) => t.toLowerCase().includes(query));
+      return matchesCategory && matchesSearch;
+    });
+  }, [memories, memoryCategoryFilter, memorySearchQuery]);
 
   // Redirect if unauthenticated
   useEffect(() => {
@@ -323,9 +454,11 @@ function DashboardContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userQuery: cleanQuery,
+            workspaceId: currentWorkspaceData.workspace.id,
             workspaceName: currentWorkspaceData.workspace.name,
             workspaceTopic: currentWorkspaceData.workspace.topic,
             chatHistory: currentWorkspaceData.messages[selectedChannel] || [],
+            workspaceMemories: memories,
           }),
         });
 
@@ -374,9 +507,11 @@ function DashboardContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userQuery: query,
+          workspaceId: currentWorkspaceData.workspace.id,
           workspaceName: currentWorkspaceData.workspace.name,
           workspaceTopic: currentWorkspaceData.workspace.topic,
           chatHistory: currentWorkspaceData.messages['🤖 Ask AI'] || [],
+          workspaceMemories: memories,
         }),
       });
 
@@ -561,6 +696,7 @@ function DashboardContent() {
               { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
               { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
               { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
+              { id: 'memory', label: 'Memory Bank', icon: Brain },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -581,6 +717,11 @@ function DashboardContent() {
                   {tab.id === 'ask-ai' && (
                     <span className="px-1.5 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 text-[9px] font-bold">
                       PRO
+                    </span>
+                  )}
+                  {tab.id === 'memory' && (
+                    <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-300 text-[10px] font-extrabold">
+                      {memories.length}
                     </span>
                   )}
                 </button>
@@ -913,7 +1054,168 @@ function DashboardContent() {
             </div>
           )}
 
-          {/* TAB 5: SETTINGS */}
+          {/* TAB 5: MEMORY BANK */}
+          {activeTab === 'memory' && (
+            <div className="max-w-5xl flex flex-col gap-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
+                    <Brain className="size-7 text-purple-600 dark:text-purple-400" /> Workspace AI Memory Bank
+                  </h1>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Persistent long-term knowledge, team specs, user preferences, and architectural decisions automatically recalled by Talk2Me AI.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={handleExtractAiMemory}
+                    disabled={isExtractingAiMemory}
+                    className="px-4 py-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-xs flex items-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    {isExtractingAiMemory ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Synthesizing Chat...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="size-4 text-purple-500" /> Auto-Extract from Chat
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowAddMemoryModal(true)}
+                    className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all"
+                  >
+                    <Plus className="size-4" /> Add Memory
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter & Search Bar */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                {/* Category Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'decision', label: 'Decisions' },
+                    { id: 'spec', label: 'Specs' },
+                    { id: 'fact', label: 'Facts' },
+                    { id: 'user_preference', label: 'Preferences' },
+                    { id: 'action_item', label: 'Action Items' },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setMemoryCategoryFilter(cat.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                        memoryCategoryFilter === cat.id
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative min-w-[220px]">
+                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={memorySearchQuery}
+                    onChange={(e) => setMemorySearchQuery(e.target.value)}
+                    placeholder="Search memories..."
+                    className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  {memorySearchQuery && (
+                    <button
+                      onClick={() => setMemorySearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Memories List */}
+              {filteredMemories.length === 0 ? (
+                <div className="p-12 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 flex flex-col items-center justify-center text-center">
+                  <Brain className="size-12 text-slate-300 dark:text-slate-700 mb-3" />
+                  <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                    No memories found
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
+                    {memories.length === 0
+                      ? 'Add key project facts, decisions, or specs manually, or auto-extract memories from your active channel chat!'
+                      : 'No memories match your search filter.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredMemories.map((mem) => {
+                    const categoryColors: Record<string, string> = {
+                      decision: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+                      spec: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+                      fact: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+                      user_preference: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+                      action_item: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+                      summary: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+                    };
+
+                    const badgeClass = categoryColors[mem.category] || categoryColors.summary;
+
+                    return (
+                      <div
+                        key={mem.id}
+                        className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-xs flex flex-col justify-between gap-3 group hover:border-slate-300 dark:hover:border-slate-700 transition-all"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider border ${badgeClass}`}>
+                              {mem.category.replace('_', ' ')}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-medium text-slate-400">
+                                {new Date(mem.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                              </span>
+                              <button
+                                onClick={() => handleDeleteMemory(mem.id)}
+                                title="Delete Memory"
+                                className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-slate-400 hover:text-red-500 transition-all"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                            {mem.title}
+                          </h3>
+
+                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                            {mem.content}
+                          </p>
+                        </div>
+
+                        {mem.tags && mem.tags.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                            {mem.tags.map((tag, idx) => (
+                              <span key={idx} className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">
+                                <Tag className="size-2.5" /> {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 6: SETTINGS */}
           {activeTab === 'settings' && (
             <div className="max-w-2xl flex flex-col gap-6">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">Workspace Settings</h1>
@@ -1118,6 +1420,96 @@ function DashboardContent() {
                   className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md disabled:opacity-50"
                 >
                   {isCreatingChannel ? <Loader2 className="size-4 animate-spin" /> : 'Create Channel'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Modal: Add Workspace Memory */}
+        {showAddMemoryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Brain className="size-5 text-purple-600 dark:text-purple-400" /> Add Workspace AI Memory
+                </h3>
+                <button onClick={() => setShowAddMemoryModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold uppercase text-slate-500 block mb-1">Memory Title</label>
+                  <input
+                    type="text"
+                    value={newMemoryTitle}
+                    onChange={(e) => setNewMemoryTitle(e.target.value)}
+                    placeholder="e.g. Primary Database Choice"
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-500 block mb-1">Category</label>
+                    <select
+                      value={newMemoryCategory}
+                      onChange={(e) => setNewMemoryCategory(e.target.value as MemoryCategory)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="decision">Decision</option>
+                      <option value="spec">Technical Spec</option>
+                      <option value="fact">Project Fact</option>
+                      <option value="user_preference">User Preference</option>
+                      <option value="action_item">Action Item</option>
+                      <option value="summary">Summary</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-500 block mb-1">Tags (comma separated)</label>
+                    <input
+                      type="text"
+                      value={newMemoryTags}
+                      onChange={(e) => setNewMemoryTags(e.target.value)}
+                      placeholder="e.g. database, supabase, rls"
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase text-slate-500 block mb-1">Memory Content / Statement</label>
+                  <textarea
+                    rows={4}
+                    value={newMemoryContent}
+                    onChange={(e) => setNewMemoryContent(e.target.value)}
+                    placeholder="e.g. We decided to build our real-time database schema on Supabase PostgreSQL with row level security enabled across all workspaces."
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowAddMemoryModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateMemory}
+                  disabled={isSavingMemory || !newMemoryTitle.trim() || !newMemoryContent.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md disabled:opacity-50"
+                >
+                  {isSavingMemory ? <Loader2 className="size-4 animate-spin" /> : 'Save Memory'}
                 </button>
               </div>
             </motion.div>

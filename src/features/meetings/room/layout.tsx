@@ -8,6 +8,7 @@ interface MeetingLayoutProps {
   isDeafMode?: boolean;
   fullBleed?: boolean;
   topbarVisible?: boolean;
+  controlsVisible?: boolean;
 }
 
 export function MeetingLayout({ 
@@ -17,19 +18,25 @@ export function MeetingLayout({
   dock, 
   fullBleed = false,
   topbarVisible = true,
+  controlsVisible = true,
 }: MeetingLayoutProps) {
+  const isTopVisible = topbarVisible && controlsVisible;
+  const isDockVisible = controlsVisible;
+
   return (
-    <main className="fixed inset-0 flex flex-col bg-[#121417] text-white overflow-hidden">
+    <main className={`fixed inset-0 flex flex-col bg-[#121417] text-white overflow-hidden select-none transition-colors duration-300 ${!controlsVisible ? 'cursor-none' : ''}`}>
 
       {/* ── Topbar ── z-40 */}
       {topbar && (
-        <div className="absolute top-0 left-0 right-0 z-40 pointer-events-auto">
+        <div className={`absolute top-0 left-0 right-0 z-40 transition-all duration-300 ease-in-out ${
+          isTopVisible ? 'translate-y-0 opacity-100 pointer-events-auto' : '-translate-y-full opacity-0 pointer-events-none'
+        }`}>
           {topbar}
         </div>
       )}
 
-      {/* ── Main video area — always full viewport, nothing shrinks it ── */}
-      <div className={`flex-1 relative min-h-0 ${!fullBleed && topbarVisible ? 'pt-14' : ''}`}>
+      {/* ── Main video area — always full viewport, padding transitions smoothly ── */}
+      <div className={`flex-1 relative min-h-0 transition-all duration-300 ease-in-out ${!fullBleed && isTopVisible ? 'pt-14' : 'pt-0'}`}>
         <div className="w-full h-full min-h-0 relative">
           {children}
         </div>
@@ -37,7 +44,9 @@ export function MeetingLayout({
 
       {/* ── Dock ── z-40, floats over video */}
       {dock && (
-        <div className="absolute bottom-0 left-0 right-0 z-40 pointer-events-none pb-3 sm:pb-4">
+        <div className={`absolute bottom-0 left-0 right-0 z-40 transition-all duration-300 ease-in-out ${
+          isDockVisible ? 'translate-y-0 opacity-100 pointer-events-auto pb-3 sm:pb-4' : 'translate-y-full opacity-0 pointer-events-none pb-0'
+        }`}>
           <div className="pointer-events-auto w-full">
             {dock}
           </div>
