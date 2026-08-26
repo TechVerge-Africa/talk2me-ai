@@ -316,21 +316,21 @@ function PreJoinLobby({
   const isSpeaking = audioLevel > 0.03;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 relative">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-3 sm:px-6 py-6 relative overflow-y-auto">
       <motion.div 
         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-4xl p-6 rounded-[24px] glass-card border border-border relative overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-8"
+        className="w-full max-w-4xl p-4 sm:p-6 rounded-[24px] glass-card border border-border relative overflow-hidden shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8"
       >
         {/* Top-Right Close Button */}
         <button
           onClick={handleClose}
           aria-label="Close meeting preview"
-          className="absolute top-4 right-4 z-50 p-2.5 rounded-full bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-white/20 transition-all cursor-pointer shadow-md"
+          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-50 p-2 sm:p-2.5 rounded-full bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-white/20 transition-all cursor-pointer shadow-md"
           title="Close meeting preview"
         >
-          <X className="size-5" />
+          <X className="size-4 sm:size-5" />
         </button>
-        <div className={`relative rounded-2xl overflow-hidden h-64 md:h-auto flex flex-col min-h-[320px] border border-white/5 ${isSpeaking ? 'ring-4 ring-emerald-400/20 shadow-[0_0_40px_rgba(16,185,129,0.12)]' : ''}`}>
+        <div className={`relative rounded-2xl overflow-hidden h-56 sm:h-64 md:h-auto flex flex-col min-h-[260px] sm:min-h-[320px] border border-white/5 ${isSpeaking ? 'ring-4 ring-emerald-400/20 shadow-[0_0_40px_rgba(16,185,129,0.12)]' : ''}`}>
           <CameraPreview camOn={camOn} />
           {isSpeaking && (
             <div className="absolute inset-0 pointer-events-none z-20 flex items-start justify-end p-4">

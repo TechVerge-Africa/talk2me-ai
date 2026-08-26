@@ -884,12 +884,13 @@ function DashboardContent() {
       <GradientBackground />
 
       {/* ── TOP APPLICATION HEADER ── */}
-      <header className="h-16 border-b border-slate-200 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+      <header className="h-16 border-b border-slate-200 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
         {/* Left: Brand & Workspace Switcher */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5"
+            className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 shrink-0"
+            aria-label="Toggle Navigation Drawer"
           >
             <Menu className="size-5" />
           </button>
@@ -899,7 +900,7 @@ function DashboardContent() {
               selectWorkspace('');
               setActiveTab('overview');
             }}
-            className="flex items-center gap-2 text-left focus:outline-none group"
+            className="flex items-center gap-2 text-left focus:outline-none group shrink-0"
             title="Go to Workspaces Hub"
           >
             <div className="size-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 grid place-items-center text-white font-black text-sm shadow-md group-hover:scale-105 transition-transform">
@@ -911,9 +912,9 @@ function DashboardContent() {
           </button>
 
           {/* Active Workspace Selector Dropdown */}
-          <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block shrink-0" />
 
-          <div className="relative group">
+          <div className="relative group shrink min-w-0 max-w-[130px] sm:max-w-[200px]">
             <select
               value={activeWorkspaceId}
               onChange={(e) => {
@@ -921,7 +922,7 @@ function DashboardContent() {
                 setSelectedChannel('# General');
                 setActiveTab('overview');
               }}
-              className="appearance-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-xl px-3 py-1.5 pr-8 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+              className="w-full truncate appearance-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-xl px-2.5 sm:px-3 py-1.5 pr-7 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
             >
               <option value="">🏠 Workspaces Hub</option>
               {workspacesData.map((item) => (
@@ -930,14 +931,14 @@ function DashboardContent() {
                 </option>
               ))}
             </select>
-            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+            <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">
               ▼
             </div>
           </div>
 
           <button
             onClick={() => setShowCreateWsModal(true)}
-            className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:scale-105 transition-all text-xs font-bold flex items-center gap-1"
+            className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 hover:scale-105 transition-all text-xs font-bold flex items-center gap-1 shrink-0"
             title="Create New Workspace"
           >
             <Plus className="size-3.5" />
@@ -946,7 +947,7 @@ function DashboardContent() {
 
           <button
             onClick={() => setShowJoinWsModal(true)}
-            className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800/50 text-cyan-600 dark:text-cyan-400 hover:scale-105 transition-all text-xs font-bold flex items-center gap-1"
+            className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800/50 text-cyan-600 dark:text-cyan-400 hover:scale-105 transition-all text-xs font-bold flex items-center gap-1 shrink-0"
             title="Join Workspace"
           >
             <Compass className="size-3.5" />
@@ -955,10 +956,10 @@ function DashboardContent() {
         </div>
 
         {/* Right: Quick Action Meeting, Theme & Profile */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button
             onClick={handleCreateMeeting}
-            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
+            className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
           >
             <Video className="size-3.5" />
             <span className="hidden sm:inline">Start Meeting</span>
@@ -1035,8 +1036,187 @@ function DashboardContent() {
         </div>
       </header>
 
+      {/* ── MOBILE NAVIGATION DRAWER ── */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden flex">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
+            />
+
+            {/* Slide Drawer */}
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+              className="relative z-10 w-72 max-w-[85vw] h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-4 space-y-5 flex flex-col overflow-y-auto shadow-2xl"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="size-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 grid place-items-center text-white font-black text-sm shadow-md">
+                    T2
+                  </div>
+                  <span className="font-heading text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                    Talk2Me
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* Workspaces Hub CTA */}
+              <button
+                onClick={() => {
+                  selectWorkspace('');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800/50 transition-all shadow-2xs group"
+              >
+                <ChevronLeft className="size-4 group-hover:-translate-x-0.5 transition-transform" />
+                <span>Workspaces Hub</span>
+              </button>
+
+              {activeWorkspaceId && (
+                <>
+                  {/* Current Active Workspace Info Card */}
+                  <div className="p-3 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10">
+                        {renderWorkspaceIcon(workspace?.icon || 'rocket')}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xs font-extrabold text-slate-900 dark:text-white truncate">
+                          {workspace?.name || 'Workspace'}
+                        </h3>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                          {workspace?.topic || 'Real-time collaboration'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Navigation Tabs */}
+                  <div className="space-y-1">
+                    {[
+                      { id: 'overview', label: 'Overview', icon: Building2 },
+                      { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
+                      { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
+                      { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
+                      { id: 'settings', label: 'Settings', icon: Settings },
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => {
+                            setActiveTab(tab.id as WorkspaceTab);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                            activeTab === tab.id
+                              ? 'bg-indigo-600 text-white shadow-md'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Icon className="size-4" />
+                            <span>{tab.label}</span>
+                          </div>
+                          {tab.id === 'ask-ai' && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 text-[9px] font-bold">
+                              PRO
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Channels Section */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between px-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Channels
+                      </span>
+                      <button
+                        onClick={() => {
+                          setShowCreateChannelModal(true);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500"
+                      >
+                        <Plus className="size-3.5" />
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {channels.map((ch) => (
+                        <button
+                          key={ch.id}
+                          onClick={() => {
+                            setActiveTab('chat');
+                            setSelectedChannel(ch.name);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium text-left transition-colors ${
+                            activeTab === 'chat' && selectedChannel === ch.name
+                              ? 'bg-slate-200/80 dark:bg-white/10 text-indigo-600 dark:text-indigo-400 font-bold'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <Hash className="size-3.5 text-slate-400" />
+                          <span className="truncate">{ch.name.replace(/^#\s*/, '')}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Workspaces List Section */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2">
+                  All Workspaces
+                </span>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {workspacesData.map((item) => (
+                    <button
+                      key={item.workspace.id}
+                      onClick={() => {
+                        selectWorkspace(item.workspace.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all ${
+                        activeWorkspaceId === item.workspace.id
+                          ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-200 dark:border-indigo-800/50'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="size-6 rounded-lg bg-slate-200 dark:bg-slate-800 grid place-items-center flex-shrink-0">
+                        {renderWorkspaceIcon(item.workspace.icon || 'rocket')}
+                      </div>
+                      <span className="truncate flex-1">{item.workspace.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* ── MAIN LAYOUT (SIDEBAR + CONTENT AREA) ── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {!activeWorkspaceId ? (
           /* ── 1. HOME DASHBOARD HUB (NO ACTIVE WORKSPACE SELECTED) ── */
           <main className="relative z-10 flex-1 max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 w-full flex flex-col gap-8 sm:gap-10 font-sans overflow-y-auto">
@@ -1348,13 +1528,6 @@ function DashboardContent() {
             <div className="max-w-5xl flex flex-col gap-6">
               {/* Header Greeting */}
               <div>
-                <button
-                  onClick={() => selectWorkspace('')}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline mb-2"
-                >
-                  <ChevronLeft className="size-3.5" /> Back to Workspaces Hub
-                </button>
-                <br />
                 <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                   {timeGreeting}
                 </span>
@@ -1512,10 +1685,10 @@ function DashboardContent() {
                 </div>
 
                 {/* Two-panel layout */}
-                <div className="flex gap-4" style={{ minHeight: 'calc(100vh - 16rem)' }}>
+                <div className="flex flex-col lg:flex-row gap-4" style={{ minHeight: 'calc(100vh - 16rem)' }}>
 
                   {/* ── LEFT: Meeting List ── */}
-                  <div className="w-72 shrink-0 flex flex-col gap-2 overflow-y-auto pr-1">
+                  <div className={`w-full lg:w-72 shrink-0 flex flex-col gap-2 overflow-y-auto pr-1 ${selectedMeetingId ? 'hidden lg:flex' : 'flex'}`}>
                     {isLoadingMeetings ? (
                       <div className="flex flex-col items-center justify-center gap-3 py-16">
                         <Loader2 className="size-6 animate-spin text-indigo-500" />
@@ -1572,7 +1745,13 @@ function DashboardContent() {
                   </div>
 
                   {/* ── RIGHT: Meeting Detail ── */}
-                  <div className="flex-1 min-w-0 overflow-y-auto flex flex-col gap-4">
+                  <div className={`flex-1 min-w-0 overflow-y-auto flex flex-col gap-4 ${!selectedMeetingId ? 'hidden lg:flex' : 'flex'}`}>
+                    <button
+                      onClick={() => setSelectedMeetingId(null)}
+                      className="lg:hidden inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2"
+                    >
+                      <ChevronLeft className="size-3.5" /> Back to Meetings List
+                    </button>
                     {!selectedMeetingId || !selectedMeeting ? (
                       <div className="flex-1 flex flex-col items-center justify-center gap-3 p-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
                         <FileText className="size-12 text-slate-300 dark:text-slate-700" />
@@ -1883,6 +2062,24 @@ function DashboardContent() {
                 )}
               </div>
 
+              {/* Quick suggestion prompt chips */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                {[
+                  "Summarize key meeting decisions",
+                  "List active action items",
+                  "What was discussed in latest sync?",
+                  "What are open questions?"
+                ].map((chipText, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setAskAiInput(chipText)}
+                    className="px-3 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 whitespace-nowrap transition-colors"
+                  >
+                    {chipText}
+                  </button>
+                ))}
+              </div>
+
               {/* Prompt bar */}
               <div className="flex items-center gap-2">
                 <input
@@ -1891,11 +2088,11 @@ function DashboardContent() {
                   onChange={(e) => setAskAiInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendAskAi()}
                   placeholder="What key decisions were made in our recent engineering sync?"
-                  className="flex-1 px-4 py-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 shadow-xs"
+                  className="flex-1 min-w-0 px-3.5 sm:px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 shadow-xs"
                 />
                 <button
                   onClick={handleSendAskAi}
-                  className="px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md"
+                  className="px-4 sm:px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm shadow-md shrink-0"
                 >
                   Ask AI
                 </button>
@@ -2124,6 +2321,36 @@ function DashboardContent() {
       </>
     )}
   </div>
+
+      {/* ── MOBILE BOTTOM NAVIGATION TAB BAR ── */}
+      {activeWorkspaceId && (
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-lg">
+          {[
+            { id: 'overview', label: 'Overview', icon: Building2 },
+            { id: 'chat', label: 'Chat', icon: MessageSquare },
+            { id: 'meetings', label: 'Meetings', icon: Video },
+            { id: 'ask-ai', label: 'Ask AI', icon: Sparkles },
+            { id: 'settings', label: 'Settings', icon: Settings },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as WorkspaceTab)}
+                className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all ${
+                  isActive
+                    ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/50'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Icon className={`size-4 ${isActive ? 'scale-110' : ''} transition-transform`} />
+                <span className="text-[10px] tracking-tight">{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {/* ── SIGN OUT CONFIRMATION MODAL ── */}
       <AnimatePresence>
