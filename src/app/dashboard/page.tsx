@@ -114,6 +114,7 @@ function DashboardContent() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('');
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState<boolean>(true);
   const [selectedChannel, setSelectedChannel] = useState<string>('# General');
+  const [copiedCodeWsId, setCopiedCodeWsId] = useState<string | null>(null);
 
   // Modals state
   const [showCreateWsModal, setShowCreateWsModal] = useState<boolean>(false);
@@ -294,14 +295,26 @@ function DashboardContent() {
       const data = await WorkspaceService.getUserWorkspaces(user.id);
       setWorkspacesData(data);
 
-      if (data.length > 0) {
-        // Default to first workspace if not set
-        setActiveWorkspaceId((prev) => (prev && data.some((w) => w.workspace.id === prev) ? prev : data[0].workspace.id));
+      const wsParam = searchParams.get('ws');
+      if (wsParam && data.some((w) => w.workspace.id === wsParam)) {
+        setActiveWorkspaceId(wsParam);
+      } else {
+        // Default to Home Hub ('') unless active workspace already chosen
+        setActiveWorkspaceId((prev) => (prev && data.some((w) => w.workspace.id === prev) ? prev : ''));
       }
     } catch (err) {
       console.error('[Dashboard] Error fetching workspaces:', err);
     } finally {
       setIsLoadingWorkspaces(false);
+    }
+  };
+
+  const selectWorkspace = (wsId: string) => {
+    setActiveWorkspaceId(wsId);
+    if (wsId) {
+      router.push(`/dashboard?ws=${wsId}`);
+    } else {
+      router.push('/dashboard');
     }
   };
 
@@ -315,11 +328,21 @@ function DashboardContent() {
         setShowJoinWsModal(true);
       }
     }
-  }, [user, searchParams]);
+  }, [user]);
+
+  useEffect(() => {
+    const wsParam = searchParams.get('ws');
+    if (wsParam && workspacesData.some((w) => w.workspace.id === wsParam)) {
+      setActiveWorkspaceId(wsParam);
+    } else if (!wsParam) {
+      setActiveWorkspaceId('');
+    }
+  }, [searchParams, workspacesData]);
 
   // Active Workspace Data Object
   const currentWorkspaceData = useMemo(() => {
-    return workspacesData.find((w) => w.workspace.id === activeWorkspaceId) || workspacesData[0] || null;
+    if (!activeWorkspaceId) return null;
+    return workspacesData.find((w) => w.workspace.id === activeWorkspaceId) || null;
   }, [workspacesData, activeWorkspaceId]);
 
   const mentionCandidates: MentionCandidate[] = useMemo(() => {
@@ -440,7 +463,7 @@ function DashboardContent() {
       });
 
       setWorkspacesData((prev) => [...prev, newWsData]);
-      setActiveWorkspaceId(newWsData.workspace.id);
+      selectWorkspace(newWsData.workspace.id);
       setSelectedChannel('# General');
       setShowCreateWsModal(false);
       setNewWsName('');
@@ -871,39 +894,46 @@ function DashboardContent() {
             <Menu className="size-5" />
           </button>
 
-          <Link href="/" className="flex items-center gap-2">
-            <div className="size-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 grid place-items-center text-white font-black text-sm shadow-md">
+          <button
+            onClick={() => {
+              selectWorkspace('');
+              setActiveTab('overview');
+            }}
+            className="flex items-center gap-2 text-left focus:outline-none group"
+            title="Go to Workspaces Hub"
+          >
+            <div className="size-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 grid place-items-center text-white font-black text-sm shadow-md group-hover:scale-105 transition-transform">
               T2
             </div>
             <span className="font-heading text-lg font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent hidden sm:inline">
               Talk2Me
             </span>
-          </Link>
+          </button>
 
           {/* Active Workspace Selector Dropdown */}
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
 
-          {workspacesData.length > 0 && (
-            <div className="relative group">
-              <select
-                value={activeWorkspaceId}
-                onChange={(e) => {
-                  setActiveWorkspaceId(e.target.value);
-                  setSelectedChannel('# General');
-                }}
-                className="appearance-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-xl px-3 py-1.5 pr-8 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
-              >
-                {workspacesData.map((item) => (
-                  <option key={item.workspace.id} value={item.workspace.id}>
-                    {item.workspace.name}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                ▼
-              </div>
+          <div className="relative group">
+            <select
+              value={activeWorkspaceId}
+              onChange={(e) => {
+                selectWorkspace(e.target.value);
+                setSelectedChannel('# General');
+                setActiveTab('overview');
+              }}
+              className="appearance-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-xl px-3 py-1.5 pr-8 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+            >
+              <option value="">🏠 Workspaces Hub</option>
+              {workspacesData.map((item) => (
+                <option key={item.workspace.id} value={item.workspace.id}>
+                  {item.workspace.name}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+              ▼
             </div>
-          )}
+          </div>
 
           <button
             onClick={() => setShowCreateWsModal(true)}
@@ -1007,8 +1037,224 @@ function DashboardContent() {
 
       {/* ── MAIN LAYOUT (SIDEBAR + CONTENT AREA) ── */}
       <div className="flex-1 flex overflow-hidden">
-        {/* DESKTOP SIDEBAR */}
-        <aside className="w-64 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-4 space-y-6">
+        {!activeWorkspaceId ? (
+          /* ── 1. HOME DASHBOARD HUB (NO ACTIVE WORKSPACE SELECTED) ── */
+          <main className="relative z-10 flex-1 max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 w-full flex flex-col gap-8 sm:gap-10 font-sans overflow-y-auto">
+            {/* Greeting Section */}
+            <div className="flex flex-col gap-2">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
+                {timeGreeting}, {user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
+              </h1>
+              <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 font-medium">
+                What would you like to do?
+              </p>
+            </div>
+
+            {/* 3 Primary Action Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Card 1: Start Meeting */}
+              <motion.div
+                whileHover={{ y: -4, scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={handleCreateMeeting}
+                className="group cursor-pointer p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 flex flex-col justify-between gap-6 shadow-sm"
+              >
+                <div className="flex flex-col gap-4">
+                  <div className="size-12 rounded-lg bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Video className="size-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                      <Video className="size-5 text-blue-600 dark:text-blue-400" /> Start Meeting
+                    </h3>
+                    <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                      Create an instant video meeting and share the room link with your team.
+                    </p>
+                  </div>
+                </div>
+                <div className="font-sans flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400 gap-1 group-hover:translate-x-1 transition-transform">
+                  Start Meeting <ArrowRight className="size-4" />
+                </div>
+              </motion.div>
+
+              {/* Card 2: Create a Workspace */}
+              <motion.div
+                whileHover={{ y: -4, scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setShowCreateWsModal(true)}
+                className="group cursor-pointer p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 flex flex-col justify-between gap-6 shadow-sm"
+              >
+                <div className="flex flex-col gap-4">
+                  <div className="size-12 rounded-lg bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Building2 className="size-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                      <Building2 className="size-5 text-blue-600 dark:text-blue-400" /> Create Workspace
+                    </h3>
+                    <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                      Build a shared space for your team with persistent chat, meetings, and AI.
+                    </p>
+                  </div>
+                </div>
+                <div className="font-sans flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400 gap-1 group-hover:translate-x-1 transition-transform">
+                  Create Workspace <ArrowRight className="size-4" />
+                </div>
+              </motion.div>
+
+              {/* Card 3: Join a Workspace */}
+              <motion.div
+                whileHover={{ y: -4, scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setShowJoinWsModal(true)}
+                className="group cursor-pointer p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 flex flex-col justify-between gap-6 shadow-sm"
+              >
+                <div className="flex flex-col gap-4">
+                  <div className="size-12 rounded-lg bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <Users className="size-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
+                      <Users className="size-5 text-blue-600 dark:text-blue-400" /> Join Workspace
+                    </h3>
+                    <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                      Enter an existing workspace invitation link or workspace code.
+                    </p>
+                  </div>
+                </div>
+                <div className="font-sans flex items-center text-xs font-semibold text-blue-600 dark:text-blue-400 gap-1 group-hover:translate-x-1 transition-transform">
+                  Join Workspace <ArrowRight className="size-4" />
+                </div>
+              </motion.div>
+            </div>
+
+            {/* My Workspaces List Section */}
+            <div className="flex flex-col gap-6 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">My Workspaces</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Your hubs for video meetings, persistent chat, and AI context.</p>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300">
+                  {workspacesData.length} Workspaces
+                </span>
+              </div>
+
+              {workspacesData.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {workspacesData.map((item) => (
+                    <motion.div
+                      key={item.workspace.id}
+                      whileHover={{ y: -4, scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={() => selectWorkspace(item.workspace.id)}
+                      className="group cursor-pointer p-6 rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-indigo-500/50 hover:bg-slate-50/80 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl relative overflow-hidden"
+                    >
+                      {/* Ambient glow */}
+                      <div className="absolute top-0 right-0 w-36 h-36 bg-gradient-to-bl from-indigo-500/10 via-cyan-500/5 to-transparent rounded-bl-full pointer-events-none group-hover:scale-125 transition-transform duration-500" />
+
+                      {/* Header: Icon + Title + Open CTA */}
+                      <div className="flex items-start justify-between gap-4 relative z-10">
+                        <div className="flex items-center gap-3.5">
+                          <div className="size-12 rounded-xl bg-blue-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-sm flex-shrink-0">
+                            {renderWorkspaceIcon(item.workspace.icon || 'rocket')}
+                          </div>
+                          <div className="flex flex-col">
+                            <h3 className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight">
+                              {item.workspace.name}
+                            </h3>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+                              {item.workspace.topic || 'Team Collaboration & AI Context'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 group-hover:bg-indigo-600 group-hover:text-white text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 transition-all shadow-sm flex-shrink-0">
+                          Open <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        </div>
+                      </div>
+
+                      {/* Feature Chips */}
+                      <div className="flex flex-wrap items-center gap-2 relative z-10">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/50 dark:border-indigo-500/20 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                          <Video className="size-3 text-indigo-500" /> Meetings
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200/50 dark:border-cyan-500/20 text-[11px] font-bold text-cyan-700 dark:text-cyan-300">
+                          <MessageSquare className="size-3 text-cyan-500" /> Persistent Chat
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/50 dark:border-emerald-500/20 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                          <Sparkles className="size-3 text-emerald-500" /> AI Knowledge
+                        </span>
+                      </div>
+
+                      {/* Footer */}
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-200/80 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400 relative z-10">
+                        <div className="flex items-center gap-2">
+                          <div className="flex -space-x-2 overflow-hidden">
+                            {item.members.slice(0, 3).map((m, idx) => (
+                              <div
+                                key={idx}
+                                className="inline-block size-6 rounded-full bg-indigo-600 ring-2 ring-white dark:ring-slate-900 text-[9px] font-bold text-white text-center leading-6 uppercase"
+                                title={m.profile?.full_name || 'Member'}
+                              >
+                                {(m.profile?.full_name || 'MB').slice(0, 2)}
+                              </div>
+                            ))}
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400">
+                            {item.members.length} members
+                          </span>
+                        </div>
+
+                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate max-w-[170px]">
+                          {item.channels.length} channels · Code: {item.workspace.invite_code}
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-12 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col items-center justify-center text-center gap-4">
+                  <div className="size-14 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 grid place-items-center">
+                    <Building2 className="size-7" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">No Workspaces Found</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
+                      Create your own team workspace or join an existing one using an invite code.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowCreateWsModal(true)}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Plus className="size-4" /> Create Workspace
+                    </button>
+                    <button
+                      onClick={() => setShowJoinWsModal(true)}
+                      className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-900 dark:text-white text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Compass className="size-4" /> Join Workspace
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+        ) : (
+          /* ── 2. ACTIVE WORKSPACE VIEW (SIDEBAR + CONTENT TABS) ── */
+          <>
+            {/* DESKTOP SIDEBAR */}
+            <aside className="w-64 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-4 space-y-6">
+              {/* Back to Workspaces Hub button */}
+              <button
+                onClick={() => selectWorkspace('')}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800/50 transition-all shadow-2xs group"
+              >
+                <ChevronLeft className="size-4 group-hover:-translate-x-0.5 transition-transform" />
+                <span>All Workspaces</span>
+              </button>
           {/* Workspace Title Card */}
           <div className="p-3 rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/80 shadow-xs">
             <div className="flex items-center gap-2.5">
@@ -1102,6 +1348,13 @@ function DashboardContent() {
             <div className="max-w-5xl flex flex-col gap-6">
               {/* Header Greeting */}
               <div>
+                <button
+                  onClick={() => selectWorkspace('')}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline mb-2"
+                >
+                  <ChevronLeft className="size-3.5" /> Back to Workspaces Hub
+                </button>
+                <br />
                 <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
                   {timeGreeting}
                 </span>
@@ -1868,7 +2121,9 @@ function DashboardContent() {
             </div>
           )}
         </main>
-      </div>
+      </>
+    )}
+  </div>
 
       {/* ── SIGN OUT CONFIRMATION MODAL ── */}
       <AnimatePresence>
