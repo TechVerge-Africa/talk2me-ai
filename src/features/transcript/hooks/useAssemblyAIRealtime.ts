@@ -185,9 +185,10 @@ export function useAssemblyAIRealtime({
         }
       };
       recorder.start();
+      // 4 s chunks: more audio per Whisper call → fewer silent-blob hallucinations
       fallbackIntervalRef.current = window.setInterval(() => {
         if (fallbackActiveRef.current && recorder.state === 'recording') recorder.stop();
-      }, 2000);
+      }, 4000);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Groq Whisper fallback failed';
       setError(message);

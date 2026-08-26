@@ -34,12 +34,24 @@ import {
   Brain,
   Trash2,
   Tag,
-  Filter
+  Filter,
+  Clock,
+  CalendarDays,
+  FileText,
+  ChevronDown,
+  Mic,
+  CircleDot,
+  CheckCircle2,
+  HelpCircle,
+  Lightbulb,
+  ListTodo,
+  RefreshCw
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
 import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
+import { TranscriptService, CanonicalTranscriptEntry } from '@/services/supabase/transcripts';
 import {
   WorkspaceService,
   FullWorkspaceData,
@@ -66,7 +78,7 @@ const renderWorkspaceIcon = (iconStr: string) => {
   return <Rocket className="size-5 text-indigo-600 dark:text-indigo-400" />;
 };
 
-type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'memory' | 'settings';
+type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
 
 function DashboardContent() {
   const router = useRouter();
@@ -75,7 +87,27 @@ function DashboardContent() {
 
   // Navigation tab & selection state
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
+
+  // ── Meetings Tab State ─────────────────────────────────────────────────
+  type WorkspaceMeeting = Awaited<ReturnType<typeof MeetingService.getWorkspaceMeetings>>[number];
+  type MeetingSummaryData = {
+    turns: CanonicalTranscriptEntry[];
+    summary: string | null;
+    decisions: Array<{
+      category: 'decision' | 'action_item' | 'proposal' | 'question' | 'suggestion';
+      text: string;
+      evidence_speaker: string;
+      evidence_timestamp_ms: number;
+      evidence_quote: string;
+    }>;
+  };
+  const [workspaceMeetings, setWorkspaceMeetings] = useState<WorkspaceMeeting[]>([]);
+  const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [meetingSummaries, setMeetingSummaries] = useState<Record<string, MeetingSummaryData>>({});
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [transcriptSpeakerFilter, setTranscriptSpeakerFilter] = useState<string>('all');
+  const [decisionCategoryFilter, setDecisionCategoryFilter] = useState<string>('all');
 
   // Workspaces from Supabase DB
   const [workspacesData, setWorkspacesData] = useState<FullWorkspaceData[]>([]);
@@ -108,6 +140,23 @@ function DashboardContent() {
   // Mobile menu drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [copiedWsCode, setCopiedWsCode] = useState<boolean>(false);
+
+  // Profile dropdown
+  const [showProfileDropdown, setShowProfileDropdown] = useState<boolean>(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState<boolean>(false);
+  const profileDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    if (!showProfileDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target as Node)) {
+        setShowProfileDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showProfileDropdown]);
 
   // Memory Bank State
   const [memories, setMemories] = useState<DbWorkspaceMemory[]>([]);
@@ -551,6 +600,67 @@ function DashboardContent() {
     }
   };
 
+  // ── Meetings Tab Handlers ───────────────────────────────────────────────
+  const fetchWorkspaceMeetings = React.useCallback(async () => {
+    if (!activeWorkspaceId) return;
+    setIsLoadingMeetings(true);
+    try {
+      const list = await MeetingService.getWorkspaceMeetings(activeWorkspaceId);
+      setWorkspaceMeetings(list);
+      // Auto-select the first meeting
+      if (list.length > 0 && !selectedMeetingId) {
+        setSelectedMeetingId(list[0].id);
+      }
+    } catch (err) {
+      console.error('[Meetings] fetchWorkspaceMeetings error:', err);
+    } finally {
+      setIsLoadingMeetings(false);
+    }
+  }, [activeWorkspaceId, selectedMeetingId]);
+
+  // Fetch meetings list when switching to meetings tab or workspace changes
+  useEffect(() => {
+    if (activeTab === 'meetings' && activeWorkspaceId) {
+      fetchWorkspaceMeetings();
+    }
+  }, [activeTab, activeWorkspaceId]);
+
+  // Load transcript + AI summary for selected meeting
+  useEffect(() => {
+    if (!selectedMeetingId) return;
+    if (meetingSummaries[selectedMeetingId]) return; // already cached
+    setIsLoadingDetail(true);
+    setTranscriptSpeakerFilter('all');
+    setDecisionCategoryFilter('all');
+    fetch('/api/ai/summarize-meeting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meetingId: selectedMeetingId }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        setMeetingSummaries(prev => ({
+          ...prev,
+          [selectedMeetingId]: {
+            turns: data.turns || [],
+            summary: data.summary || null,
+            decisions: data.decisions || [],
+          },
+        }));
+      })
+      .catch(err => console.error('[Meetings] loadMeetingDetail error:', err))
+      .finally(() => setIsLoadingDetail(false));
+  }, [selectedMeetingId, meetingSummaries]);
+
+  const handleRefreshSummary = () => {
+    if (!selectedMeetingId) return;
+    setMeetingSummaries(prev => {
+      const next = { ...prev };
+      delete next[selectedMeetingId];
+      return next;
+    });
+  };
+
   const timeGreeting = useMemo(() => getTimeGreetingPrefix(), []);
 
   if (authLoading || isLoadingWorkspaces) {
@@ -652,18 +762,71 @@ function DashboardContent() {
 
           <ThemeToggle />
 
-          {/* User Avatar */}
-          <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-800 pl-3">
-            <div className="size-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-xs font-black uppercase shadow-xs">
-              {user?.email?.slice(0, 2) || 'US'}
-            </div>
+          {/* User Avatar + Profile Dropdown */}
+          <div className="relative flex items-center border-l border-slate-200 dark:border-slate-800 pl-3" ref={profileDropdownRef}>
             <button
-              onClick={() => signOut()}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-              title="Sign Out"
+              onClick={() => setShowProfileDropdown((v) => !v)}
+              className="size-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-xs font-black uppercase shadow-md ring-2 ring-transparent hover:ring-indigo-400 transition-all focus:outline-none focus:ring-indigo-400"
+              title="Profile"
+              aria-haspopup="true"
+              aria-expanded={showProfileDropdown}
             >
-              <LogOut className="size-4" />
+              {user?.email?.slice(0, 2) || 'US'}
             </button>
+
+            {/* Dropdown Panel */}
+            <AnimatePresence>
+              {showProfileDropdown && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-2.5 w-60 z-50 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/60 dark:shadow-slate-950/60 overflow-hidden"
+                >
+                  {/* User info header */}
+                  <div className="px-4 py-3.5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border-b border-slate-200 dark:border-slate-700/60">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-sm font-black uppercase shadow-md flex-shrink-0">
+                        {user?.email?.slice(0, 2) || 'US'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {user?.email || ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="p-2">
+                    <button
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        setActiveTab('settings');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <Settings className="size-3.5 text-slate-400" />
+                      Settings
+                    </button>
+
+                    <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-800" />
+
+                    <button
+                      onClick={() => { setShowProfileDropdown(false); setShowSignOutConfirm(true); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                    >
+                      <LogOut className="size-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </header>
@@ -696,7 +859,6 @@ function DashboardContent() {
               { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
               { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
               { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
-              { id: 'memory', label: 'Memory Bank', icon: Brain },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => {
               const Icon = tab.icon;
@@ -717,11 +879,6 @@ function DashboardContent() {
                   {tab.id === 'ask-ai' && (
                     <span className="px-1.5 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 text-[9px] font-bold">
                       PRO
-                    </span>
-                  )}
-                  {tab.id === 'memory' && (
-                    <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-300 text-[10px] font-extrabold">
-                      {memories.length}
                     </span>
                   )}
                 </button>
@@ -862,43 +1019,308 @@ function DashboardContent() {
           )}
 
           {/* TAB 2: MEETINGS */}
-          {activeTab === 'meetings' && (
-            <div className="max-w-4xl flex flex-col gap-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-                    Workspace Meetings
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-                    Live WebRTC meetings with AI decision tracking and canonical transcription.
-                  </p>
+          {activeTab === 'meetings' && (() => {
+            const selectedMeeting = workspaceMeetings.find(m => m.id === selectedMeetingId);
+            const detail = selectedMeetingId ? meetingSummaries[selectedMeetingId] : null;
+
+            // Unique speakers in the selected meeting's transcript
+            const speakers = detail
+              ? Array.from(new Set(detail.turns.map(t => t.speaker_name)))
+              : [];
+
+            const filteredTurns = detail?.turns.filter(t =>
+              transcriptSpeakerFilter === 'all' || t.speaker_name === transcriptSpeakerFilter
+            ) ?? [];
+
+            const filteredDecisions = detail?.decisions.filter(d =>
+              decisionCategoryFilter === 'all' || d.category === decisionCategoryFilter
+            ) ?? [];
+
+            const decisionCategoryMeta: Record<string, { label: string; icon: React.FC<any>; color: string }> = {
+              decision:    { label: 'Decisions',    icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+              action_item: { label: 'Action Items', icon: ListTodo,     color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20' },
+              proposal:    { label: 'Proposals',    icon: Lightbulb,    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
+              question:    { label: 'Questions',    icon: HelpCircle,   color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20' },
+              suggestion:  { label: 'Suggestions',  icon: CircleDot,    color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
+            };
+
+            /** Format duration between two ISO strings → "X min" */
+            const formatDuration = (start: string, end?: string | null) => {
+              if (!end) return null;
+              const diffMs = new Date(end).getTime() - new Date(start).getTime();
+              const mins = Math.floor(diffMs / 60000);
+              return mins < 1 ? '<1 min' : `${mins} min`;
+            };
+
+            /** Format ms → MM:SS */
+            const formatMs = (ms: number) => {
+              const s = Math.floor(ms / 1000);
+              return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+            };
+
+            // Assign a color per speaker (cycles through palette)
+            const speakerPalette = [
+              'bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500',
+              'bg-cyan-500', 'bg-rose-500', 'bg-teal-500', 'bg-orange-500',
+            ];
+            const speakerColorMap: Record<string, string> = {};
+            speakers.forEach((sp, i) => { speakerColorMap[sp] = speakerPalette[i % speakerPalette.length]; });
+
+            return (
+              <div className="flex flex-col gap-5 h-full">
+                {/* Header row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">Meetings & Syncs</h1>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      Past meetings with AI-formatted transcripts, decisions, and action items.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCreateMeeting}
+                    className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all"
+                  >
+                    <Video className="size-4" /> Start New Meeting
+                  </button>
                 </div>
 
-                <button
-                  onClick={handleCreateMeeting}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md"
-                >
-                  <Video className="size-4" /> Start New Meeting
-                </button>
-              </div>
+                {/* Two-panel layout */}
+                <div className="flex gap-4" style={{ minHeight: 'calc(100vh - 16rem)' }}>
 
-              {/* Instant Room Card */}
-              <div className="p-6 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-cyan-500/10 backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Instant Team Room</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-                    Launch a high-definition video call for {workspace?.name} anytime.
-                  </p>
+                  {/* ── LEFT: Meeting List ── */}
+                  <div className="w-72 shrink-0 flex flex-col gap-2 overflow-y-auto pr-1">
+                    {isLoadingMeetings ? (
+                      <div className="flex flex-col items-center justify-center gap-3 py-16">
+                        <Loader2 className="size-6 animate-spin text-indigo-500" />
+                        <p className="text-xs text-slate-500">Loading meetings...</p>
+                      </div>
+                    ) : workspaceMeetings.length === 0 ? (
+                      <div className="p-8 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 flex flex-col items-center text-center gap-2">
+                        <CalendarDays className="size-10 text-slate-300 dark:text-slate-700" />
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No meetings yet</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-500">Start a meeting to see it listed here after it ends.</p>
+                      </div>
+                    ) : (
+                      workspaceMeetings.map(m => {
+                        const isSelected = m.id === selectedMeetingId;
+                        const duration = formatDuration(m.created_at, (m as any).ended_at);
+                        const isLive = m.status === 'active';
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => setSelectedMeetingId(m.id)}
+                            className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                              isSelected
+                                ? 'border-indigo-500/50 bg-indigo-50 dark:bg-indigo-950/40 shadow-sm'
+                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{m.title}</p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                  {new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
+                              </div>
+                              {isLive ? (
+                                <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold">
+                                  <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
+                                  Live
+                                </span>
+                              ) : (
+                                <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-semibold">
+                                  Ended
+                                </span>
+                              )}
+                            </div>
+                            {duration && (
+                              <div className="flex items-center gap-1 mt-2 text-[11px] text-slate-500">
+                                <Clock className="size-3" /> {duration}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* ── RIGHT: Meeting Detail ── */}
+                  <div className="flex-1 min-w-0 overflow-y-auto flex flex-col gap-4">
+                    {!selectedMeetingId || !selectedMeeting ? (
+                      <div className="flex-1 flex flex-col items-center justify-center gap-3 p-16 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
+                        <FileText className="size-12 text-slate-300 dark:text-slate-700" />
+                        <p className="text-sm font-bold text-slate-600 dark:text-slate-400">Select a meeting</p>
+                        <p className="text-xs text-slate-500">Click a meeting on the left to view its transcript and AI summary.</p>
+                      </div>
+                    ) : isLoadingDetail ? (
+                      <div className="flex-1 flex flex-col items-center justify-center gap-4 py-24">
+                        <Loader2 className="size-8 animate-spin text-indigo-500" />
+                        <p className="text-xs text-slate-500">Analyzing transcript with AI...</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Meeting header */}
+                        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">{selectedMeeting.title}</h2>
+                              <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
+                                <span className="flex items-center gap-1">
+                                  <CalendarDays className="size-3" />
+                                  {new Date(selectedMeeting.created_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                {(selectedMeeting as any).ended_at && (
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="size-3" />
+                                    {formatDuration(selectedMeeting.created_at, (selectedMeeting as any).ended_at)}
+                                  </span>
+                                )}
+                                {detail && detail.turns.length > 0 && (
+                                  <span className="flex items-center gap-1">
+                                    <Mic className="size-3" />
+                                    {detail.turns.length} turns
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={handleRefreshSummary}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 flex items-center gap-1.5 transition-all"
+                                title="Re-run AI analysis"
+                              >
+                                <RefreshCw className="size-3" /> Re-analyze
+                              </button>
+                              <Link
+                                href={`/room/${selectedMeeting.room_code}`}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-sm transition-all"
+                              >
+                                <Video className="size-3" /> Rejoin
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* AI Summary */}
+                        {detail && (detail.summary || detail.decisions.length > 0) && (
+                          <div className="p-5 rounded-2xl border border-purple-200 dark:border-purple-900/50 bg-gradient-to-br from-purple-50/80 to-indigo-50/50 dark:from-purple-950/30 dark:to-indigo-950/20">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Sparkles className="size-4 text-purple-600 dark:text-purple-400" />
+                              <span className="text-xs font-extrabold text-purple-700 dark:text-purple-300 uppercase tracking-wide">AI Summary</span>
+                            </div>
+                            {detail.summary && (
+                              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-4">{detail.summary}</p>
+                            )}
+                            {detail.decisions.length > 0 && (
+                              <>
+                                {/* Category filter pills */}
+                                <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                                  {['all', 'decision', 'action_item', 'proposal', 'question', 'suggestion'].map(cat => {
+                                    const count = cat === 'all'
+                                      ? detail.decisions.length
+                                      : detail.decisions.filter(d => d.category === cat).length;
+                                    if (cat !== 'all' && count === 0) return null;
+                                    const meta = decisionCategoryMeta[cat];
+                                    return (
+                                      <button
+                                        key={cat}
+                                        onClick={() => setDecisionCategoryFilter(cat)}
+                                        className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all ${
+                                          decisionCategoryFilter === cat
+                                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                                        }`}
+                                      >
+                                        {cat === 'all' ? `All (${count})` : `${meta.label} (${count})`}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                  {filteredDecisions.map((d, i) => {
+                                    const meta = decisionCategoryMeta[d.category];
+                                    const Icon = meta?.icon || CheckCircle2;
+                                    return (
+                                      <div key={i} className={`p-3 rounded-xl border text-xs ${meta?.color || ''}`}>
+                                        <div className="flex items-start gap-2">
+                                          <Icon className="size-3.5 mt-0.5 shrink-0" />
+                                          <div className="flex-1 min-w-0">
+                                            <p className="font-semibold leading-snug">{d.text}</p>
+                                            <p className="mt-1 opacity-70 italic">
+                                              — {d.evidence_speaker} at {formatMs(d.evidence_timestamp_ms)}: &ldquo;{d.evidence_quote}&rdquo;
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Full Transcript */}
+                        {detail && detail.turns.length > 0 ? (
+                          <div className="flex flex-col gap-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                                <Mic className="size-4 text-slate-400" /> Full Transcript
+                              </h3>
+                              {/* Speaker filter */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {['all', ...speakers].map(sp => (
+                                  <button
+                                    key={sp}
+                                    onClick={() => setTranscriptSpeakerFilter(sp)}
+                                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all ${
+                                      transcriptSpeakerFilter === sp
+                                        ? 'bg-slate-800 dark:bg-white border-slate-800 dark:border-white text-white dark:text-slate-900'
+                                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                                    }`}
+                                  >
+                                    {sp === 'all' ? 'All Speakers' : sp}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col gap-1.5">
+                              {filteredTurns.map((turn, i) => {
+                                const avatarColor = speakerColorMap[turn.speaker_name] || 'bg-slate-500';
+                                const initials = turn.speaker_name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
+                                return (
+                                  <div key={turn.id || i} className="flex gap-3 group">
+                                    <div className={`size-7 rounded-full ${avatarColor} grid place-items-center text-white text-[10px] font-black shrink-0 mt-0.5`}>
+                                      {initials}
+                                    </div>
+                                    <div className="flex-1 min-w-0 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                        <span className="text-[11px] font-bold text-slate-900 dark:text-white">{turn.speaker_name}</span>
+                                        <span className="text-[10px] text-slate-400 font-mono">{formatMs(turn.start_ms)}</span>
+                                      </div>
+                                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{turn.content}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : detail && detail.turns.length === 0 ? (
+                          <div className="p-10 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 flex flex-col items-center text-center gap-2">
+                            <Mic className="size-10 text-slate-300 dark:text-slate-700" />
+                            <p className="text-xs font-bold text-slate-600 dark:text-slate-400">No transcript data</p>
+                            <p className="text-[11px] text-slate-500">This meeting has no saved transcript turns. Transcription must be active during the meeting.</p>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={handleCreateMeeting}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg"
-                >
-                  Join Meeting Room
-                </button>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* TAB 3: CHANNEL CHAT */}
           {activeTab === 'chat' && (
@@ -1054,172 +1476,14 @@ function DashboardContent() {
             </div>
           )}
 
-          {/* TAB 5: MEMORY BANK */}
-          {activeTab === 'memory' && (
-            <div className="max-w-5xl flex flex-col gap-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
-                    <Brain className="size-7 text-purple-600 dark:text-purple-400" /> Workspace AI Memory Bank
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-                    Persistent long-term knowledge, team specs, user preferences, and architectural decisions automatically recalled by Talk2Me AI.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <button
-                    onClick={handleExtractAiMemory}
-                    disabled={isExtractingAiMemory}
-                    className="px-4 py-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-xs flex items-center gap-2 transition-all disabled:opacity-50"
-                  >
-                    {isExtractingAiMemory ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" /> Synthesizing Chat...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="size-4 text-purple-500" /> Auto-Extract from Chat
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setShowAddMemoryModal(true)}
-                    className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all"
-                  >
-                    <Plus className="size-4" /> Add Memory
-                  </button>
-                </div>
-              </div>
-
-              {/* Filter & Search Bar */}
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-                {/* Category Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-                  {[
-                    { id: 'all', label: 'All' },
-                    { id: 'decision', label: 'Decisions' },
-                    { id: 'spec', label: 'Specs' },
-                    { id: 'fact', label: 'Facts' },
-                    { id: 'user_preference', label: 'Preferences' },
-                    { id: 'action_item', label: 'Action Items' },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setMemoryCategoryFilter(cat.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-                        memoryCategoryFilter === cat.id
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Search Bar */}
-                <div className="relative min-w-[220px]">
-                  <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={memorySearchQuery}
-                    onChange={(e) => setMemorySearchQuery(e.target.value)}
-                    placeholder="Search memories..."
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  {memorySearchQuery && (
-                    <button
-                      onClick={() => setMemorySearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Memories List */}
-              {filteredMemories.length === 0 ? (
-                <div className="p-12 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 flex flex-col items-center justify-center text-center">
-                  <Brain className="size-12 text-slate-300 dark:text-slate-700 mb-3" />
-                  <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
-                    No memories found
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
-                    {memories.length === 0
-                      ? 'Add key project facts, decisions, or specs manually, or auto-extract memories from your active channel chat!'
-                      : 'No memories match your search filter.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredMemories.map((mem) => {
-                    const categoryColors: Record<string, string> = {
-                      decision: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
-                      spec: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
-                      fact: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-                      user_preference: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
-                      action_item: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
-                      summary: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
-                    };
-
-                    const badgeClass = categoryColors[mem.category] || categoryColors.summary;
-
-                    return (
-                      <div
-                        key={mem.id}
-                        className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-xs flex flex-col justify-between gap-3 group hover:border-slate-300 dark:hover:border-slate-700 transition-all"
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider border ${badgeClass}`}>
-                              {mem.category.replace('_', ' ')}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-medium text-slate-400">
-                                {new Date(mem.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                              </span>
-                              <button
-                                onClick={() => handleDeleteMemory(mem.id)}
-                                title="Delete Memory"
-                                className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-slate-400 hover:text-red-500 transition-all"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                            {mem.title}
-                          </h3>
-
-                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">
-                            {mem.content}
-                          </p>
-                        </div>
-
-                        {mem.tags && mem.tags.length > 0 && (
-                          <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-800/60">
-                            {mem.tags.map((tag, idx) => (
-                              <span key={idx} className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">
-                                <Tag className="size-2.5" /> {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 6: SETTINGS */}
+          {/* TAB 5: SETTINGS */}
           {activeTab === 'settings' && (
-            <div className="max-w-2xl flex flex-col gap-6">
+            <div className="max-w-5xl flex flex-col gap-8">
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">Workspace Settings</h1>
+
+              {/* Workspace Info */}
               <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
+                <h2 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">General</h2>
                 <div>
                   <label className="text-xs font-bold uppercase text-slate-400 block mb-1">Workspace Name</label>
                   <input
@@ -1265,10 +1529,214 @@ function DashboardContent() {
                   </div>
                 </div>
               </div>
+
+              {/* Memory Bank */}
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Brain className="size-5 text-purple-600 dark:text-purple-400" /> AI Memory Bank
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-600 dark:text-purple-300 text-[10px] font-extrabold">
+                        {memories.length}
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Persistent long-term knowledge, team specs, user preferences, and architectural decisions automatically recalled by Talk2Me AI.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <button
+                      onClick={handleExtractAiMemory}
+                      disabled={isExtractingAiMemory}
+                      className="px-4 py-2.5 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-xs flex items-center gap-2 transition-all disabled:opacity-50"
+                    >
+                      {isExtractingAiMemory ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" /> Synthesizing Chat...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-4 text-purple-500" /> Auto-Extract from Chat
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowAddMemoryModal(true)}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all"
+                    >
+                      <Plus className="size-4" /> Add Memory
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter & Search Bar */}
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+                  {/* Category Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'decision', label: 'Decisions' },
+                      { id: 'spec', label: 'Specs' },
+                      { id: 'fact', label: 'Facts' },
+                      { id: 'user_preference', label: 'Preferences' },
+                      { id: 'action_item', label: 'Action Items' },
+                    ].map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setMemoryCategoryFilter(cat.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                          memoryCategoryFilter === cat.id
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative min-w-[220px]">
+                    <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={memorySearchQuery}
+                      onChange={(e) => setMemorySearchQuery(e.target.value)}
+                      placeholder="Search memories..."
+                      className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    {memorySearchQuery && (
+                      <button
+                        onClick={() => setMemorySearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Memories List */}
+                {filteredMemories.length === 0 ? (
+                  <div className="p-12 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 flex flex-col items-center justify-center text-center">
+                    <Brain className="size-12 text-slate-300 dark:text-slate-700 mb-3" />
+                    <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
+                      No memories found
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
+                      {memories.length === 0
+                        ? 'Add key project facts, decisions, or specs manually, or auto-extract memories from your active channel chat!'
+                        : 'No memories match your search filter.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredMemories.map((mem) => {
+                      const categoryColors: Record<string, string> = {
+                        decision: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20',
+                        spec: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+                        fact: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+                        user_preference: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+                        action_item: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+                        summary: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+                      };
+
+                      const badgeClass = categoryColors[mem.category] || categoryColors.summary;
+
+                      return (
+                        <div
+                          key={mem.id}
+                          className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 shadow-xs flex flex-col justify-between gap-3 group hover:border-slate-300 dark:hover:border-slate-700 transition-all"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider border ${badgeClass}`}>
+                                {mem.category.replace('_', ' ')}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-medium text-slate-400">
+                                  {new Date(mem.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                </span>
+                                <button
+                                  onClick={() => handleDeleteMemory(mem.id)}
+                                  title="Delete Memory"
+                                  className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-slate-400 hover:text-red-500 transition-all"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                              {mem.title}
+                            </h3>
+
+                            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                              {mem.content}
+                            </p>
+                          </div>
+
+                          {mem.tags && mem.tags.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                              {mem.tags.map((tag, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">
+                                  <Tag className="size-2.5" /> {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </main>
       </div>
+
+      {/* ── SIGN OUT CONFIRMATION MODAL ── */}
+      <AnimatePresence>
+        {showSignOutConfirm && (
+          <div className="fixed inset-0 z-[60] grid place-items-center p-4 bg-slate-950/70 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl"
+            >
+              {/* Icon */}
+              <div className="mx-auto mb-4 size-14 rounded-2xl bg-red-50 dark:bg-red-950/40 grid place-items-center">
+                <LogOut className="size-6 text-red-500" />
+              </div>
+
+              <h3 className="text-base font-bold text-slate-900 dark:text-white text-center mb-1">
+                Sign out?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 text-center mb-6">
+                You&apos;ll be returned to the login screen. Any unsaved work will remain intact.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowSignOutConfirm(false)}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setShowSignOutConfirm(false); signOut(); }}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600 text-white transition-colors"
+                >
+                  Yes, Sign Out
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ── CREATE WORKSPACE MODAL ── */}
       <AnimatePresence>

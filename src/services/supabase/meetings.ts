@@ -192,6 +192,31 @@ export const MeetingService = {
   },
 
   /**
+   * Fetches all meetings for a workspace (active + ended), newest first
+   */
+  async getWorkspaceMeetings(workspaceId: string): Promise<(Meeting & { ended_at?: string | null })[]> {
+    const { data, error } = await supabase
+      .from('meetings')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      throw new AppError(
+        'Unable to load workspace meetings. Please try again.',
+        'WORKSPACE_MEETINGS_FETCH_FAILED',
+        { cause: error },
+      );
+    }
+
+    return (data || []).map(row => ({
+      ...toMeeting(row as Record<string, unknown>),
+      ended_at: (row as any).ended_at ?? null,
+    }));
+  },
+
+  /**
    * Fetches all meetings hosted by a user
    */
   async getUserMeetings(hostId: string): Promise<Meeting[]> {

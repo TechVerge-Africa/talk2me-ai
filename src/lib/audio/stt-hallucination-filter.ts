@@ -40,6 +40,37 @@ const HALLUCINATION_EXACT: readonly string[] = [
   'applause',
   'laughter',
   'background noise',
+  // ── Whisper prompt-echo artifacts ─────────────────────────────────
+  // Whisper sometimes regurgitates the anti-hallucination prompt when audio is silent
+  'do not complete sentences do not repeat phrases',
+  'do not repeat phrases do not complete sentences',
+  'output only the exact words spoken by the speaker',
+  'verbatim voice dictation transcript',
+  'if the audio is silent or contains only background noise output nothing at all',
+  'do not add punctuation commentary or filler text',
+  'do not complete unfinished sentences',
+  'do not complete speech',
+  'do not complete sentences',
+  'do not repeat phrases',
+  'do not repeat lyrics or text',
+  'do not complete letter',
+  'do not complete silence',
+  'do not complete noise',
+  'output only the sound of the audio',
+  'output only the same thing',
+  // Whisper silent-room / music-only artifacts
+  'i do not actually believe the music',
+  'the audio is silent',
+  'the audio is not clear',
+  'after a minute if the audio is silent',
+  'if the audio is silent',
+  'couse from the end',
+  'piano can be confused',
+  // Common Whisper hallucinations on blank/noise audio
+  'i will give you more information through the comments',
+  'you can remove the words',
+  'and review of the character',
+  'what are the words that i wanted to say',
 ];
 
 /** Sub-strings that, if present in isolation (short text), signal hallucination */
@@ -48,6 +79,26 @@ const HALLUCINATION_CONTAINS: readonly string[] = [
   'don\'t forget to like',
   'hit the bell',
   'turn on notifications',
+  // Prompt-echo fragments that appear in partial outputs
+  'do not complete',
+  'do not repeat phrases',
+  'output only the exact words',
+  'verbatim voice dictation',
+  'if the audio is silent',
+];
+
+/**
+ * Regex patterns that match Whisper prompt-echo hallucinations.
+ * These are phrases Whisper generates when audio is silent or inaudible,
+ * often echoing its own system prompt back verbatim.
+ */
+const HALLUCINATION_PATTERNS: readonly RegExp[] = [
+  // 2+ imperative "Do not ..." clauses → almost certainly a prompt echo
+  /(?:do not \w[^.!?]*[.!?]\s*){2,}/i,
+  // "Output only the ..." — common Whisper meta-commentary
+  /output only the (exact|same|sound)/i,
+  // Instruction-style imperatives on what NOT to do
+  /do not (complete|repeat|add|write) (sentences?|phrases?|speech|words?|text|lyrics|noise|silence|punctuation)/i,
 ];
 
 /**
@@ -67,10 +118,13 @@ export function isKnownHallucination(rawText: string): boolean {
   // Exact match
   if (HALLUCINATION_EXACT.includes(cleaned)) return true;
 
-  // Contains match (only for very short outputs)
-  if (cleaned.split(' ').length <= 10) {
+  // Contains match (for outputs up to 20 words — catches partial prompt echoes)
+  if (cleaned.split(' ').length <= 20) {
     if (HALLUCINATION_CONTAINS.some(h => cleaned.includes(h))) return true;
   }
+
+  // Regex pattern match (catches multi-sentence prompt echoes at any length)
+  if (HALLUCINATION_PATTERNS.some(re => re.test(rawText))) return true;
 
   return false;
 }
@@ -355,4 +409,10 @@ export const GROQ_ANTI_HALLUCINATION_PROMPT =
 
 // ─── 7. Minimum audible blob size ────────────────────────────────
 
-export const MIN_AUDIBLE_BLOB_BYTES = 8_000;
+/**
+ * Minimum WebM blob size before we send audio to Whisper.
+ * Blobs smaller than this are almost certainly silence or noise
+ * and are the primary trigger for Whisper hallucinations.
+ * Raised from 8 KB → 20 KB to be more aggressive about skipping silent chunks.
+ */
+export const MIN_AUDIBLE_BLOB_BYTES = 20_000;
