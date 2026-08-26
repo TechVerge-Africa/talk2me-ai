@@ -481,8 +481,11 @@ function DashboardContent() {
     setIsJoiningWs(true);
     setJoinError(null);
     try {
-      await WorkspaceService.joinWorkspaceByCode(joinInviteCode.trim(), user.id);
+      const joinedWs = await WorkspaceService.joinWorkspaceByCode(joinInviteCode.trim(), user.id);
       await fetchWorkspaces();
+      selectWorkspace(joinedWs.id);
+      setSelectedChannel('# General');
+      setActiveTab('overview');
       setShowJoinWsModal(false);
       setJoinInviteCode('');
     } catch (err: any) {

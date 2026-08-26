@@ -259,18 +259,58 @@ export const WorkspaceService = {
 
   /**
    * Join an existing workspace by Invite Code or Workspace ID.
+   * Smartly normalizes spaces, case, dashes, and optional 'WS-' prefix.
    */
   async joinWorkspaceByCode(inviteCodeOrId: string, userId: string): Promise<DbWorkspace> {
-    const cleanCode = inviteCodeOrId.trim();
+    const raw = inviteCodeOrId.trim();
+    if (!raw) {
+      throw new Error('Please enter a valid invite code or workspace ID.');
+    }
 
-    // Find workspace by invite_code OR id
-    const { data: ws, error: wsErr } = await supabase
+    // Standardize input: strip internal whitespace, normalize unicode dashes, convert to uppercase
+    const cleanCode = raw.replace(/\s+/g, '').replace(/[—–-]/g, '-').toUpperCase();
+
+    const candidates = new Set<string>();
+    candidates.add(raw);
+    candidates.add(cleanCode);
+
+    // If clean code doesn't start with WS- (e.g. "PETMVS"), try auto-prefixing "WS-"
+    if (!cleanCode.startsWith('WS-')) {
+      candidates.add(`WS-${cleanCode}`);
+    }
+
+    const candidateList = Array.from(candidates);
+
+    // Try finding workspace by invite_code (case-insensitive ilike) or id (eq)
+    const matchConditions: string[] = [];
+    for (const c of candidateList) {
+      matchConditions.push(`invite_code.ilike.${c}`);
+      matchConditions.push(`id.eq.${c}`);
+    }
+
+    const { data: wsList, error: wsErr } = await supabase
       .from('workspaces')
       .select('*')
-      .or(`invite_code.eq.${cleanCode},id.eq.${cleanCode}`)
-      .single();
+      .or(matchConditions.join(','));
 
-    if (wsErr || !ws) {
+    let ws = wsList && wsList.length > 0 ? (wsList[0] as DbWorkspace) : null;
+
+    // Fallback lookup: fetch all workspaces and match normalized codes in JS
+    if (!ws) {
+      const { data: allWorkspaces } = await supabase.from('workspaces').select('*');
+      if (allWorkspaces) {
+        ws = (allWorkspaces as DbWorkspace[]).find((w) => {
+          const dbClean = (w.invite_code || '').replace(/\s+/g, '').replace(/[—–-]/g, '-').toUpperCase();
+          return candidateList.some((c) => dbClean === c || w.id === c);
+        }) || null;
+      }
+    }
+
+    if (wsErr && !ws) {
+      console.error('[joinWorkspaceByCode] Lookup error:', wsErr);
+    }
+
+    if (!ws) {
       throw new Error('Workspace not found. Please verify your invite code.');
     }
 
@@ -294,7 +334,7 @@ export const WorkspaceService = {
       }
     }
 
-    return ws as DbWorkspace;
+    return ws;
   },
 
   /**
