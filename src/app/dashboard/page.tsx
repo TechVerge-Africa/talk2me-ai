@@ -46,7 +46,8 @@ import {
   HelpCircle,
   Lightbulb,
   ListTodo,
-  RefreshCw
+  RefreshCw,
+  Pin
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
@@ -177,6 +178,42 @@ function DashboardContent() {
   const [askAiInput, setAskAiInput] = useState<string>('');
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const chatInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Floating chat input scroll-hide state
+  const [isChatInputVisible, setIsChatInputVisible] = useState<boolean>(true);
+  const lastChatScrollTopRef = React.useRef<number>(0);
+  const chatMessagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  const handleChannelChatScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const currentScrollTop = e.currentTarget.scrollTop;
+    const delta = currentScrollTop - lastChatScrollTopRef.current;
+
+    // Only hide if scrolled down past top threshold (80px) and scrolling significantly (> 10px)
+    if (Math.abs(delta) > 10) {
+      if (delta > 0 && currentScrollTop > 80) {
+        setIsChatInputVisible(false);
+      } else if (delta < 0) {
+        setIsChatInputVisible(true);
+      }
+    }
+
+    // Always reveal input when near bottom of chat history
+    const { scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - currentScrollTop - clientHeight < 140) {
+      setIsChatInputVisible(true);
+    }
+
+    lastChatScrollTopRef.current = currentScrollTop;
+  };
+
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      setIsChatInputVisible(true);
+      setTimeout(() => {
+        chatMessagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      }, 50);
+    }
+  }, [selectedChannel, activeTab]);
 
   // Mobile menu drawer
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -569,6 +606,10 @@ function DashboardContent() {
 
     const textToSend = chatInputText.trim();
     setChatInputText('');
+    setIsChatInputVisible(true);
+    setTimeout(() => {
+      chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
 
     const senderName = userDisplayName;
 
@@ -923,7 +964,7 @@ function DashboardContent() {
 
   return (
 
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans transition-colors duration-300">
+    <div className="h-screen max-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans transition-colors duration-300">
       <GradientBackground />
 
       {/* ── TOP APPLICATION HEADER ── */}
@@ -1270,10 +1311,10 @@ function DashboardContent() {
       </AnimatePresence>
 
       {/* ── MAIN LAYOUT (SIDEBAR + CONTENT AREA) ── */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 min-h-0 flex overflow-hidden relative">
         {!activeWorkspaceId ? (
           /* ── 1. HOME DASHBOARD HUB (NO ACTIVE WORKSPACE SELECTED) ── */
-          <main className="relative z-10 flex-1 max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 w-full flex flex-col gap-8 sm:gap-10 font-sans overflow-y-auto">
+          <main className="relative z-10 flex-1 max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 w-full flex flex-col gap-8 sm:gap-10 font-sans overflow-y-auto h-full min-h-0 custom-scrollbar">
             {/* Greeting Section */}
             <div className="flex flex-col gap-2">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
@@ -1480,7 +1521,7 @@ function DashboardContent() {
           /* ── 2. ACTIVE WORKSPACE VIEW (SIDEBAR + CONTENT TABS) ── */
           <>
             {/* DESKTOP SIDEBAR */}
-            <aside className="w-64 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-4 space-y-6">
+            <aside className="w-64 shrink-0 hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md p-4 space-y-6 overflow-y-auto h-full min-h-0 select-none custom-scrollbar">
               {/* Back to Workspaces Hub button */}
               <button
                 onClick={() => selectWorkspace('')}
@@ -1576,7 +1617,12 @@ function DashboardContent() {
         </aside>
 
         {/* MAIN DASHBOARD CONTENT VIEW */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 font-sans pb-24 lg:pb-8">
+        <main
+          onScroll={activeTab === 'chat' ? handleChannelChatScroll : undefined}
+          className={`flex-1 overflow-y-auto h-full min-h-0 font-sans custom-scrollbar relative ${
+            activeTab === 'chat' ? 'p-0 pb-12' : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8'
+          }`}
+        >
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="max-w-5xl flex flex-col gap-6">
@@ -1984,24 +2030,27 @@ function DashboardContent() {
 
           {/* TAB 3: CHANNEL CHAT */}
           {activeTab === 'chat' && (
-            <div className="h-[calc(100vh-8rem)] flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-md">
-              {/* Channel Header */}
-              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80">
+            <div className="min-h-full flex flex-col relative">
+              {/* Channel Header (Sticky top of full main page) */}
+              <div className="p-4 sm:px-6 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-white/95 dark:bg-[#0b0f17]/95 backdrop-blur-md sticky top-0 z-20 shadow-xs">
                 <div className="flex items-center gap-2">
-                  <Hash className="size-4 text-indigo-500" />
-                  <span className="font-bold text-sm text-slate-900 dark:text-white">
+                  <Hash className="size-4 text-indigo-600 dark:text-cyan-400" />
+                  <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
                     {selectedChannel}
                   </span>
+                  <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+                    · {activeMessages.length} messages
+                  </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                   {channels.map((ch) => (
                     <button
                       key={ch.id}
                       onClick={() => setSelectedChannel(ch.name)}
-                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-colors ${
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
                         selectedChannel === ch.name
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300'
+                          ? 'bg-indigo-600 text-white shadow-md font-extrabold'
+                          : 'bg-slate-200/70 dark:bg-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-300/80 dark:hover:bg-white/15'
                       }`}
                     >
                       {ch.name}
@@ -2010,70 +2059,118 @@ function DashboardContent() {
                 </div>
               </div>
 
-              {/* Message List */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-3">
+              {/* Message List (Flows naturally in full main page scroll) */}
+              <div className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 chat-grid-bg min-h-[calc(100vh-14rem)] pb-32">
                 {activeMessages.length === 0 ? (
-                  <div className="h-full grid place-items-center text-xs text-slate-400">
-                    No messages in {selectedChannel} yet. Start the conversation!
+                  <div className="py-24 flex flex-col items-center justify-center text-center gap-3 text-xs text-slate-500 dark:text-white/50 font-medium">
+                    <div className="size-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 grid place-items-center">
+                      <MessageSquare className="size-6 text-indigo-600 dark:text-cyan-400" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200">No messages in {selectedChannel} yet</p>
+                    <p className="text-xs text-slate-500 max-w-xs">Start the discussion or type <span className="font-bold text-indigo-600 dark:text-cyan-400">@Talk2Me AI</span> to ask questions!</p>
                   </div>
                 ) : (
-                  activeMessages.map((msg, i) => (
-                    <div
-                      key={msg.id || i}
-                      className={`p-3.5 rounded-2xl max-w-2xl text-xs ${
-                        msg.is_ai
-                          ? 'bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60'
-                          : 'bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between font-bold mb-1">
-                        <span className={msg.is_ai ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-900 dark:text-white'}>
-                          {msg.sender_name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                  activeMessages.map((msg, i) => {
+                    const isMe = msg.sender_name === 'You' || msg.sender_name === user?.email || msg.sender_id === user?.id;
+                    const isAi = msg.is_ai || msg.sender_name?.includes('AI') || msg.sender_name === 'Talk2Me AI';
+
+                    return (
+                      <div
+                        key={msg.id || i}
+                        className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} animate-in fade-in duration-200`}
+                      >
+                        {/* Sender info */}
+                        <div className="flex items-center gap-2 mb-1.5 px-1 text-[11px]">
+                          <span className={`font-extrabold ${isMe ? 'text-indigo-600 dark:text-cyan-400' : isAi ? 'text-cyan-600 dark:text-cyan-300' : 'text-slate-800 dark:text-slate-200'}`}>
+                            {msg.sender_name || 'Participant'}
+                          </span>
+                          <span className="text-slate-400 dark:text-white/40 text-[10px] font-mono">
+                            {new Date(msg.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Bubble wrapper with pin badge */}
+                        <div className="relative max-w-md sm:max-w-xl lg:max-w-3xl group">
+                          {/* Blue Pin Badge */}
+                          <div className={`absolute -top-2 ${isMe ? '-left-2' : '-right-2'} z-10 size-6 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg border-2 border-slate-50 dark:border-[#0b0f17]`}>
+                            <Pin className="size-3 fill-current rotate-45" />
+                          </div>
+
+                          {/* Bubble Body */}
+                          <div
+                            className={`p-4 rounded-[20px] text-xs sm:text-sm leading-relaxed shadow-sm font-sans ${
+                              isMe
+                                ? 'bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white font-medium border border-indigo-500/20'
+                                : isAi
+                                ? 'bg-cyan-50/90 text-slate-950 dark:bg-cyan-950/40 dark:text-cyan-50 font-medium border border-cyan-300/80 dark:border-cyan-500/30'
+                                : 'bg-white text-slate-900 dark:bg-slate-800 dark:text-slate-100 font-medium border border-slate-200 dark:border-slate-700 shadow-sm'
+                            }`}
+                          >
+                            <FormattedChatMessage content={msg.content} />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-slate-800 dark:text-slate-200 leading-relaxed">
-                        <FormattedChatMessage content={msg.content} />
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
                 {isAiThinking && (
-                  <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/40 text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
-                    <Loader2 className="size-3.5 animate-spin" />
+                  <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-700 dark:text-cyan-300 flex items-center gap-2 max-w-md">
+                    <Loader2 className="size-3.5 animate-spin text-cyan-600 dark:text-cyan-400" />
                     Talk2Me AI is analyzing and writing response...
                   </div>
                 )}
+                <div ref={chatMessagesEndRef} />
               </div>
 
-              {/* Input Box */}
-              <div className="relative p-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 bg-slate-50 dark:bg-slate-900/80">
-                <MentionAutocomplete
-                  inputValue={chatInputText}
-                  onSelectMention={(newText) => setChatInputText(newText)}
-                  candidates={mentionCandidates}
-                  inputRef={chatInputRef}
-                />
-                <input
-                  ref={chatInputRef}
-                  type="text"
-                  value={chatInputText}
-                  onChange={(e) => setChatInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                  placeholder="Send message or type @ to tag AI or members..."
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
-                />
-                <button
-                  onClick={handleSendChatMessage}
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
-                >
-                  <Send className="size-3.5" /> Send
-                </button>
+              {/* Floating Chat Form Field (Sticky at bottom of full page, auto-hides when scrolling down long chat) */}
+              <div
+                className={`sticky bottom-4 mx-4 sm:mx-6 lg:mx-8 z-30 transition-all duration-300 ease-out transform ${
+                  isChatInputVisible
+                    ? 'translate-y-0 opacity-100 scale-100'
+                    : 'translate-y-16 opacity-0 pointer-events-none scale-95'
+                }`}
+              >
+                <div className="p-2 sm:p-2.5 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-[#121620]/95 backdrop-blur-xl shadow-2xl flex items-center gap-2 relative">
+                  <MentionAutocomplete
+                    inputValue={chatInputText}
+                    onSelectMention={(newText) => setChatInputText(newText)}
+                    candidates={mentionCandidates}
+                    inputRef={chatInputRef}
+                  />
+                  <input
+                    ref={chatInputRef}
+                    type="text"
+                    value={chatInputText}
+                    onChange={(e) => setChatInputText(e.target.value)}
+                    onFocus={() => setIsChatInputVisible(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
+                    placeholder={`Send message to ${selectedChannel} or type @ for AI...`}
+                    className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 outline-none focus:border-indigo-600 dark:focus:border-cyan-400 transition-all"
+                  />
+                  <button
+                    onClick={handleSendChatMessage}
+                    className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer shrink-0"
+                  >
+                    <Send className="size-4" /> Send
+                  </button>
+                </div>
               </div>
+
+              {/* Floating quick button when input is hidden */}
+              {!isChatInputVisible && (
+                <button
+                  onClick={() => {
+                    setIsChatInputVisible(true);
+                    chatInputRef.current?.focus();
+                  }}
+                  className="fixed bottom-6 right-6 lg:right-10 z-40 px-4 py-2.5 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-xl border border-indigo-400/30 flex items-center gap-2 animate-bounce cursor-pointer hover:bg-indigo-500 transition-all"
+                >
+                  <MessageSquare className="size-4" /> Type message...
+                </button>
+              )}
             </div>
           )}
+
 
           {/* TAB 4: ASK AI */}
           {activeTab === 'ask-ai' && (
@@ -2087,30 +2184,54 @@ function DashboardContent() {
                 </p>
               </div>
 
-              {/* Thread */}
-              <div className="space-y-4">
-                {askAiMessages.map((msg, i) => (
-                  <div
-                    key={msg.id || i}
-                    className={`p-4 sm:p-5 rounded-2xl border ${
-                      msg.is_ai
-                        ? 'bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800/60 shadow-md'
-                        : 'bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 mb-2">
-                      <span>{msg.sender_name}</span>
-                      <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-line">
-                      {msg.content}
-                    </p>
+              {/* Thread Container */}
+              <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0b0f17] chat-grid-bg space-y-6 min-h-[300px] shadow-xl">
+                {askAiMessages.length === 0 ? (
+                  <div className="text-center py-12 text-xs text-slate-500 dark:text-white/50 font-medium">
+                    No questions asked yet. Choose a suggestion chip below or type a question!
                   </div>
-                ))}
+                ) : (
+                  askAiMessages.map((msg, i) => {
+                    const isAi = msg.is_ai || msg.sender_name?.includes('AI') || msg.sender_name === 'Talk2Me AI';
+
+                    return (
+                      <div
+                        key={msg.id || i}
+                        className={`flex flex-col ${isAi ? 'items-start' : 'items-end'} animate-in fade-in duration-200`}
+                      >
+                        <div className="flex items-center gap-2 mb-1.5 px-1 text-[11px]">
+                          <span className={`font-extrabold ${isAi ? 'text-cyan-600 dark:text-cyan-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                            {msg.sender_name}
+                          </span>
+                          <span className="text-slate-400 dark:text-white/40 text-[10px] font-mono">
+                            {new Date(msg.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        <div className="relative max-w-2xl group">
+                          {/* Blue Pin Badge */}
+                          <div className={`absolute -top-2 ${isAi ? '-right-2' : '-left-2'} z-10 size-6 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg border-2 border-slate-50 dark:border-[#0b0f17]`}>
+                            <Pin className="size-3 fill-current rotate-45" />
+                          </div>
+
+                          <div
+                            className={`p-4 rounded-[20px] text-xs sm:text-sm leading-relaxed shadow-sm font-sans ${
+                              isAi
+                                ? 'bg-cyan-50/90 text-slate-950 dark:bg-cyan-950/40 dark:text-cyan-50 font-medium border border-cyan-300/80 dark:border-cyan-500/30'
+                                : 'bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white font-medium border border-indigo-500/20'
+                            }`}
+                          >
+                            <FormattedChatMessage content={msg.content} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
 
                 {isAiThinking && (
-                  <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center gap-3 text-xs text-slate-500">
-                    <Loader2 className="size-4 animate-spin text-indigo-500" />
+                  <div className="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center gap-3 text-xs text-cyan-700 dark:text-cyan-300 max-w-md">
+                    <Loader2 className="size-4 animate-spin text-cyan-600 dark:text-cyan-400" />
                     Searching workspace transcripts and extracting insights...
                   </div>
                 )}

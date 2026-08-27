@@ -4,12 +4,12 @@
 export function GradientBackground() {
   return (
     <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none">
-      {/* Subtle solid architectural grid lines */}
+      {/* Crisp architectural grid lines */}
       <div 
-        className="absolute inset-0 opacity-[0.03] dark:opacity-[0.06]"
+        className="absolute inset-0 opacity-[0.05] dark:opacity-[0.10]"
         style={{
           backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
-          backgroundSize: '40px 40px'
+          backgroundSize: '32px 32px'
         }}
       />
     </div>
