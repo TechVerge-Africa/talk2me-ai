@@ -793,8 +793,13 @@ function DashboardContent() {
         })
       );
 
-      // 2. Check if user mentioned @Talk2Me or @talk2me
-      if (textToSend.toLowerCase().includes('@talk2me')) {
+      // 2. Evaluate if Talk2Me AI should participate in chat (mentions, questions, brainstorming, planning, or idea discussions)
+      const lower = textToSend.toLowerCase();
+      const isExplicitTag = lower.includes('@talk2me') || lower.includes('talk2me');
+      const isQuestion = textToSend.includes('?') || /\b(how|what|why|when|where|who|should|can|could|would)\b/i.test(textToSend);
+      const isBrainstormOrPlan = /\b(brainstorm|idea|ideas|plan|planning|roadmap|feature|design|proposal|think|thoughts|opinion|feedback|suggest|suggestion|architecture|solution|strategy|build)\b/i.test(textToSend);
+
+      if (isExplicitTag || isQuestion || isBrainstormOrPlan) {
         setIsAiThinking(true);
         const cleanQuery = textToSend.replace(/@talk2me/gi, '').trim() || textToSend;
 

@@ -433,9 +433,13 @@ export const WorkspaceService = {
           if (fallbackJoinErr) {
             throw new Error(fallbackJoinErr.message);
           }
+          this.postAiWelcomeMessage(ws.id, userId, displayName);
           return { workspace: ws, status: 'approved' };
         }
         throw new Error(joinErr.message);
+      }
+      if (initialStatus === 'approved') {
+        this.postAiWelcomeMessage(ws.id, userId, displayName);
       }
       return { workspace: ws, status: initialStatus };
     } else {
@@ -478,9 +482,46 @@ export const WorkspaceService = {
   },
 
   /**
+   * Posts an automated AI welcome message in `# General` channel when a new member joins or is approved.
+   */
+  async postAiWelcomeMessage(workspaceId: string, userId: string, displayName?: string) {
+    try {
+      let memberName = displayName;
+      if (!memberName) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .maybeSingle();
+        memberName = profile?.full_name || 'New Member';
+      }
+
+      const welcomeText = `🎉 Welcome @${memberName} to the workspace! 🚀 We're thrilled to have you here. I'm Talk2Me AI, your intelligent team co-pilot. Feel free to jump into any channel discussion, brainstorm ideas, plan features, or tag me @Talk2Me whenever you need assistance!`;
+
+      await this.sendWorkspaceMessage({
+        workspaceId,
+        channelName: '# General',
+        senderId: 'talk2me-ai',
+        senderName: 'Talk2Me AI',
+        content: welcomeText,
+        isAi: true,
+        sources: ['Automated AI Onboarding Welcome'],
+      });
+    } catch (err) {
+      console.warn('[postAiWelcomeMessage] Failed to post welcome message:', err);
+    }
+  },
+
+  /**
    * Approve a pending join request
    */
   async approveJoinRequest(workspaceId: string, memberId: string): Promise<void> {
+    const { data: memberData } = await supabase
+      .from('workspace_members')
+      .select('user_id')
+      .eq('id', memberId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('workspace_members')
       .update({ status: 'approved' })
@@ -489,6 +530,10 @@ export const WorkspaceService = {
 
     if (error) {
       throw new Error(error.message || 'Failed to approve member');
+    }
+
+    if (memberData?.user_id) {
+      this.postAiWelcomeMessage(workspaceId, memberData.user_id);
     }
   },
 
