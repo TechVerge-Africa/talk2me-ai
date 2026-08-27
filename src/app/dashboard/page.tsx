@@ -58,7 +58,8 @@ import {
   WorkspaceService,
   FullWorkspaceData,
   DbWorkspaceMessage,
-  DbWorkspaceChannel
+  DbWorkspaceChannel,
+  DbWorkspaceMember
 } from '@/services/supabase/workspaces';
 import {
   WorkspaceMemoryService,
@@ -166,8 +167,22 @@ function DashboardContent() {
 
   const [showJoinWsModal, setShowJoinWsModal] = useState<boolean>(false);
   const [joinInviteCode, setJoinInviteCode] = useState<string>('');
+  const [joinDisplayName, setJoinDisplayName] = useState<string>('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoiningWs, setIsJoiningWs] = useState<boolean>(false);
+  const [showPendingApprovalModal, setShowPendingApprovalModal] = useState<boolean>(false);
+  const [pendingWsInfo, setPendingWsInfo] = useState<{ name: string; inviteCode: string } | null>(null);
+
+  // Workspace Access & Owner Privileges State
+  const [pendingRequests, setPendingRequests] = useState<DbWorkspaceMember[]>([]);
+  const [isLoadingPendingRequests, setIsLoadingPendingRequests] = useState<boolean>(false);
+  const [isUpdatingPolicy, setIsUpdatingPolicy] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (showJoinWsModal) {
+      setJoinDisplayName(profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || '');
+    }
+  }, [showJoinWsModal, profile, user]);
 
   const [showCreateChannelModal, setShowCreateChannelModal] = useState<boolean>(false);
   const [newChannelName, setNewChannelName] = useState<string>('');
@@ -527,9 +542,129 @@ function DashboardContent() {
     };
   }, [activeWorkspaceId]);
 
+  // Check if current logged-in user is Owner or Admin of active workspace
+  const isOwnerOrAdmin = useMemo(() => {
+    if (!currentWorkspaceData || !user) return false;
+    const myMember = currentWorkspaceData.members.find((m) => m.user_id === user.id);
+    return myMember?.role === 'owner' || myMember?.role === 'admin' || currentWorkspaceData.workspace.owner_id === user.id;
+  }, [currentWorkspaceData, user]);
+
+  // Fetch pending join requests for workspace owners/admins
+  const fetchPendingRequests = async () => {
+    if (!activeWorkspaceId || !isOwnerOrAdmin) return;
+    setIsLoadingPendingRequests(true);
+    try {
+      const pending = await WorkspaceService.getPendingJoinRequests(activeWorkspaceId);
+      setPendingRequests(pending);
+    } catch (err) {
+      console.error('[Dashboard] Error fetching pending requests:', err);
+    } finally {
+      setIsLoadingPendingRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeWorkspaceId && isOwnerOrAdmin) {
+      fetchPendingRequests();
+    }
+  }, [activeWorkspaceId, isOwnerOrAdmin]);
+
+  const handleApproveJoinRequest = async (memberId: string) => {
+    if (!activeWorkspaceId) return;
+    try {
+      await WorkspaceService.approveJoinRequest(activeWorkspaceId, memberId);
+      await fetchPendingRequests();
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to approve member');
+    }
+  };
+
+  const handleRejectJoinRequest = async (memberId: string) => {
+    if (!activeWorkspaceId) return;
+    try {
+      await WorkspaceService.rejectJoinRequest(activeWorkspaceId, memberId);
+      await fetchPendingRequests();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reject join request');
+    }
+  };
+
+  const handleToggleJoinPolicy = async (newPolicy: 'open' | 'approval') => {
+    if (!activeWorkspaceId) return;
+    setIsUpdatingPolicy(true);
+    try {
+      const updatedWs = await WorkspaceService.updateWorkspaceJoinPolicy(activeWorkspaceId, newPolicy);
+      setWorkspacesData((prev) =>
+        prev.map((item) => {
+          if (item.workspace.id !== activeWorkspaceId) return item;
+          return {
+            ...item,
+            workspace: updatedWs,
+          };
+        })
+      );
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update workspace join policy');
+    } finally {
+      setIsUpdatingPolicy(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    if (!activeWorkspaceId) return;
+    if (!confirm('Are you sure you want to remove this member from the workspace?')) return;
+    try {
+      await WorkspaceService.removeWorkspaceMember(activeWorkspaceId, memberId);
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to remove member');
+    }
+  };
+
+  const handleUpdateMemberRole = async (memberId: string, role: 'admin' | 'member') => {
+    if (!activeWorkspaceId) return;
+    try {
+      await WorkspaceService.updateMemberRole(activeWorkspaceId, memberId, role);
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update member role');
+    }
+  };
+
+  const handleDeleteChannel = async (channelId: string, channelName: string) => {
+    if (!activeWorkspaceId) return;
+    if (channelName === '# General') {
+      alert('The default # General channel cannot be deleted.');
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete channel ${channelName}?`)) return;
+    try {
+      await WorkspaceService.deleteChannel(activeWorkspaceId, channelId);
+      setWorkspacesData((prev) =>
+        prev.map((item) => {
+          if (item.workspace.id !== activeWorkspaceId) return item;
+          return {
+            ...item,
+            channels: item.channels.filter((c) => c.id !== channelId),
+          };
+        })
+      );
+      if (selectedChannel === channelName) {
+        setSelectedChannel('# General');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete channel');
+    }
+  };
+
   // Handle Workspace Creation
   const handleCreateWorkspace = async () => {
     if (!newWsName.trim() || !user) return;
+    if (!usernameInput.trim()) {
+      alert('Please enter a username before creating a workspace');
+      return;
+    }
     setIsCreatingWs(true);
     try {
       const newWsData = await WorkspaceService.createWorkspace({
@@ -537,6 +672,7 @@ function DashboardContent() {
         topic: newWsTopic.trim(),
         icon: newWsIcon,
         userId: user.id,
+        displayName: usernameInput.trim(),
       });
 
       setWorkspacesData((prev) => [...prev, newWsData]);
@@ -555,16 +691,35 @@ function DashboardContent() {
   // Handle Workspace Joining
   const handleJoinWorkspace = async () => {
     if (!joinInviteCode.trim() || !user) return;
+    if (!joinDisplayName.trim()) {
+      setJoinError('Please enter your Full Name / User Name before joining.');
+      return;
+    }
     setIsJoiningWs(true);
     setJoinError(null);
     try {
-      const joinedWs = await WorkspaceService.joinWorkspaceByCode(joinInviteCode.trim(), user.id);
-      await fetchWorkspaces();
-      selectWorkspace(joinedWs.id);
-      setSelectedChannel('# General');
-      setActiveTab('overview');
-      setShowJoinWsModal(false);
-      setJoinInviteCode('');
+      if (joinDisplayName.trim() !== profile?.full_name) {
+        await updateProfile({ full_name: joinDisplayName.trim() });
+      }
+      const res = await WorkspaceService.joinWorkspaceByCode(
+        joinInviteCode.trim(),
+        user.id,
+        joinDisplayName.trim()
+      );
+
+      if (res.status === 'pending') {
+        setShowJoinWsModal(false);
+        setPendingWsInfo({ name: res.workspace.name, inviteCode: res.workspace.invite_code });
+        setShowPendingApprovalModal(true);
+        setJoinInviteCode('');
+      } else {
+        await fetchWorkspaces();
+        selectWorkspace(res.workspace.id);
+        setSelectedChannel('# General');
+        setActiveTab('overview');
+        setShowJoinWsModal(false);
+        setJoinInviteCode('');
+      }
     } catch (err: any) {
       setJoinError(err?.message || 'Failed to join workspace');
     } finally {
@@ -929,13 +1084,36 @@ function DashboardContent() {
                   <X className="size-4 text-slate-400" />
                 </button>
               </div>
-              <input
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-cyan-500"
-                placeholder="e.g. WS-A1B2C3"
-                value={joinInviteCode}
-                onChange={(e) => setJoinInviteCode(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleJoinWorkspace()}
-              />
+
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-400 block mb-1">
+                  Invite Code or Workspace ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                  placeholder="e.g. WS-A1B2C3"
+                  value={joinInviteCode}
+                  onChange={(e) => setJoinInviteCode(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-400 block mb-1">
+                  Your Display Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={joinDisplayName}
+                  onChange={(e) => setJoinDisplayName(e.target.value)}
+                  placeholder="Enter your full name or nickname"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleJoinWorkspace()}
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Required to prevent anonymous members in workspace chat & transcripts.
+                </p>
+              </div>
+
               {joinError && (
                 <p className="text-xs text-red-500 flex items-center gap-1">
                   <AlertCircle className="size-3.5" /> {joinError}
@@ -943,7 +1121,7 @@ function DashboardContent() {
               )}
               <button
                 onClick={handleJoinWorkspace}
-                disabled={!joinInviteCode.trim() || isJoiningWs}
+                disabled={!joinInviteCode.trim() || !joinDisplayName.trim() || isJoiningWs}
                 className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all"
               >
                 {isJoiningWs ? <Loader2 className="size-4 animate-spin" /> : <Compass className="size-4" />}
@@ -2402,6 +2580,228 @@ function DashboardContent() {
                 </div>
               </div>
 
+              {/* 3. Workspace Access Controls & Pending Approvals (Owners & Admins) */}
+              {isOwnerOrAdmin && workspace && (
+                <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-6 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-4">
+                    <div>
+                      <h2 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Settings className="size-5 text-indigo-600 dark:text-indigo-400" /> Workspace Access & Membership Policies
+                      </h2>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Manage workspace privacy rules, approve incoming member join requests, and handle channel privileges.
+                      </p>
+                    </div>
+                    {pendingRequests.length > 0 && (
+                      <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-500/20 flex items-center gap-1.5 shrink-0 animate-pulse">
+                        <Clock className="size-3.5" /> {pendingRequests.length} Pending Approval{pendingRequests.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Join Access Policy Switcher */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-slate-400 block">Workspace Join Policy</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleJoinPolicy('open')}
+                        disabled={isUpdatingPolicy}
+                        className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all ${
+                          (workspace.join_policy || 'open') === 'open'
+                            ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30 text-slate-900 dark:text-white ring-2 ring-indigo-500/20'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                        }`}
+                      >
+                        <Compass className={`size-5 mt-0.5 ${ (workspace.join_policy || 'open') === 'open' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400' }`} />
+                        <div>
+                          <div className="text-xs font-bold flex items-center gap-1.5">
+                            🌐 Open for Everyone
+                            {(workspace.join_policy || 'open') === 'open' && (
+                              <span className="text-[10px] bg-indigo-600 text-white px-1.5 py-0.5 rounded-md">Active</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] opacity-80 mt-0.5">
+                            Anyone with the workspace invite code can join immediately without waiting for approval.
+                          </p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleJoinPolicy('approval')}
+                        disabled={isUpdatingPolicy}
+                        className={`p-4 rounded-xl border text-left flex items-start gap-3 transition-all ${
+                          workspace.join_policy === 'approval'
+                            ? 'border-amber-600 bg-amber-50/50 dark:bg-amber-950/30 text-slate-900 dark:text-white ring-2 ring-amber-500/20'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                        }`}
+                      >
+                        <Clock className={`size-5 mt-0.5 ${ workspace.join_policy === 'approval' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400' }`} />
+                        <div>
+                          <div className="text-xs font-bold flex items-center gap-1.5">
+                            🔒 Owner Approval Required ("Hold in Air")
+                            {workspace.join_policy === 'approval' && (
+                              <span className="text-[10px] bg-amber-600 text-white px-1.5 py-0.5 rounded-md">Active</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] opacity-80 mt-0.5">
+                            Users who enter invite code are placed on hold until you explicitly approve their join request.
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pending Join Requests Queue */}
+                  <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <Users className="size-4 text-amber-500" /> Pending Join Requests ({pendingRequests.length})
+                      </h3>
+                      {isLoadingPendingRequests && <Loader2 className="size-3.5 animate-spin text-slate-400" />}
+                    </div>
+
+                    {pendingRequests.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-center">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">No pending join requests right now.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {pendingRequests.map((req) => (
+                          <div
+                            key={req.id}
+                            className="p-3.5 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="size-9 rounded-full bg-amber-600 text-white font-bold text-sm grid place-items-center shrink-0">
+                                {(req.profile?.full_name || 'U').charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-extrabold text-slate-900 dark:text-white">
+                                  {req.profile?.full_name || 'Anonymous User'}
+                                </h4>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                  Requested {new Date(req.joined_at).toLocaleDateString()} at {new Date(req.joined_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              <button
+                                onClick={() => handleApproveJoinRequest(req.id)}
+                                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all"
+                              >
+                                <Check className="size-3.5" /> Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectJoinRequest(req.id)}
+                                className="px-3 py-1.5 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-1 border border-rose-500/20 transition-all"
+                              >
+                                <X className="size-3.5" /> Reject
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Active Workspace Members & Role Management */}
+                  <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <Users className="size-4 text-indigo-500" /> Active Workspace Members ({members.length})
+                    </h3>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {members.map((m) => (
+                        <div
+                          key={m.id}
+                          className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="size-8 rounded-full bg-indigo-600 text-white font-bold text-xs grid place-items-center shrink-0">
+                              {(m.profile?.full_name || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                {m.profile?.full_name || 'Workspace Member'}
+                                {m.user_id === user?.id && <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded font-mono">(You)</span>}
+                              </div>
+                              <div className="text-[10px] text-slate-400 capitalize">{m.role}</div>
+                            </div>
+                          </div>
+
+                          {m.user_id !== user?.id && m.role !== 'owner' && (
+                            <div className="flex items-center gap-2">
+                              {m.role === 'member' ? (
+                                <button
+                                  onClick={() => handleUpdateMemberRole(m.id, 'admin')}
+                                  className="px-2.5 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold border border-indigo-200 dark:border-indigo-800/40 hover:bg-indigo-100"
+                                >
+                                  Make Admin
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleUpdateMemberRole(m.id, 'member')}
+                                  className="px-2.5 py-1 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-bold hover:bg-slate-300"
+                                >
+                                  Make Member
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleRemoveMember(m.id)}
+                                className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 transition-colors"
+                                title="Remove member"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Channel Access Controls */}
+                  {currentWorkspaceData && (
+                    <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                          <Hash className="size-4 text-cyan-500" /> Channel Access Management ({currentWorkspaceData.channels.length})
+                        </h3>
+                        <button
+                          onClick={() => setShowCreateChannelModal(true)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1"
+                        >
+                          <Plus className="size-3.5" /> New Channel
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {currentWorkspaceData.channels.map((ch) => (
+                          <div
+                            key={ch.id}
+                            className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 flex items-center justify-between"
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                              <Hash className="size-3.5 text-cyan-500" /> {ch.name}
+                            </span>
+                            {ch.name !== '# General' && (
+                              <button
+                                onClick={() => handleDeleteChannel(ch.id, ch.name)}
+                                className="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/40 text-red-500 transition-colors"
+                                title="Delete Channel"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Memory Bank */}
               <div className="flex flex-col gap-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2805,14 +3205,18 @@ function DashboardContent() {
               className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4"
             >
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Join Workspace</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Compass className="size-5 text-indigo-500" /> Join Workspace
+                </h3>
                 <button onClick={() => setShowJoinWsModal(false)} className="text-slate-400 hover:text-slate-600">
                   <X className="size-5" />
                 </button>
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase text-slate-500 block mb-1">Invite Code or ID</label>
+                <label className="text-xs font-bold uppercase text-slate-500 block mb-1">
+                  Invite Code or ID <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={joinInviteCode}
@@ -2820,8 +3224,26 @@ function DashboardContent() {
                   placeholder="e.g. WS-A1B2C3"
                   className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-mono text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                {joinError && <p className="text-xs text-red-500 mt-1">{joinError}</p>}
               </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-500 block mb-1">
+                  Your Display Name / Full Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={joinDisplayName}
+                  onChange={(e) => setJoinDisplayName(e.target.value)}
+                  placeholder="Enter your user name (e.g. Maya Lin)"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  onKeyDown={(e) => e.key === 'Enter' && handleJoinWorkspace()}
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Your name will be visible to workspace members in chat and meeting transcripts.
+                </p>
+              </div>
+
+              {joinError && <p className="text-xs text-red-500 mt-1">{joinError}</p>}
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
@@ -2832,12 +3254,55 @@ function DashboardContent() {
                 </button>
                 <button
                   onClick={handleJoinWorkspace}
-                  disabled={isJoiningWs || !joinInviteCode.trim()}
+                  disabled={isJoiningWs || !joinInviteCode.trim() || !joinDisplayName.trim()}
                   className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md disabled:opacity-50"
                 >
                   {isJoiningWs ? <Loader2 className="size-4 animate-spin" /> : 'Join Workspace'}
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── HOLD IN THE AIR PENDING APPROVAL MODAL ── */}
+      <AnimatePresence>
+        {showPendingApprovalModal && (
+          <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-slate-950/80 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-md bg-white dark:bg-slate-900 border border-amber-500/30 rounded-3xl p-6 shadow-2xl space-y-5 text-center"
+            >
+              <div className="size-14 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 grid place-items-center mx-auto animate-bounce">
+                <Clock className="size-7" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                  Join Request Pending Approval
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Your request to join <strong className="text-amber-500 font-extrabold">{pendingWsInfo?.name}</strong> has been submitted! This workspace requires owner approval before new members land on the channels.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-left text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <Sparkles className="size-3.5" /> What happens next?
+                </div>
+                <p className="text-[11px] opacity-90">
+                  The workspace owner has been notified. As soon as they approve your request, this workspace will appear in your workspace list automatically.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowPendingApprovalModal(false)}
+                className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold shadow-md transition-all"
+              >
+                Got it, Thanks!
+              </button>
             </motion.div>
           </div>
         )}

@@ -7,6 +7,7 @@ export interface DbWorkspace {
   icon: string;
   invite_code: string;
   owner_id: string;
+  join_policy?: 'open' | 'approval';
   created_at: string;
   updated_at: string;
 }
@@ -16,6 +17,7 @@ export interface DbWorkspaceMember {
   workspace_id: string;
   user_id: string;
   role: string;
+  status?: 'approved' | 'pending' | 'rejected';
   joined_at: string;
   profile?: {
     full_name: string | null;
@@ -62,17 +64,30 @@ function generateInviteCode(): string {
 
 export const WorkspaceService = {
   /**
-   * Fetches all workspaces joined by the given user.
+   * Fetches all workspaces joined by the given user where membership is approved.
    */
   async getUserWorkspaces(userId: string): Promise<FullWorkspaceData[]> {
-    // Fetch user memberships
-    const { data: memberRows, error: memberErr } = await supabase
+    // Fetch user memberships (only approved if status column exists)
+    let memberRows: any[] | null = null;
+    const { data: mData, error: memberErr } = await supabase
       .from('workspace_members')
-      .select('workspace_id, role, joined_at')
-      .eq('user_id', userId);
+      .select('workspace_id, role, status, joined_at')
+      .eq('user_id', userId)
+      .or('status.eq.approved,status.is.null');
 
     if (memberErr) {
-      console.error('[getUserWorkspaces] Member error:', memberErr);
+      if (memberErr.code === '42703' || memberErr.message?.includes('status')) {
+        // Fallback for DB schemas prior to status column migration
+        const { data: fallbackRows } = await supabase
+          .from('workspace_members')
+          .select('workspace_id, role, joined_at')
+          .eq('user_id', userId);
+        memberRows = fallbackRows;
+      } else {
+        console.error('[getUserWorkspaces] Member error:', memberErr);
+      }
+    } else {
+      memberRows = mData;
     }
 
     const workspaceIds = (memberRows || []).map((m: { workspace_id: string }) => m.workspace_id);
@@ -98,17 +113,30 @@ export const WorkspaceService = {
     const results: FullWorkspaceData[] = [];
 
     for (const ws of workspaces as DbWorkspace[]) {
-      // Fetch members
-      const { data: members } = await supabase
+      // Fetch members (only approved active members for the regular workspace view)
+      let members: any[] | null = null;
+      const { data: memberData, error: mErr } = await supabase
         .from('workspace_members')
         .select('*, profiles(full_name, avatar_url, role)')
-        .eq('workspace_id', ws.id);
+        .eq('workspace_id', ws.id)
+        .or('status.eq.approved,status.is.null');
+
+      if (mErr && (mErr.code === '42703' || mErr.message?.includes('status'))) {
+        const { data: fallbackMembers } = await supabase
+          .from('workspace_members')
+          .select('*, profiles(full_name, avatar_url, role)')
+          .eq('workspace_id', ws.id);
+        members = fallbackMembers;
+      } else {
+        members = memberData;
+      }
 
       const formattedMembers: DbWorkspaceMember[] = (members || []).map((m: any) => ({
         id: m.id,
         workspace_id: m.workspace_id,
         user_id: m.user_id,
         role: m.role,
+        status: m.status || 'approved',
         joined_at: m.joined_at,
         profile: m.profiles
           ? {
@@ -170,11 +198,23 @@ export const WorkspaceService = {
     topic?: string;
     icon?: string;
     userId: string;
+    displayName?: string;
   }): Promise<FullWorkspaceData> {
+    if (params.displayName && params.displayName.trim()) {
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: params.userId,
+          full_name: params.displayName.trim(),
+          updated_at: new Date().toISOString(),
+        });
+    }
+
     const inviteCode = generateInviteCode();
 
     // 1. Insert Workspace
-    const { data: ws, error: wsErr } = await supabase
+    let ws: any = null;
+    const { data: wsData, error: wsErr } = await supabase
       .from('workspaces')
       .insert({
         name: params.name,
@@ -182,25 +222,61 @@ export const WorkspaceService = {
         icon: params.icon || 'rocket',
         invite_code: inviteCode,
         owner_id: params.userId,
+        join_policy: 'open',
       })
       .select()
       .single();
 
-    if (wsErr || !ws) {
+    if (wsErr && (wsErr.code === '42703' || wsErr.message?.includes('join_policy'))) {
+      const { data: fallbackWs, error: fallbackWsErr } = await supabase
+        .from('workspaces')
+        .insert({
+          name: params.name,
+          topic: params.topic || 'General Workspace',
+          icon: params.icon || 'rocket',
+          invite_code: inviteCode,
+          owner_id: params.userId,
+        })
+        .select()
+        .single();
+      if (fallbackWsErr || !fallbackWs) {
+        throw new Error(fallbackWsErr?.message || 'Failed to create workspace');
+      }
+      ws = fallbackWs;
+    } else if (wsErr || !wsData) {
       console.error('[createWorkspace] Workspace insert error:', wsErr);
       throw new Error(wsErr?.message || 'Failed to create workspace');
+    } else {
+      ws = wsData;
     }
 
-    // 2. Add owner to workspace_members — read back the inserted row to get its real ID
-    const { data: ownerMemberRow } = await supabase
+    // 2. Add owner to workspace_members as approved owner
+    let ownerMemberRow: any = null;
+    const { data: ownerRow, error: ownerErr } = await supabase
       .from('workspace_members')
       .insert({
         workspace_id: ws.id,
         user_id: params.userId,
         role: 'owner',
+        status: 'approved',
       })
-      .select('id, workspace_id, user_id, role, joined_at')
+      .select('id, workspace_id, user_id, role, status, joined_at')
       .single();
+
+    if (ownerErr && (ownerErr.code === '42703' || ownerErr.message?.includes('status'))) {
+      const { data: fallbackOwner } = await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: ws.id,
+          user_id: params.userId,
+          role: 'owner',
+        })
+        .select('id, workspace_id, user_id, role, joined_at')
+        .single();
+      ownerMemberRow = fallbackOwner;
+    } else {
+      ownerMemberRow = ownerRow;
+    }
 
     // 3. Create default channels (# General, # Product, # Engineering)
     const defaultChannels = ['# General', '# Product', '# Engineering'];
@@ -236,14 +312,15 @@ export const WorkspaceService = {
           workspace_id: ownerMemberRow.workspace_id,
           user_id: ownerMemberRow.user_id,
           role: ownerMemberRow.role,
+          status: ownerMemberRow.status || 'approved',
           joined_at: ownerMemberRow.joined_at,
         }
       : {
-          // Fallback: only if the select failed
           id: `${ws.id}-owner`,
           workspace_id: ws.id,
           user_id: params.userId,
           role: 'owner',
+          status: 'approved',
           joined_at: new Date().toISOString(),
         };
 
@@ -260,11 +337,27 @@ export const WorkspaceService = {
   /**
    * Join an existing workspace by Invite Code or Workspace ID.
    * Smartly normalizes spaces, case, dashes, and optional 'WS-' prefix.
+   * Enforces setting user display name if provided.
+   * Respects workspace join policy ('open' vs 'approval').
    */
-  async joinWorkspaceByCode(inviteCodeOrId: string, userId: string): Promise<DbWorkspace> {
+  async joinWorkspaceByCode(
+    inviteCodeOrId: string,
+    userId: string,
+    displayName?: string
+  ): Promise<{ workspace: DbWorkspace; status: 'approved' | 'pending' }> {
     const raw = inviteCodeOrId.trim();
     if (!raw) {
       throw new Error('Please enter a valid invite code or workspace ID.');
+    }
+
+    if (displayName && displayName.trim()) {
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: userId,
+          full_name: displayName.trim(),
+          updated_at: new Date().toISOString(),
+        });
     }
 
     // Standardize input: strip internal whitespace, normalize unicode dashes, convert to uppercase
@@ -274,14 +367,12 @@ export const WorkspaceService = {
     candidates.add(raw);
     candidates.add(cleanCode);
 
-    // If clean code doesn't start with WS- (e.g. "PETMVS"), try auto-prefixing "WS-"
     if (!cleanCode.startsWith('WS-')) {
       candidates.add(`WS-${cleanCode}`);
     }
 
     const candidateList = Array.from(candidates);
 
-    // Try finding workspace by invite_code (case-insensitive ilike) or id (eq)
     const matchConditions: string[] = [];
     for (const c of candidateList) {
       matchConditions.push(`invite_code.ilike.${c}`);
@@ -295,7 +386,6 @@ export const WorkspaceService = {
 
     let ws = wsList && wsList.length > 0 ? (wsList[0] as DbWorkspace) : null;
 
-    // Fallback lookup: fetch all workspaces and match normalized codes in JS
     if (!ws) {
       const { data: allWorkspaces } = await supabase.from('workspaces').select('*');
       if (allWorkspaces) {
@@ -314,10 +404,13 @@ export const WorkspaceService = {
       throw new Error('Workspace not found. Please verify your invite code.');
     }
 
-    // Check if user is already a member
-    const { data: existing } = await supabase
+    // Determine initial status based on workspace policy
+    const initialStatus: 'approved' | 'pending' = ws.join_policy === 'approval' ? 'pending' : 'approved';
+
+    // Check existing membership
+    const { data: existing, error: existErr } = await supabase
       .from('workspace_members')
-      .select('id')
+      .select('id, status')
       .eq('workspace_id', ws.id)
       .eq('user_id', userId)
       .maybeSingle();
@@ -327,14 +420,161 @@ export const WorkspaceService = {
         workspace_id: ws.id,
         user_id: userId,
         role: 'member',
+        status: initialStatus,
       });
 
       if (joinErr) {
+        if (joinErr.code === '42703' || joinErr.message?.includes('status')) {
+          const { error: fallbackJoinErr } = await supabase.from('workspace_members').insert({
+            workspace_id: ws.id,
+            user_id: userId,
+            role: 'member',
+          });
+          if (fallbackJoinErr) {
+            throw new Error(fallbackJoinErr.message);
+          }
+          return { workspace: ws, status: 'approved' };
+        }
         throw new Error(joinErr.message);
       }
+      return { workspace: ws, status: initialStatus };
+    } else {
+      const currentStatus = ((existing as any).status as 'approved' | 'pending') || 'approved';
+      return { workspace: ws, status: currentStatus };
+    }
+  },
+
+  /**
+   * Fetch pending join requests for a workspace (Owners / Admins)
+   */
+  async getPendingJoinRequests(workspaceId: string): Promise<DbWorkspaceMember[]> {
+    const { data, error } = await supabase
+      .from('workspace_members')
+      .select('*, profiles(full_name, avatar_url, role)')
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'pending')
+      .order('joined_at', { ascending: false });
+
+    if (error) {
+      console.error('[getPendingJoinRequests] Error:', error);
+      return [];
     }
 
-    return ws;
+    return (data || []).map((m: any) => ({
+      id: m.id,
+      workspace_id: m.workspace_id,
+      user_id: m.user_id,
+      role: m.role,
+      status: m.status,
+      joined_at: m.joined_at,
+      profile: m.profiles
+        ? {
+            full_name: m.profiles.full_name,
+            avatar_url: m.profiles.avatar_url,
+            role: m.profiles.role,
+          }
+        : undefined,
+    }));
+  },
+
+  /**
+   * Approve a pending join request
+   */
+  async approveJoinRequest(workspaceId: string, memberId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_members')
+      .update({ status: 'approved' })
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to approve member');
+    }
+  },
+
+  /**
+   * Reject a pending join request
+   */
+  async rejectJoinRequest(workspaceId: string, memberId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_members')
+      .delete()
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to reject join request');
+    }
+  },
+
+  /**
+   * Update workspace join policy ('open' vs 'approval')
+   */
+  async updateWorkspaceJoinPolicy(
+    workspaceId: string,
+    policy: 'open' | 'approval'
+  ): Promise<DbWorkspace> {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .update({ join_policy: policy, updated_at: new Date().toISOString() })
+      .eq('id', workspaceId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new Error(error?.message || 'Failed to update workspace access policy');
+    }
+
+    return data as DbWorkspace;
+  },
+
+  /**
+   * Remove a member from workspace (Owner / Admin command)
+   */
+  async removeWorkspaceMember(workspaceId: string, memberId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_members')
+      .delete()
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to remove member');
+    }
+  },
+
+  /**
+   * Update a member's role (Owner command)
+   */
+  async updateMemberRole(
+    workspaceId: string,
+    memberId: string,
+    role: 'admin' | 'member'
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_members')
+      .update({ role })
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to update member role');
+    }
+  },
+
+  /**
+   * Delete a channel in a workspace (Owner / Admin command)
+   */
+  async deleteChannel(workspaceId: string, channelId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_channels')
+      .delete()
+      .eq('id', channelId)
+      .eq('workspace_id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to delete channel');
+    }
   },
 
   /**
@@ -443,7 +683,6 @@ export const WorkspaceService = {
         },
         async (payload: any) => {
           const raw = payload.new;
-          // Fetch profile separately — postgres_changes payloads don't include joins
           const { data: profileData } = await supabase
             .from('profiles')
             .select('full_name, avatar_url, role')
@@ -455,6 +694,7 @@ export const WorkspaceService = {
             workspace_id: raw.workspace_id,
             user_id: raw.user_id,
             role: raw.role,
+            status: raw.status || 'approved',
             joined_at: raw.joined_at,
             profile: profileData
               ? {
@@ -488,4 +728,5 @@ export const WorkspaceService = {
     };
   },
 };
+
 
