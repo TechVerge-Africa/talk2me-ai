@@ -47,12 +47,14 @@ import {
   Lightbulb,
   ListTodo,
   RefreshCw,
-  Pin
+  Pin,
+  Home
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
 import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
+import { MeetingParticipant } from '@/types/meeting';
 import { TranscriptService, CanonicalTranscriptEntry } from '@/services/supabase/transcripts';
 import {
   WorkspaceService,
@@ -81,15 +83,60 @@ const renderWorkspaceIcon = (iconStr: string) => {
   return <Rocket className="size-5 text-indigo-600 dark:text-indigo-400" />;
 };
 
-type WorkspaceTab = 'overview' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
+type WorkspaceTab = 'home' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
+
+function formatCountdown(scheduledAtIso: string, nowMs: number) {
+  const diffMs = new Date(scheduledAtIso).getTime() - nowMs;
+  if (diffMs <= 0) {
+    return { text: 'Starting Now!', isOverdue: true, hours: 0, mins: 0, secs: 0 };
+  }
+  const totalSecs = Math.floor(diffMs / 1000);
+  const hours = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  return {
+    hours,
+    mins,
+    secs,
+    isOverdue: false,
+    text: `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`,
+  };
+}
 
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, profile, loading: authLoading, updateProfile, signOut } = useAuth();
 
-  // Navigation tab & selection state
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
+  // Navigation tab & selection state with browser reload & return persistence
+  const [activeTab, setActiveTabRaw] = useState<WorkspaceTab>('home');
+
+  const setActiveTab = (tab: WorkspaceTab) => {
+    setActiveTabRaw(tab);
+    try {
+      localStorage.setItem('t2_active_tab_v1', tab);
+      sessionStorage.setItem('t2_return_tab', tab);
+    } catch {}
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url.toString());
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = searchParams.get('tab') as WorkspaceTab | null;
+      const storedTab = (() => {
+        try { return sessionStorage.getItem('t2_return_tab') || localStorage.getItem('t2_active_tab_v1') || null; } catch { return null; }
+      })() as WorkspaceTab | null;
+
+      const validTab = urlTab || storedTab;
+      if (validTab && ['home', 'meetings', 'chat', 'ask-ai', 'settings'].includes(validTab)) {
+        setActiveTabRaw(validTab);
+      }
+    }
+  }, [searchParams]);
 
   // ── Profile / Username Editing State ─────────────────────────────────
   const [usernameInput, setUsernameInput] = useState<string>('');
@@ -263,6 +310,41 @@ function DashboardContent() {
   const [isSavingMemory, setIsSavingMemory] = useState<boolean>(false);
   const [isExtractingAiMemory, setIsExtractingAiMemory] = useState<boolean>(false);
 
+  // Live Countdown Timer & Active Meeting Members state
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  const [liveMeetingParticipants, setLiveMeetingParticipants] = useState<MeetingParticipant[]>([]);
+
+  // Compute active live meeting or upcoming scheduled meeting for single hero card
+  const activeLiveMeeting = useMemo(() => {
+    return workspaceMeetings.find((m) => m.status === 'active' || (m as any).is_active);
+  }, [workspaceMeetings]);
+
+  const upcomingMeeting = useMemo(() => {
+    if (activeLiveMeeting) return null;
+    return (
+      workspaceMeetings
+        .filter((m) => m.scheduled_at && new Date(m.scheduled_at).getTime() > Date.now() - 300000)
+        .sort((a, b) => new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime())[0] || null
+    );
+  }, [workspaceMeetings, activeLiveMeeting]);
+
+  // Interval for 1-second live countdown timer
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Fetch / subscribe to participants when a meeting is active
+  useEffect(() => {
+    if (activeLiveMeeting) {
+      MeetingService.getMeetingParticipants(activeLiveMeeting.id)
+        .then((pts) => setLiveMeetingParticipants(pts))
+        .catch((err) => console.error('[Dashboard] Live participants error:', err));
+    } else {
+      setLiveMeetingParticipants([]);
+    }
+  }, [activeLiveMeeting]);
+
   // Sync workspace memories when active workspace changes
   useEffect(() => {
     if (!activeWorkspaceId) return;
@@ -387,12 +469,14 @@ function DashboardContent() {
       const data = await WorkspaceService.getUserWorkspaces(user.id);
       setWorkspacesData(data);
 
-      const wsParam = searchParams.get('ws');
+      const wsParam = searchParams.get('ws') || searchParams.get('workspaceId') || (() => {
+        try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
+      })();
+
       if (wsParam && data.some((w) => w.workspace.id === wsParam)) {
         setActiveWorkspaceId(wsParam);
       } else {
-        // Default to Home Hub ('') unless active workspace already chosen
-        setActiveWorkspaceId((prev) => (prev && data.some((w) => w.workspace.id === prev) ? prev : ''));
+        setActiveWorkspaceId((prev) => (prev && data.some((w) => w.workspace.id === prev) ? prev : (data[0]?.workspace.id || '')));
       }
     } catch (err) {
       console.error('[Dashboard] Error fetching workspaces:', err);
@@ -401,12 +485,22 @@ function DashboardContent() {
     }
   };
 
-  const selectWorkspace = (wsId: string) => {
+  const selectWorkspace = (wsId: string, targetTab?: WorkspaceTab) => {
     setActiveWorkspaceId(wsId);
+    const chosenTab = targetTab || activeTab || 'home';
+    try {
+      if (wsId) {
+        localStorage.setItem('t2_active_workspace_v1', wsId);
+        sessionStorage.setItem('t2_return_workspace_id', wsId);
+      }
+      localStorage.setItem('t2_active_tab_v1', chosenTab);
+      sessionStorage.setItem('t2_return_tab', chosenTab);
+    } catch {}
+
     if (wsId) {
-      router.push(`/dashboard?ws=${wsId}`);
+      router.push(`/dashboard?ws=${wsId}&tab=${chosenTab}`);
     } else {
-      router.push('/dashboard');
+      router.push(`/dashboard?tab=${chosenTab}`);
     }
   };
 
@@ -716,7 +810,7 @@ function DashboardContent() {
         await fetchWorkspaces();
         selectWorkspace(res.workspace.id);
         setSelectedChannel('# General');
-        setActiveTab('overview');
+        setActiveTab('home');
         setShowJoinWsModal(false);
         setJoinInviteCode('');
       }
@@ -899,7 +993,15 @@ function DashboardContent() {
         undefined,
         true
       );
-      router.push(`/room/${meeting.room_code}`);
+      try {
+        if (activeWorkspaceId) {
+          sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+          localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+        }
+        sessionStorage.setItem('t2_return_tab', activeTab);
+        localStorage.setItem('t2_active_tab_v1', activeTab);
+      } catch {}
+      router.push(`/room/${meeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`);
     } catch (err: any) {
       alert(err?.message || 'Failed to create meeting');
     }
@@ -1165,7 +1267,7 @@ function DashboardContent() {
           <button
             onClick={() => {
               selectWorkspace('');
-              setActiveTab('overview');
+              setActiveTab('home');
             }}
             className="flex items-center gap-2 text-left focus:outline-none group shrink-0"
             title="Go to Workspaces Hub"
@@ -1187,7 +1289,7 @@ function DashboardContent() {
               onChange={(e) => {
                 selectWorkspace(e.target.value);
                 setSelectedChannel('# General');
-                setActiveTab('overview');
+                setActiveTab('home');
               }}
               className="w-full truncate appearance-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-xl px-2.5 sm:px-3 py-1.5 pr-7 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
             >
@@ -1387,7 +1489,7 @@ function DashboardContent() {
                   {/* Navigation Tabs */}
                   <div className="space-y-1">
                     {[
-                      { id: 'overview', label: 'Overview', icon: Building2 },
+                      { id: 'home', label: 'Home', icon: Home },
                       { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
                       { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
                       { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
@@ -1733,7 +1835,7 @@ function DashboardContent() {
           {/* Main Workspace Navigation */}
           <div className="space-y-1">
             {[
-              { id: 'overview', label: 'Overview', icon: Building2 },
+              { id: 'home', label: 'Home', icon: Home },
               { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
               { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
               { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
@@ -1806,8 +1908,8 @@ function DashboardContent() {
             activeTab === 'chat' ? 'p-0 pb-12' : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8'
           }`}
         >
-          {/* TAB 1: OVERVIEW */}
-          {activeTab === 'overview' && (
+          {/* TAB 1: HOME */}
+          {activeTab === 'home' && (
             <div className="max-w-5xl flex flex-col gap-6">
               {/* Header Greeting */}
               <div>
@@ -1825,28 +1927,190 @@ function DashboardContent() {
                 </p>
               </div>
 
-              {/* Stat Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {[
-                  { label: 'Members', value: members.length || 1, icon: Users, color: 'text-indigo-500' },
-                  { label: 'Channels', value: channels.length, icon: MessageSquare, color: 'text-cyan-500' },
-                  { label: 'AI Assistant', value: 'Active', icon: Sparkles, color: 'text-purple-500' },
-                  { label: 'Realtime Engine', value: 'WebRTC', icon: Video, color: 'text-emerald-500' },
-                ].map((stat, i) => {
-                  const StatIcon = stat.icon;
-                  return (
-                    <div
-                      key={i}
-                      className="p-4 rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/60 shadow-xs flex flex-col gap-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{stat.label}</span>
-                        <StatIcon className={`size-4 ${stat.color}`} />
+              {/* SINGLE FULL-WIDTH MEETING HERO CARD */}
+              <div className="w-full rounded-3xl border border-indigo-200 dark:border-indigo-900/40 bg-gradient-to-br from-white via-indigo-50/40 to-slate-50 dark:from-slate-900 dark:via-indigo-950/20 dark:to-slate-950 p-6 sm:p-8 shadow-xl relative overflow-hidden space-y-6">
+                {/* Ambient background glow effect */}
+                <div className="absolute -top-24 -right-24 size-96 rounded-full bg-indigo-500/10 dark:bg-indigo-500/20 blur-3xl pointer-events-none" />
+
+                {/* CASE A: LIVE MEETING IN PROGRESS */}
+                {activeLiveMeeting ? (
+                  <div className="space-y-6 relative z-10">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="px-3.5 py-1.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black tracking-wide border border-emerald-500/30 flex items-center gap-2 shadow-xs">
+                          <span className="relative flex size-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full size-2.5 bg-emerald-500"></span>
+                          </span>
+                          LIVE NOW • MEETING IN PROGRESS
+                        </span>
                       </div>
-                      <span className="text-xl font-black text-slate-900 dark:text-white">{stat.value}</span>
+                      <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-3 py-1 rounded-lg">
+                        Room: {activeLiveMeeting.room_code}
+                      </span>
                     </div>
-                  );
-                })}
+
+                    <div className="space-y-2">
+                      <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                        {activeLiveMeeting.title || (activeLiveMeeting as any).room_name || 'Workspace Sync Room'}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
+                        Your team is currently live in this workspace with real-time captions, sign-language tools, and automated meeting insights.
+                      </p>
+                    </div>
+
+                    {/* Real-time Members Currently in the Call */}
+                    <div className="space-y-3 pt-2">
+                      <div className="text-xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
+                        <Users className="size-4 text-emerald-500" /> Realtime Members in Meeting ({liveMeetingParticipants.length || 1})
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        {liveMeetingParticipants.length > 0 ? (
+                          liveMeetingParticipants.map((p) => (
+                            <div
+                              key={p.id || p.identity}
+                              className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-800/90 border border-emerald-500/30 shadow-sm flex items-center gap-2.5"
+                            >
+                              <div className="size-7 rounded-full bg-emerald-600 text-white font-bold text-xs grid place-items-center">
+                                {(p.display_name || 'M').charAt(0).toUpperCase()}
+                              </div>
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                {p.display_name || 'Participant'}
+                              </span>
+                              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" title="Active in call" />
+                            </div>
+                          ))
+                        ) : (
+                          members.slice(0, 4).map((m) => (
+                            <div
+                              key={m.id}
+                              className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-2.5"
+                            >
+                              <div className="size-7 rounded-full bg-indigo-600 text-white font-bold text-xs grid place-items-center">
+                                {(m.profile?.full_name || 'M').charAt(0).toUpperCase()}
+                              </div>
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                {m.profile?.full_name || 'Member'}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Button */}
+                    <div className="pt-2 flex items-center gap-4">
+                      <button
+                        onClick={() => {
+                          try {
+                            if (activeWorkspaceId) {
+                              sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+                              localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+                            }
+                            sessionStorage.setItem('t2_return_tab', activeTab);
+                            localStorage.setItem('t2_active_tab_v1', activeTab);
+                          } catch {}
+                          router.push(`/room/${activeLiveMeeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`);
+                        }}
+                        className="px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2.5 hover:scale-[1.02]"
+                      >
+                        <Video className="size-5" /> Jump Into Meeting Now
+                        <ArrowRight className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : upcomingMeeting ? (
+                  /* CASE B: UPCOMING SCHEDULED MEETING WITH COUNTDOWN */
+                  <div className="space-y-6 relative z-10">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <span className="px-3.5 py-1.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 text-xs font-black tracking-wide border border-indigo-500/30 flex items-center gap-2 shrink-0">
+                        <CalendarDays className="size-4" /> UPCOMING SCHEDULED MEETING
+                      </span>
+                      <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-3 py-1 rounded-lg">
+                        Code: {upcomingMeeting.room_code}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                      <div className="space-y-2 flex-1">
+                        <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                          {upcomingMeeting.title || (upcomingMeeting as any).room_name || 'Scheduled Workspace Sync'}
+                        </h2>
+                        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                          Scheduled for {new Date(upcomingMeeting.scheduled_at!).toLocaleDateString()} at{' '}
+                          {new Date(upcomingMeeting.scheduled_at!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+
+                      {/* Giant Realtime Countdown Box */}
+                      {(() => {
+                        const cd = formatCountdown(upcomingMeeting.scheduled_at!, currentTime);
+                        return (
+                          <div className="p-4 rounded-2xl bg-indigo-600/10 dark:bg-indigo-950/50 border border-indigo-500/30 flex items-center gap-3 shrink-0">
+                            <div className="flex items-center gap-2 text-center font-mono">
+                              <div className="flex flex-col p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/50 min-w-[54px]">
+                                <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400">{String(cd.hours).padStart(2, '0')}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Hours</span>
+                              </div>
+                              <span className="text-lg font-black text-indigo-500">:</span>
+                              <div className="flex flex-col p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/50 min-w-[54px]">
+                                <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400">{String(cd.mins).padStart(2, '0')}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Mins</span>
+                              </div>
+                              <span className="text-lg font-black text-indigo-500">:</span>
+                              <div className="flex flex-col p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/50 min-w-[54px]">
+                                <span className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400">{String(cd.secs).padStart(2, '0')}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase">Secs</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="pt-2 flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          try {
+                            if (activeWorkspaceId) {
+                              sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+                              localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+                            }
+                            sessionStorage.setItem('t2_return_tab', activeTab);
+                            localStorage.setItem('t2_active_tab_v1', activeTab);
+                          } catch {}
+                          router.push(`/room/${upcomingMeeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`);
+                        }}
+                        className="px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center gap-2 hover:scale-[1.02]"
+                      >
+                        <Video className="size-5" /> Join Room when Ready
+                        <ArrowRight className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* CASE C: INSTANT MEETING LAUNCHER (NO SCHEDULED OR LIVE MEETING) */
+                  <div className="space-y-5 relative z-10">
+                    <div className="space-y-2">
+                      <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                        Ready for a team meeting?
+                      </h2>
+                      <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed">
+                        Bring your team together in a live space where every voice is heard, understood, and remembered.
+                      </p>
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <button
+                        onClick={handleCreateMeeting}
+                        className="px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
+                      >
+                        <Video className="size-5" /> Start Instant Workspace Meeting
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Quick Actions Grid */}
@@ -1857,7 +2121,7 @@ function DashboardContent() {
                 >
                   <Video className="size-6 text-indigo-600 dark:text-indigo-400 mb-3 group-hover:scale-110 transition-transform" />
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start Workspace Meeting</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Instant WebRTC room with live transcription & AI insights.</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Inclusive video space with live captions & automated summaries.</p>
                 </button>
 
                 <button
@@ -2081,7 +2345,17 @@ function DashboardContent() {
                                 <RefreshCw className="size-3" /> Re-analyze
                               </button>
                               <Link
-                                href={`/room/${selectedMeeting.room_code}`}
+                                href={`/room/${selectedMeeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`}
+                                onClick={() => {
+                                  try {
+                                    if (activeWorkspaceId) {
+                                      sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+                                      localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+                                    }
+                                    sessionStorage.setItem('t2_return_tab', activeTab);
+                                    localStorage.setItem('t2_active_tab_v1', activeTab);
+                                  } catch {}
+                                }}
                                 className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-sm transition-all"
                               >
                                 <Video className="size-3" /> Rejoin
@@ -2979,7 +3253,7 @@ function DashboardContent() {
       {activeWorkspaceId && (
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-lg">
           {[
-            { id: 'overview', label: 'Overview', icon: Building2 },
+            { id: 'home', label: 'Home', icon: Home },
             { id: 'chat', label: 'Chat', icon: MessageSquare },
             { id: 'meetings', label: 'Meetings', icon: Video },
             { id: 'ask-ai', label: 'Ask AI', icon: Sparkles },

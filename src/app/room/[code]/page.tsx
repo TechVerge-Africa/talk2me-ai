@@ -50,10 +50,13 @@ function PreJoinLobby({
   const { user } = useAuth();
   
   const getReturnUrl = useCallback(() => {
-    const wsId = searchParams.get('workspaceId') || (() => {
+    const wsId = searchParams.get('workspaceId') || searchParams.get('ws') || (() => {
       try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
     })();
-    return wsId ? `/dashboard?workspaceId=${wsId}` : (user ? '/dashboard' : '/');
+    const tab = searchParams.get('tab') || (() => {
+      try { return sessionStorage.getItem('t2_return_tab') || localStorage.getItem('t2_active_tab_v1') || 'home'; } catch { return 'home'; }
+    })();
+    return wsId ? `/dashboard?ws=${wsId}&tab=${tab}` : (user ? `/dashboard?tab=${tab}` : '/');
   }, [searchParams, user]);
 
   const handleClose = () => {
@@ -572,10 +575,13 @@ function LeftMeetingScreen({
   const [randomParticipants] = useState(() => Math.floor(Math.random() * 5) + 2);
 
   const returnUrl = useMemo(() => {
-    const wsId = searchParams.get('workspaceId') || (() => {
+    const wsId = searchParams.get('workspaceId') || searchParams.get('ws') || (() => {
       try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
     })();
-    return wsId ? `/dashboard?workspaceId=${wsId}` : (user ? '/dashboard' : '/');
+    const tab = searchParams.get('tab') || (() => {
+      try { return sessionStorage.getItem('t2_return_tab') || localStorage.getItem('t2_active_tab_v1') || 'home'; } catch { return 'home'; }
+    })();
+    return wsId ? `/dashboard?ws=${wsId}&tab=${tab}` : (user ? `/dashboard?tab=${tab}` : '/');
   }, [searchParams, user]);
 
   return (
@@ -1868,7 +1874,8 @@ function RoomPageInner() {
       onJoin={(name) => { hasFetchedToken.current = true; fetchToken(name || 'Host'); }} 
       onClose={() => {
         const wsId = (() => { try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; } })();
-        router.push(wsId ? `/dashboard?workspaceId=${wsId}` : (user ? '/dashboard' : '/'));
+        const tab = (() => { try { return sessionStorage.getItem('t2_return_tab') || localStorage.getItem('t2_active_tab_v1') || 'home'; } catch { return 'home'; } })();
+        router.push(wsId ? `/dashboard?ws=${wsId}&tab=${tab}` : (user ? `/dashboard?tab=${tab}` : '/'));
       }}
     />;
   }
