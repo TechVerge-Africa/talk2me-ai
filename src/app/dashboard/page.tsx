@@ -1272,12 +1272,11 @@ function DashboardContent() {
             className="flex items-center gap-2 text-left focus:outline-none group shrink-0"
             title="Go to Workspaces Hub"
           >
-            <div className="size-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 grid place-items-center text-white font-black text-sm shadow-md group-hover:scale-105 transition-transform">
-              T2
+            <div className="group-hover:scale-105 transition-transform flex items-center">
+              <img src="/assets/logo-light.png" alt="Talk2Me Logo" className="h-7 w-auto block dark:hidden" />
+              <img src="/assets/logo-dark.png" alt="Talk2Me Logo" className="h-7 w-auto hidden dark:block" />
             </div>
-            <span className="font-heading text-lg font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent hidden sm:inline">
-              Talk2Me
-            </span>
+
           </button>
 
           {/* Active Workspace Selector Dropdown */}
@@ -1440,12 +1439,11 @@ function DashboardContent() {
               {/* Drawer Header */}
               <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2">
-                  <div className="size-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 grid place-items-center text-white font-black text-sm shadow-md">
-                    T2
+                  <div className="flex items-center">
+                    <img src="/assets/logo-light.png" alt="Talk2Me Logo" className="h-7 w-auto block dark:hidden" />
+                    <img src="/assets/logo-dark.png" alt="Talk2Me Logo" className="h-7 w-auto hidden dark:block" />
                   </div>
-                  <span className="font-heading text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-                    Talk2Me
-                  </span>
+
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
