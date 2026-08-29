@@ -1,5 +1,6 @@
 'use client';
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Mic, MicOff, Video, VideoOff, Type,
   Smile, PhoneOff, Hand, Ear, EarOff,
@@ -14,13 +15,13 @@ interface ControlDockProps {
   camOn: boolean;
   screenShareOn: boolean;
   transcriptOn: boolean;
-  deafOn: boolean;
+  deafOn?: boolean;
   isHost?: boolean;
   onToggleMic: () => void;
   onToggleCam: () => void;
   onToggleScreenShare: () => void;
   onToggleTranscript: () => void;
-  onToggleDeaf: () => void;
+  onToggleDeaf?: () => void;
   onToggleChat?: () => void;
   onToggleParticipants: () => void;
   onAi: () => void;
@@ -41,7 +42,7 @@ interface ControlDockProps {
 
 export function ControlDock({
   code = "abc-def-ghi",
-  micOn, camOn, screenShareOn, transcriptOn, deafOn,
+  micOn, camOn, screenShareOn, transcriptOn, deafOn = false,
   isHost,
   onToggleMic, onToggleCam, onToggleScreenShare,
   onToggleTranscript, onToggleDeaf, onToggleParticipants,
@@ -57,6 +58,25 @@ export function ControlDock({
 }: ControlDockProps) {
   const [copied, setCopied] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [leaveModalOpen, setLeaveModalOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Keyboard accessibility (HCI Escape key handler)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && leaveModalOpen) {
+        setLeaveModalOpen(false);
+      }
+    };
+    if (leaveModalOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [leaveModalOpen]);
 
   const handleCopyCode = async () => {
     try {
@@ -67,20 +87,7 @@ export function ControlDock({
   };
 
   const handleLeave = () => {
-    if (isHost) {
-      const choice = window.prompt(
-        "Do you want to leave or end the meeting?\n\nType 'end' to end the meeting for everyone\nType 'leave' to leave yourself (others can stay)\nClick Cancel to stay in the meeting:"
-      );
-      if (choice?.toLowerCase() === "end") {
-        onLeave(true);
-      } else if (choice?.toLowerCase() === "leave") {
-        onLeave(false);
-      }
-    } else {
-      if (window.confirm("Leave this meeting?")) {
-        onLeave(false);
-      }
-    }
+    setLeaveModalOpen(true);
   };
 
   // Shared button style helpers
@@ -138,14 +145,7 @@ export function ControlDock({
           </button>
 
           {/* Leave */}
-          <button
-            onClick={handleLeave}
-            className="size-10 rounded-full flex items-center justify-center bg-[#ea4335] hover:bg-[#ea4335]/90 text-white transition-all shadow-lg active:scale-95 touch-manipulation flex-shrink-0"
-            title="Leave Meeting"
-            aria-label="Leave Meeting"
-          >
-            <PhoneOff className="size-4" />
-          </button>
+          <LeaveMeetingButton onClick={handleLeave} compact />
         </div>
       </div>
 
@@ -216,19 +216,6 @@ export function ControlDock({
                   <span className="text-[11px] text-white/70 font-medium">Share Screen</span>
                 </button>
 
-                {/* Deaf Mode */}
-                <button
-                  onClick={() => {
-                    onToggleDeaf();
-                  }}
-                  aria-label={deafOn ? "Disable Deaf Mode" : "Enable Deaf Mode"}
-                  className="flex flex-col items-center gap-2 text-center group cursor-pointer"
-                >
-                  <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${deafOn ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'bg-[#2d3139]/80 text-white/95 group-active:scale-95'}`}>
-                    {deafOn ? <EarOff className="size-5" /> : <Ear className="size-5" />}
-                  </div>
-                  <span className="text-[11px] text-white/70 font-medium">{deafOn ? "Audible Mode" : "Deaf Mode"}</span>
-                </button>
 
                 {/* Chat */}
                 <button
@@ -348,15 +335,7 @@ export function ControlDock({
       </AnimatePresence>
 
       {/* ══ DESKTOP layout (≥ md) ════════════════════════════════════════════ */}
-      <div className="hidden md:flex items-center justify-between gap-4 py-2 px-2">
-        {/* Left: room code */}
-        <div className="flex items-center gap-2.5 bg-[#1f2228]/90 backdrop-blur-md px-4 py-2.5 rounded-full border border-white/5 shadow-xl flex-shrink-0">
-          <span className="text-xs font-mono font-bold tracking-wider text-white/95">{code}</span>
-          <button onClick={handleCopyCode} title="Copy room code" aria-label="Copy room code" className="text-white/40 hover:text-white/90 transition-colors p-1">
-            {copied ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
-          </button>
-        </div>
-
+      <div className="hidden md:flex items-center justify-center relative py-2 px-2">
         {/* Center: all controls */}
         <div className="flex items-center gap-2.5 bg-[#1f2228]/90 backdrop-blur-md p-2 rounded-full border border-white/5 shadow-xl overflow-x-auto no-scrollbar">
           <button onClick={onToggleMic} title={micOn ? "Mute Microphone" : "Unmute Microphone"}
@@ -419,23 +398,273 @@ export function ControlDock({
               </span>
             )}
           </button>
-          <button onClick={onToggleDeaf} title={deafOn ? "Disable Deaf Mode" : "Enable Deaf Mode"}
-            aria-label={deafOn ? "Disable Deaf Mode" : "Enable Deaf Mode"}
-            className={deafOn ? activeBtn("bg-purple-600 hover:bg-purple-700") : idleBtn}>
-            {deafOn ? <EarOff className="size-5" /> : <Ear className="size-5" />}
-          </button>
+
         </div>
 
         {/* Right: Leave */}
-        <button
-          onClick={handleLeave}
-          aria-label="Leave Meeting"
-          className="flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-[#ea4335] hover:bg-[#ea4335]/90 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95 flex-shrink-0"
-        >
-          <PhoneOff className="size-4" />
-          <span>Leave Meet</span>
-        </button>
+        <div className="absolute right-2">
+          <LeaveMeetingButton onClick={handleLeave} />
+        </div>
       </div>
+
+      {/* ══ LEAVE MEETING CUSTOM MODAL OVERLAY (PORTALLED TO BODY SO IT NEVER HIDES) ═════ */}
+      {mounted &&
+        createPortal(
+          <AnimatePresence>
+            {leaveModalOpen && (
+              <div
+                className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-3 sm:p-4 pointer-events-auto select-none"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="leave-modal-title"
+                aria-describedby="leave-modal-desc"
+              >
+                {/* Backdrop / Scrim */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setLeaveModalOpen(false)}
+                  className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                />
+
+                {/* Responsive Modal Dialog / Bottom Sheet Card */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="relative w-full max-w-[94vw] sm:max-w-md bg-[#16181d] border border-white/10 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden z-10 text-white max-h-[90vh] overflow-y-auto no-scrollbar"
+                >
+                  {/* Ambient Glow */}
+                  <div className="absolute -top-16 -right-16 size-40 bg-red-600/15 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute -bottom-16 -left-16 size-40 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
+
+                  {/* Drag Handle Accent for Mobile */}
+                  <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-4 sm:hidden" />
+
+                  {/* Close Icon Button */}
+                  <button
+                    onClick={() => setLeaveModalOpen(false)}
+                    className="absolute top-4 right-4 p-2 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    aria-label="Close modal"
+                  >
+                    <X className="size-4" />
+                  </button>
+
+                  {/* Header / Icon */}
+                  <div className="flex items-start gap-4 mb-5">
+                    <div className="size-12 rounded-2xl bg-red-500/15 border border-red-500/25 text-red-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-red-500/10">
+                      <PhoneOff className="size-6" />
+                    </div>
+                    <div className="pr-6">
+                      <h3 id="leave-modal-title" className="text-lg font-black tracking-tight text-white">
+                        {isHost ? "Leave or End Meeting?" : "Leave Meeting?"}
+                      </h3>
+                      <p id="leave-modal-desc" className="text-xs text-white/65 mt-1 leading-relaxed">
+                        {isHost
+                          ? "As the meeting host, choose whether to terminate the call for all participants or exit yourself."
+                          : "Are you sure you want to exit this meeting session?"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Actions Grid / List */}
+                  <div className="flex flex-col gap-2.5 mt-2">
+                    {isHost ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setLeaveModalOpen(false);
+                            onLeave(true);
+                          }}
+                          className="w-full min-h-[48px] py-3 px-5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-red-600/25 active:scale-[0.98] flex items-center justify-between group cursor-pointer"
+                        >
+                          <div className="flex flex-col items-start text-left">
+                            <span className="font-extrabold">End Meeting for Everyone</span>
+                            <span className="text-[10px] text-white/70 normal-case font-normal">Terminates the room for all users</span>
+                          </div>
+                          <Shield className="size-4 text-white/90 group-hover:scale-110 transition-transform ml-2 flex-shrink-0" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setLeaveModalOpen(false);
+                            onLeave(false);
+                          }}
+                          className="w-full min-h-[48px] py-3 px-5 rounded-2xl bg-[#232730] hover:bg-[#2c313c] border border-white/10 text-white font-semibold text-xs tracking-wider transition-all active:scale-[0.98] flex items-center justify-between group cursor-pointer"
+                        >
+                          <div className="flex flex-col items-start text-left">
+                            <span className="font-bold">Just Leave Meeting</span>
+                            <span className="text-[10px] text-white/60 normal-case font-normal">Leave room active for remaining users</span>
+                          </div>
+                          <PhoneOff className="size-4 text-white/50 group-hover:scale-110 transition-transform ml-2 flex-shrink-0" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setLeaveModalOpen(false);
+                          onLeave(false);
+                        }}
+                        className="w-full min-h-[48px] py-3.5 px-5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs uppercase tracking-wider transition-all shadow-lg shadow-red-600/25 active:scale-[0.98] cursor-pointer"
+                      >
+                        Yes, Leave Meeting
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => setLeaveModalOpen(false)}
+                      className="w-full min-h-[44px] py-2.5 px-4 rounded-2xl bg-transparent hover:bg-white/5 text-white/60 hover:text-white text-xs font-semibold tracking-wide transition-all cursor-pointer mt-1"
+                    >
+                      Cancel & Return
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
     </div>
+  );
+}
+
+function LeaveMeetingButton({
+  onClick,
+  compact = false,
+}: {
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      aria-label="Leave Meeting"
+      className={`group relative flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs uppercase tracking-wider transition-all duration-300 shadow-lg shadow-red-600/30 hover:shadow-red-600/50 active:scale-95 border border-white/20 flex-shrink-0 select-none overflow-hidden ${
+        compact ? 'px-3.5 py-2' : 'px-5 py-2.5'
+      }`}
+    >
+      {/* 3D Door & Walking Human Scene */}
+      <div className="relative size-6 flex items-center justify-center overflow-visible" style={{ perspective: '240px' }}>
+        {/* Door Frame Structure */}
+        <div
+          className="relative w-[18px] h-[22px] rounded-t-sm border-[1.5px] border-white/90 bg-slate-950/80 flex items-end justify-start overflow-visible shadow-md"
+          style={{ transformStyle: 'preserve-3d' }}
+        >
+          {/* Light Radiation Beam inside Doorway */}
+          <div
+            className={`absolute inset-0 bg-gradient-to-tr from-amber-300 via-yellow-200 to-white transition-opacity duration-300 rounded-t-[1px] ${
+              isHovered ? 'opacity-100 shadow-[0_0_12px_rgba(251,191,36,0.9)]' : 'opacity-0'
+            }`}
+          />
+
+          {/* 3D Swinging Door Panel */}
+          <div
+            className="absolute top-0 left-0 w-full h-full bg-white border-r border-slate-300 shadow-md origin-left transition-transform duration-500 ease-out flex items-center justify-end pr-0.5 rounded-t-[1px] z-20"
+            style={{
+              transformStyle: 'preserve-3d',
+              transform: isHovered ? 'rotateY(-85deg)' : 'rotateY(0deg)',
+            }}
+          >
+            {/* Doorknob */}
+            <div className="size-1 rounded-full bg-slate-800 shadow-inner" />
+          </div>
+
+          {/* 3D Human Figure Walking Out */}
+          <div
+            className="absolute bottom-0 transition-all duration-500 ease-out pointer-events-none flex flex-col items-center z-30"
+            style={{
+              left: isHovered ? '13px' : '4px',
+              transform: isHovered ? 'scale(1.18) translateZ(24px)' : 'scale(0.85) translateZ(0px)',
+              opacity: isHovered ? 1 : 0.75,
+            }}
+          >
+            {/* SVG Animated Human */}
+            <svg
+              className="w-4 h-5 overflow-visible text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+              viewBox="0 0 24 32"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {/* Head */}
+              <circle cx="12" cy="5" r="3.5" fill="currentColor" />
+
+              {/* Torso */}
+              <line x1="12" y1="9" x2="12" y2="18" />
+
+              {/* Arms (Left & Right alternating walk cycle) */}
+              <motion.line
+                x1="12"
+                y1="11"
+                x2="5"
+                y2="17"
+                animate={
+                  isHovered
+                    ? { x2: [5, 17, 5], y2: [17, 13, 17] }
+                    : { x2: 5, y2: 17 }
+                }
+                transition={{ repeat: Infinity, duration: 0.45, ease: 'easeInOut' }}
+              />
+              <motion.line
+                x1="12"
+                y1="11"
+                x2="18"
+                y2="15"
+                animate={
+                  isHovered
+                    ? { x2: [18, 5, 18], y2: [15, 17, 15] }
+                    : { x2: 18, y2: 15 }
+                }
+                transition={{ repeat: Infinity, duration: 0.45, ease: 'easeInOut' }}
+              />
+
+              {/* Legs (Left & Right alternating walk cycle) */}
+              <motion.line
+                x1="12"
+                y1="18"
+                x2="6"
+                y2="29"
+                animate={
+                  isHovered
+                    ? { x2: [6, 17, 6], y2: [29, 25, 29] }
+                    : { x2: 6, y2: 29 }
+                }
+                transition={{ repeat: Infinity, duration: 0.45, ease: 'easeInOut' }}
+              />
+              <motion.line
+                x1="12"
+                y1="18"
+                x2="17"
+                y2="28"
+                animate={
+                  isHovered
+                    ? { x2: [17, 6, 17], y2: [28, 30, 28] }
+                    : { x2: 17, y2: 28 }
+                }
+                transition={{ repeat: Infinity, duration: 0.45, ease: 'easeInOut' }}
+              />
+            </svg>
+
+            {/* Walking Shadow on Floor */}
+            <div
+              className={`w-3.5 h-1 rounded-full bg-black/60 blur-[1px] transition-all duration-300 -mt-0.5 ${
+                isHovered ? 'scale-x-125 opacity-90' : 'scale-x-75 opacity-40'
+              }`}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Button Text */}
+      <span className="font-extrabold tracking-wider text-xs">Leave</span>
+    </button>
   );
 }

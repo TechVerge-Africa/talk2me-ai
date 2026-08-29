@@ -191,8 +191,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     async function loadChatHistory() {
       // Load existing messages for this room from Supabase for late-joiners
       const history = await MeetingService.getMeetingMessages(roomCode);
+      const myIdentity = room?.localParticipant?.identity;
       if (history.length > 0) {
-        setMessages(history as unknown as Message[]);
+        // Filter 1-to-1 direct messages so only sender or recipient can access them
+        const filteredHistory = (history as unknown as Message[]).filter((msg) => {
+          if (!msg.recipient_id || msg.recipient_id === 'everyone') return true;
+          return msg.sender_id === myIdentity || msg.recipient_id === myIdentity;
+        });
+        setMessages(filteredHistory);
       }
     }
 
@@ -414,7 +420,16 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg.type === 'chat') {
-          setMessages(prev => [...prev, msg]);
+          const myIdentity = room?.localParticipant?.identity;
+          const isDM = msg.recipient_id && msg.recipient_id !== 'everyone';
+          if (isDM) {
+            // Only add if I am the intended recipient or sender of this direct message
+            if (msg.recipient_id === myIdentity || msg.sender_id === myIdentity) {
+              setMessages(prev => [...prev, msg]);
+            }
+          } else {
+            setMessages(prev => [...prev, msg]);
+          }
         } else if (msg.type === 'caption') {
           const newCap: Message = {
             id: msg.id || generateId('cap'),

@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { LocalParticipant, RemoteParticipant, Track } from 'livekit-client';
-import { X, Mic, MicOff, Video, VideoOff, Users, UserX, MonitorOff, ShieldAlert, CheckCircle2, VolumeX } from 'lucide-react';
+import { X, Mic, MicOff, Video, VideoOff, Users, UserX, MonitorOff, ShieldAlert, CheckCircle2, VolumeX, Copy, Check, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ParticipantVideo } from './video-track';
 import { ParticipantRole } from '@/types/meeting';
@@ -12,6 +12,8 @@ interface ParticipantsPanelProps {
   hostId?: string;
   isOpen: boolean;
   onClose: () => void;
+  code?: string;
+  onShare?: () => void;
   onMuteRequest?: (participantId: string, track: 'mic' | 'cam', action: 'mute' | 'unmute') => void;
   onKickRequest?: (participantId: string) => void;
   raisedHands?: Record<string, boolean>;
@@ -189,6 +191,8 @@ export function ParticipantsPanel({
   hostId,
   isOpen,
   onClose,
+  code,
+  onShare,
   onMuteRequest,
   onKickRequest,
   raisedHands,
@@ -205,6 +209,30 @@ export function ParticipantsPanel({
   onAdmitAllRequests,
   onMuteAllParticipants,
 }: ParticipantsPanelProps) {
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyCode = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {}
+  };
+
+  const handleCopyLink = async () => {
+    if (onShare) {
+      onShare();
+      return;
+    }
+    try {
+      const url = window.location.href;
+      await navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {}
+  };
   return (
     <AnimatePresence>
       {isOpen && (
@@ -245,6 +273,56 @@ export function ParticipantsPanel({
               >
                 <X className="size-4" />
               </button>
+            </div>
+
+            {/* Invite & Copy Room Info Card */}
+            <div className="px-5 py-3.5 bg-[#1a1d24] border-b border-white/5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-black tracking-widest text-white/40">Invite & Share</span>
+                {code && (
+                  <span className="font-mono text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
+                    #{code}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* Copy Code */}
+                <button
+                  onClick={handleCopyCode}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer"
+                >
+                  {copiedCode ? (
+                    <>
+                      <Check className="size-3.5 text-emerald-400" />
+                      <span className="text-emerald-400">Code Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="size-3.5 text-white/60" />
+                      <span>Copy Code</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Invite / Copy Link */}
+                <button
+                  onClick={handleCopyLink}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all active:scale-95 shadow-md shadow-indigo-600/20 cursor-pointer"
+                >
+                  {copiedLink ? (
+                    <>
+                      <Check className="size-3.5 text-white" />
+                      <span>Link Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="size-3.5 text-white" />
+                      <span>Invite</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* Admin Action Bar (Batch Mute / Batch Admit) */}

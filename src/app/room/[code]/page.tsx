@@ -554,6 +554,81 @@ function PreJoinLobby({
   );
 }
 
+// ─── HCI Non-distracting Passing Chat Toast ─────────────────────────
+function PassingChatToast({
+  notification,
+  onOpenChat,
+  onDismiss,
+}: {
+  notification: { id: string; sender: string; content: string };
+  onOpenChat: () => void;
+  onDismiss: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (isHovered) return;
+    const timer = setTimeout(() => {
+      onDismiss();
+    }, 3800);
+    return () => clearTimeout(timer);
+  }, [isHovered, onDismiss, notification.id]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 60, scale: 0.9 }}
+      transition={{ type: "spring", damping: 25, stiffness: 300 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onOpenChat}
+      className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-[92vw] sm:max-w-md bg-[#16181d]/90 backdrop-blur-xl border border-white/10 rounded-full px-4 py-2.5 shadow-2xl flex items-center gap-3 pointer-events-auto cursor-pointer group hover:border-blue-500/40 transition-all select-none overflow-hidden"
+    >
+      {/* Sender Avatar Icon */}
+      <div className="size-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white text-xs font-black flex-shrink-0 shadow-md">
+        {notification.sender.charAt(0).toUpperCase()}
+      </div>
+
+      {/* Message Preview Content */}
+      <div className="flex items-center gap-1.5 min-w-0 flex-1 text-xs">
+        <span className="font-extrabold text-white truncate max-w-[90px] sm:max-w-[120px]">
+          {notification.sender.split('@')[0]}
+        </span>
+        <span className="text-white/30">•</span>
+        <span className="text-white/80 font-medium truncate max-w-[150px] sm:max-w-[220px]">
+          {notification.content}
+        </span>
+      </div>
+
+      {/* Action / Dismiss */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider hidden sm:inline group-hover:underline">
+          Reply
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss();
+          }}
+          className="p-1 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+          aria-label="Dismiss message notification"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+
+      {/* "Pass-by" Progress Line Indicator */}
+      <motion.div
+        initial={{ scaleX: 1 }}
+        animate={{ scaleX: isHovered ? 1 : 0 }}
+        transition={{ duration: isHovered ? 0 : 3.8, ease: "linear" }}
+        className="absolute bottom-0 left-4 right-4 h-[2px] bg-gradient-to-r from-blue-500 to-indigo-400 rounded-full origin-left opacity-75"
+      />
+    </motion.div>
+  );
+}
+
 // ─── Post-leave screen ──────────────────────────────────────────────
 function LeftMeetingScreen({
   code,
@@ -905,6 +980,7 @@ function RoomContent({
     id: string;
     sender: string;
     content: string;
+    isDirect?: boolean;
   } | null>(null);
 
   const lastProcessedMessageIdRef = useRef<string | null>(null);
@@ -921,6 +997,12 @@ function RoomContent({
     const isMe = lastMessage.sender_id === localParticipant?.identity;
     if (isMe) return;
 
+    // Filter 1-to-1 direct messages: do not notify if intended for someone else
+    const isDM = Boolean(lastMessage.recipient_id && lastMessage.recipient_id !== 'everyone');
+    if (isDM && lastMessage.recipient_id !== localParticipant?.identity) {
+      return;
+    }
+
     // Check if chat is open/visible
     const isChatVisible = sidebarOpen && activeTab === 'chat';
     
@@ -934,7 +1016,7 @@ function RoomContent({
       setUnreadCount(prev => prev + 1);
     }, 0);
 
-    // Show floating toast notification
+    // Show passing toast notification
     const senderPart = participants.find(p => p.identity === lastMessage.sender_id);
     const senderName = senderPart?.identity || lastMessage.sender_id || 'Someone';
 
@@ -942,16 +1024,10 @@ function RoomContent({
       setActiveNotification({
         id: lastMessage.id,
         sender: senderName,
-        content: lastMessage.content
+        content: lastMessage.content,
+        isDirect: isDM,
       });
     }, 0);
-
-    // Auto-dismiss notification after 4 seconds
-    const timer = setTimeout(() => {
-      setActiveNotification(null);
-    }, 4000);
-
-    return () => clearTimeout(timer);
   }, [messages, sidebarOpen, activeTab, localParticipant?.identity, participants]);
 
   // Reset unread count to 0 if chat becomes visible
@@ -1409,7 +1485,7 @@ function RoomContent({
         )}
       </AnimatePresence>
 
-      {/* Large central mic + deaf controls */}
+      {/* Large central mic control */}
       <div className="flex items-center gap-6">
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -1426,23 +1502,6 @@ function RoomContent({
           <span className={`text-xs font-bold tracking-wide ${
             micOn ? 'text-emerald-400' : 'text-white/30'
           }`}>{micOn ? 'Mic On' : 'Muted'}</span>
-        </motion.button>
-
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={toggleDeafMode}
-          className={`relative flex flex-col items-center gap-2 group`}
-        >
-          <div className={`size-20 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 ${
-            !isDeafMode
-              ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30 ring-4 ring-blue-400/20'
-              : 'bg-[#1e2227] ring-1 ring-white/10'
-          }`}>
-            {!isDeafMode ? <Eye className="size-8 text-white" /> : <EyeOff className="size-8 text-white/50" />}
-          </div>
-          <span className={`text-xs font-bold tracking-wide ${
-            !isDeafMode ? 'text-blue-400' : 'text-white/30'
-          }`}>{!isDeafMode ? 'Hearing' : 'Deaf Mode'}</span>
         </motion.button>
       </div>
 
@@ -1554,40 +1613,18 @@ function RoomContent({
           {!isDeafMode && captionsOn && <RealTimeCaptionOverlay captions={captions} activeInterims={activeInterims} size={captionSize} />}
 
           
-          {/* Floating Message Notification popup */}
+          {/* Passing Message Notification Toast */}
           <AnimatePresence>
             {activeNotification && (
-              <motion.div
-                initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -20, scale: 0.9 }}
-                className="absolute top-4 right-4 z-40 max-w-xs sm:max-w-sm bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-2xl flex items-start gap-3 pointer-events-auto cursor-pointer"
-                onClick={() => {
+              <PassingChatToast
+                notification={activeNotification}
+                onOpenChat={() => {
                   setActiveTab('chat');
                   setSidebarOpen(true);
                   setActiveNotification(null);
                 }}
-              >
-                <div className="size-9 rounded-full bg-blue-600 flex items-center justify-center text-white flex-shrink-0 shadow-md">
-                  <MessageSquare className="size-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-blue-400 uppercase tracking-wider">New Message</div>
-                  <div className="text-xs text-white/50 font-medium truncate mt-0.5">{activeNotification.sender}</div>
-                  <div className="text-sm text-white/90 font-semibold mt-1 break-words line-clamp-2">
-                    {activeNotification.content}
-                  </div>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveNotification(null);
-                  }}
-                  className="text-white/40 hover:text-white/80 p-0.5 rounded flex-shrink-0 self-start transition-colors"
-                >
-                  <X className="size-4" />
-                </button>
-              </motion.div>
+                onDismiss={() => setActiveNotification(null)}
+              />
             )}
           </AnimatePresence>
         </div>
@@ -1642,6 +1679,8 @@ function RoomContent({
         hostId={meetingHostId || (isHost ? localParticipant?.identity : undefined)} 
         isOpen={participantsOpen} 
         onClose={() => setParticipantsOpen(false)} 
+        code={code}
+        onShare={shareRoom}
         onMuteRequest={requestMute} 
         onKickRequest={requestKick} 
         raisedHands={raisedHands} 

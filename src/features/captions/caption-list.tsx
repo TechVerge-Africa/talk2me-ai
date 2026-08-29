@@ -43,11 +43,16 @@ export const CaptionList = memo(function CaptionList({ captions, size = 'md', st
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin scrollbar-thumb-cyan-500/20 hover:scrollbar-thumb-cyan-500/40">
         {captions.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-50 text-center p-6 space-y-3">
-            <div className="size-3 rounded-full bg-cyan-400/80 animate-ping mb-2" />
-            <p className="text-xs uppercase tracking-widest font-semibold text-cyan-300">Listening for audio signals...</p>
+          <div className="h-full flex flex-col items-center justify-center opacity-60 text-center p-6 space-y-2">
+            <div className="flex items-end gap-1 h-5 mb-1">
+              <span className="w-1 bg-cyan-400 rounded-full animate-pulse h-3" />
+              <span className="w-1 bg-teal-300 rounded-full animate-bounce h-5" />
+              <span className="w-1 bg-cyan-300 rounded-full animate-pulse h-2" />
+              <span className="w-1 bg-indigo-400 rounded-full animate-bounce h-4" />
+            </div>
+            <p className="text-xs font-bold text-white/80">Real-Time Transcripts</p>
             <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed">
-              Speak into your microphone. Transcripts will render live with speaker identification.
+              Captions will stream live here with speaker identification as soon as speech begins.
             </p>
           </div>
         ) : (

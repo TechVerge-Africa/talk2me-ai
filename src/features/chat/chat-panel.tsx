@@ -129,7 +129,17 @@ export function ChatPanel({
               <span className="text-[9px] uppercase font-black tracking-widest text-indigo-600 dark:text-cyan-400/90 whitespace-nowrap">Chat history</span>
               <div className="flex-1 h-px bg-slate-200 dark:bg-white/10" />
             </div>
-            {messages.map((msg) => {
+            {messages
+              .filter((msg) => {
+                if (!msg.recipient_id || msg.recipient_id === "everyone") return true;
+                const isMe =
+                  msg.sender_id === "me" ||
+                  msg.sender_id === "You" ||
+                  msg.sender_id === localParticipantIdentity;
+                const isForMe = msg.recipient_id === localParticipantIdentity;
+                return isMe || isForMe;
+              })
+              .map((msg) => {
               const isAi = msg.sender_id === "Talk2Me AI" || msg.sender_id === "talk2me_ai";
               const isMe =
                 !isAi &&
