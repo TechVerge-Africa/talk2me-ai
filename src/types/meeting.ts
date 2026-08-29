@@ -8,11 +8,15 @@ export interface Meeting {
   livekit_room_id: string;
   created_at: string;
   scheduled_at?: string;
+  workspace_id?: string;
   status: MeetingStatus;
   settings?: {
     require_approval: boolean;
     allow_screen_share?: boolean;
     sign_language_enabled?: boolean;
+    is_ephemeral?: boolean;
+    access_level?: 'members_only' | 'open';
+    allow_outsiders?: boolean;
   };
 }
 

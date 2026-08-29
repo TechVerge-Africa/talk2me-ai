@@ -60,7 +60,8 @@ export const TranscriptService = {
   /**
    * Saves a finalized canonical transcript turn to the database
    */
-  async saveCanonicalTurn(entry: CanonicalTranscriptEntry): Promise<void> {
+  async saveCanonicalTurn(entry: CanonicalTranscriptEntry, isEphemeral?: boolean): Promise<void> {
+    if (isEphemeral) return;
     const dbMeetingUuid = await resolveMeetingUuid(entry.meeting_id);
     if (!dbMeetingUuid) {
       console.warn('[TranscriptService] Skipping save: meeting UUID not found for code:', entry.meeting_id);
@@ -110,7 +111,8 @@ export const TranscriptService = {
   /**
    * Saves a chunk of transcription text (legacy compatibility)
    */
-  async saveTranscript(entry: { meeting_id: string; user_id?: string | null; content: string; start_time: number; end_time: number; language?: string }): Promise<void> {
+  async saveTranscript(entry: { meeting_id: string; user_id?: string | null; content: string; start_time: number; end_time: number; language?: string }, isEphemeral?: boolean): Promise<void> {
+    if (isEphemeral) return;
     const dbMeetingUuid = await resolveMeetingUuid(entry.meeting_id);
     if (!dbMeetingUuid) return;
 
@@ -189,8 +191,8 @@ export const TranscriptService = {
   /**
    * Persists extracted meeting decisions & action items
    */
-  async saveMeetingDecisions(decisions: MeetingDecisionEntry[]): Promise<void> {
-    if (decisions.length === 0) return;
+  async saveMeetingDecisions(decisions: MeetingDecisionEntry[], isEphemeral?: boolean): Promise<void> {
+    if (isEphemeral || decisions.length === 0) return;
 
     const dbMeetingUuid = await resolveMeetingUuid(decisions[0].meeting_id);
     if (!dbMeetingUuid) return;

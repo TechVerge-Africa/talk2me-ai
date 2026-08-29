@@ -48,13 +48,19 @@ import {
   ListTodo,
   RefreshCw,
   Pin,
-  Home
+  Home,
+  Lock,
+  Globe,
+  Calendar,
+  Pause,
+  Play,
+  AlertTriangle
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
 import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
-import { MeetingParticipant } from '@/types/meeting';
+import { Meeting, MeetingParticipant } from '@/types/meeting';
 import { TranscriptService, CanonicalTranscriptEntry } from '@/services/supabase/transcripts';
 import {
   WorkspaceService,
@@ -224,6 +230,10 @@ function DashboardContent() {
   const [pendingRequests, setPendingRequests] = useState<DbWorkspaceMember[]>([]);
   const [isLoadingPendingRequests, setIsLoadingPendingRequests] = useState<boolean>(false);
   const [isUpdatingPolicy, setIsUpdatingPolicy] = useState<boolean>(false);
+  const [showDeleteWsModal, setShowDeleteWsModal] = useState<boolean>(false);
+  const [deleteWsConfirmInput, setDeleteWsConfirmInput] = useState<string>('');
+  const [isDeletingWs, setIsDeletingWs] = useState<boolean>(false);
+  const [isTogglingWsPause, setIsTogglingWsPause] = useState<boolean>(false);
 
   useEffect(() => {
     if (showJoinWsModal) {
@@ -234,6 +244,30 @@ function DashboardContent() {
   const [showCreateChannelModal, setShowCreateChannelModal] = useState<boolean>(false);
   const [newChannelName, setNewChannelName] = useState<string>('');
   const [isCreatingChannel, setIsCreatingChannel] = useState<boolean>(false);
+
+  // Workspace Meeting Creation & Scheduling Modal State
+  const [showMeetingModal, setShowMeetingModal] = useState<boolean>(false);
+  const [meetingModalMode, setMeetingModalMode] = useState<'instant' | 'scheduled'>('instant');
+  const [meetingModalTitle, setMeetingModalTitle] = useState<string>('');
+  const [meetingModalDate, setMeetingModalDate] = useState<string>('');
+  const [meetingModalAccessLevel, setMeetingModalAccessLevel] = useState<'members_only' | 'open'>('members_only');
+  const [meetingModalRequireApproval, setMeetingModalRequireApproval] = useState<boolean>(false);
+  const [meetingModalAllowScreenShare, setMeetingModalAllowScreenShare] = useState<boolean>(true);
+  const [isSubmittingMeetingModal, setIsSubmittingMeetingModal] = useState<boolean>(false);
+
+  const openCreateMeetingModal = (mode: 'instant' | 'scheduled' = 'instant') => {
+    setMeetingModalMode(mode);
+    setMeetingModalTitle(activeWorkspaceId ? `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync` : 'Instant Sync Meeting');
+    setMeetingModalAccessLevel(activeWorkspaceId ? 'members_only' : 'open');
+    setMeetingModalRequireApproval(false);
+    setMeetingModalAllowScreenShare(true);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    const localIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setMeetingModalDate(localIso);
+    setShowMeetingModal(true);
+  };
 
   // Chat & AI Inputs
   const [chatInputText, setChatInputText] = useState<string>('');
@@ -297,6 +331,22 @@ function DashboardContent() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showProfileDropdown]);
+
+  // Workspace dropdown state
+  const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState<boolean>(false);
+  const workspaceDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Close workspace dropdown on outside click
+  useEffect(() => {
+    if (!showWorkspaceDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(e.target as Node)) {
+        setShowWorkspaceDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showWorkspaceDropdown]);
 
   // Memory Bank State
   const [memories, setMemories] = useState<DbWorkspaceMemory[]>([]);
@@ -461,6 +511,8 @@ function DashboardContent() {
     }
   }, [user, authLoading, router]);
 
+  const [hubActiveMeetingsMap, setHubActiveMeetingsMap] = useState<Record<string, Meeting>>({});
+
   // Load User Workspaces from Supabase
   const fetchWorkspaces = async () => {
     if (!user) return;
@@ -469,14 +521,30 @@ function DashboardContent() {
       const data = await WorkspaceService.getUserWorkspaces(user.id);
       setWorkspacesData(data);
 
-      const wsParam = searchParams.get('ws') || searchParams.get('workspaceId') || (() => {
-        try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
-      })();
+      const wsIds = data.map((w) => w.workspace.id);
+      if (wsIds.length > 0) {
+        MeetingService.getActiveWorkspaceMeetings(wsIds)
+          .then((meetings) => {
+            const map: Record<string, Meeting> = {};
+            meetings.forEach((m) => {
+              if (m.workspace_id) {
+                const existing = map[m.workspace_id];
+                if (!existing || m.status === 'active' || (m.scheduled_at && new Date(m.scheduled_at).getTime() < new Date(existing.scheduled_at || 0).getTime())) {
+                  map[m.workspace_id] = m;
+                }
+              }
+            });
+            setHubActiveMeetingsMap(map);
+          })
+          .catch(console.error);
+      }
+
+      const wsParam = searchParams.get('ws') || searchParams.get('workspaceId');
 
       if (wsParam && data.some((w) => w.workspace.id === wsParam)) {
         setActiveWorkspaceId(wsParam);
-      } else {
-        setActiveWorkspaceId((prev) => (prev && data.some((w) => w.workspace.id === prev) ? prev : (data[0]?.workspace.id || '')));
+      } else if (!wsParam) {
+        setActiveWorkspaceId('');
       }
     } catch (err) {
       console.error('[Dashboard] Error fetching workspaces:', err);
@@ -492,6 +560,9 @@ function DashboardContent() {
       if (wsId) {
         localStorage.setItem('t2_active_workspace_v1', wsId);
         sessionStorage.setItem('t2_return_workspace_id', wsId);
+      } else {
+        localStorage.removeItem('t2_active_workspace_v1');
+        sessionStorage.removeItem('t2_return_workspace_id');
       }
       localStorage.setItem('t2_active_tab_v1', chosenTab);
       sessionStorage.setItem('t2_return_tab', chosenTab);
@@ -723,6 +794,66 @@ function DashboardContent() {
       await fetchWorkspaces();
     } catch (err: any) {
       alert(err?.message || 'Failed to update member role');
+    }
+  };
+
+  const handlePauseMember = async (memberId: string) => {
+    if (!activeWorkspaceId) return;
+    try {
+      await WorkspaceService.pauseUserMembership(activeWorkspaceId, memberId);
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to pause member');
+    }
+  };
+
+  const handleResumeMember = async (memberId: string) => {
+    if (!activeWorkspaceId) return;
+    try {
+      await WorkspaceService.resumeUserMembership(activeWorkspaceId, memberId);
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to unpause member');
+    }
+  };
+
+  const handleToggleWorkspacePause = async () => {
+    if (!activeWorkspaceId || !currentWorkspaceData) return;
+    setIsTogglingWsPause(true);
+    try {
+      await WorkspaceService.toggleWorkspacePause(
+        activeWorkspaceId,
+        currentWorkspaceData.workspace.status
+      );
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to update workspace pause status');
+    } finally {
+      setIsTogglingWsPause(false);
+    }
+  };
+
+  const handleConfirmDeleteWorkspace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeWorkspaceId || !currentWorkspaceData) return;
+    if (deleteWsConfirmInput.trim() !== currentWorkspaceData.workspace.name) return;
+
+    setIsDeletingWs(true);
+    try {
+      const targetWsId = activeWorkspaceId;
+      await WorkspaceService.deleteWorkspace(targetWsId);
+      setShowDeleteWsModal(false);
+      setDeleteWsConfirmInput('');
+      setActiveWorkspaceId('');
+      try {
+        sessionStorage.removeItem('t2_return_workspace_id');
+        localStorage.removeItem('t2_active_workspace_v1');
+      } catch {}
+      await fetchWorkspaces();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete workspace');
+    } finally {
+      setIsDeletingWs(false);
     }
   };
 
@@ -983,27 +1114,83 @@ function DashboardContent() {
   };
 
   // Launch Instant Meeting
+  // Launch Instant Meeting (Outside workspace meetings are ephemeral - no DB data saved)
   const handleCreateMeeting = async () => {
     if (!user) return;
     try {
+      const isOutsideWorkspace = !activeWorkspaceId;
+      const title = isOutsideWorkspace
+        ? 'Instant Ephemeral Meeting'
+        : `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync`;
+
       const meeting = await MeetingService.createMeeting(
-        `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync`,
+        title,
         user.id,
         false,
         undefined,
-        true
+        true,
+        activeWorkspaceId || undefined,
+        isOutsideWorkspace
       );
       try {
         if (activeWorkspaceId) {
           sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
           localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+        } else {
+          sessionStorage.removeItem('t2_return_workspace_id');
+          localStorage.removeItem('t2_active_workspace_v1');
         }
         sessionStorage.setItem('t2_return_tab', activeTab);
         localStorage.setItem('t2_active_tab_v1', activeTab);
       } catch {}
-      router.push(`/room/${meeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`);
+      router.push(`/room/${meeting.room_code}?workspaceId=${activeWorkspaceId || ''}&ephemeral=${isOutsideWorkspace}&tab=${activeTab}`);
     } catch (err: any) {
       alert(err?.message || 'Failed to create meeting');
+    }
+  };
+
+  const handleSaveWorkspaceMeetingModal = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!user) return;
+    setIsSubmittingMeetingModal(true);
+    try {
+      const isOutsideWorkspace = !activeWorkspaceId;
+      const title = meetingModalTitle.trim() || (isOutsideWorkspace ? 'Instant Ephemeral Meeting' : `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync`);
+      const scheduledAtIso = meetingModalMode === 'scheduled' && meetingModalDate ? new Date(meetingModalDate).toISOString() : undefined;
+
+      const meeting = await MeetingService.createMeeting(
+        title,
+        user.id,
+        meetingModalRequireApproval,
+        scheduledAtIso,
+        meetingModalAllowScreenShare,
+        activeWorkspaceId || undefined,
+        isOutsideWorkspace,
+        meetingModalAccessLevel
+      );
+
+      setShowMeetingModal(false);
+
+      if (meetingModalMode === 'instant') {
+        try {
+          if (activeWorkspaceId) {
+            sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+            localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+          } else {
+            sessionStorage.removeItem('t2_return_workspace_id');
+            localStorage.removeItem('t2_active_workspace_v1');
+          }
+          sessionStorage.setItem('t2_return_tab', activeTab);
+          localStorage.setItem('t2_active_tab_v1', activeTab);
+        } catch {}
+        router.push(`/room/${meeting.room_code}?workspaceId=${activeWorkspaceId || ''}&ephemeral=${isOutsideWorkspace}&tab=${activeTab}`);
+      } else {
+        await fetchWorkspaceMeetings();
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Failed to create meeting');
+    } finally {
+      setIsSubmittingMeetingModal(false);
     }
   };
 
@@ -1025,12 +1212,12 @@ function DashboardContent() {
     }
   }, [activeWorkspaceId, selectedMeetingId]);
 
-  // Fetch meetings list when switching to meetings tab or workspace changes
+  // Fetch meetings list whenever active workspace changes
   useEffect(() => {
-    if (activeTab === 'meetings' && activeWorkspaceId) {
+    if (activeWorkspaceId) {
       fetchWorkspaceMeetings();
     }
-  }, [activeTab, activeWorkspaceId]);
+  }, [activeWorkspaceId, fetchWorkspaceMeetings]);
 
   // Load transcript + AI summary for selected meeting
   useEffect(() => {
@@ -1282,26 +1469,139 @@ function DashboardContent() {
           {/* Active Workspace Selector Dropdown */}
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block shrink-0" />
 
-          <div className="relative group shrink min-w-0 max-w-[130px] sm:max-w-[200px]">
-            <select
-              value={activeWorkspaceId}
-              onChange={(e) => {
-                selectWorkspace(e.target.value);
-                setSelectedChannel('# General');
-                setActiveTab('home');
-              }}
-              className="w-full truncate appearance-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-xl px-2.5 sm:px-3 py-1.5 pr-7 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+          {/* Custom Interactive Workspaces Hub Selector Dropdown */}
+          <div className="relative shrink min-w-0" ref={workspaceDropdownRef}>
+            <button
+              onClick={() => setShowWorkspaceDropdown((v) => !v)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-xs font-bold text-slate-800 dark:text-slate-200 transition-all outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-2xs group max-w-[170px] sm:max-w-[220px]"
+              title="Switch Workspace or View Workspaces Hub"
+              aria-haspopup="true"
+              aria-expanded={showWorkspaceDropdown}
             >
-              <option value="">🏠 Workspaces Hub</option>
-              {workspacesData.map((item) => (
-                <option key={item.workspace.id} value={item.workspace.id}>
-                  {item.workspace.name}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px]">
-              ▼
-            </div>
+              <div className="size-4 rounded-md bg-indigo-500/10 dark:bg-indigo-400/20 text-indigo-600 dark:text-indigo-400 grid place-items-center flex-shrink-0">
+                {activeWorkspaceId && currentWorkspaceData ? (
+                  renderWorkspaceIcon(currentWorkspaceData.workspace.icon || 'rocket')
+                ) : (
+                  <Home className="size-3" />
+                )}
+              </div>
+              <span className="truncate">
+                {activeWorkspaceId && currentWorkspaceData ? currentWorkspaceData.workspace.name : 'Workspaces Hub'}
+              </span>
+              <ChevronDown className={`size-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-transform duration-200 flex-shrink-0 ${showWorkspaceDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu Panel */}
+            <AnimatePresence>
+              {showWorkspaceDropdown && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute left-0 top-full mt-2.5 w-72 z-50 rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/60 dark:shadow-slate-950/60 overflow-hidden"
+                >
+                  {/* Header Item: Main Workspaces Hub */}
+                  <div className="p-1.5 border-b border-slate-200/80 dark:border-slate-800">
+                    <button
+                      onClick={() => {
+                        selectWorkspace('');
+                        setSelectedChannel('# General');
+                        setActiveTab('home');
+                        setShowWorkspaceDropdown(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        !activeWorkspaceId
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/40'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="size-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 grid place-items-center flex-shrink-0">
+                          <Home className="size-3.5" />
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="font-extrabold text-slate-900 dark:text-white">Workspaces Hub</span>
+                          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">All workspaces & quick start</span>
+                        </div>
+                      </div>
+                      {!activeWorkspaceId && <Check className="size-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0" />}
+                    </button>
+                  </div>
+
+                  {/* Workspaces List */}
+                  <div className="p-1.5 space-y-1 max-h-60 overflow-y-auto custom-scrollbar">
+                    <div className="px-3 pt-1.5 pb-1 flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      <span>Your Workspaces</span>
+                      <span>{workspacesData.length}</span>
+                    </div>
+
+                    {workspacesData.length > 0 ? (
+                      workspacesData.map((item) => {
+                        const isActive = activeWorkspaceId === item.workspace.id;
+                        return (
+                          <button
+                            key={item.workspace.id}
+                            onClick={() => {
+                              selectWorkspace(item.workspace.id);
+                              setSelectedChannel('# General');
+                              setActiveTab('home');
+                              setShowWorkspaceDropdown(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all ${
+                              isActive
+                                ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-200/60 dark:border-indigo-800/40'
+                                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div className="size-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 grid place-items-center flex-shrink-0">
+                                {renderWorkspaceIcon(item.workspace.icon || 'rocket')}
+                              </div>
+                              <div className="flex flex-col truncate">
+                                <span className="truncate font-bold text-slate-900 dark:text-white">
+                                  {item.workspace.name}
+                                </span>
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                  {item.members.length} members · {item.channels.length} channels
+                                </span>
+                              </div>
+                            </div>
+                            {isActive && <Check className="size-4 text-indigo-600 dark:text-indigo-400 ml-2 flex-shrink-0" />}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400 text-center">
+                        No workspaces joined yet
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer Actions: Create & Join Workspace */}
+                  <div className="p-1.5 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        setShowCreateWsModal(true);
+                        setShowWorkspaceDropdown(false);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/80 border border-indigo-200/60 dark:border-indigo-800/50 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold transition-all"
+                    >
+                      <Plus className="size-3.5" /> Workspace
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowJoinWsModal(true);
+                        setShowWorkspaceDropdown(false);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-cyan-50 dark:bg-cyan-950/40 hover:bg-cyan-100 dark:hover:bg-cyan-950/80 border border-cyan-200/60 dark:border-cyan-800/50 text-cyan-600 dark:text-cyan-400 text-[11px] font-bold transition-all"
+                    >
+                      <Compass className="size-3.5" /> Join
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <button
@@ -1323,16 +1623,8 @@ function DashboardContent() {
           </button>
         </div>
 
-        {/* Right: Quick Action Meeting, Theme & Profile */}
+        {/* Right: Theme & Profile */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-          <button
-            onClick={handleCreateMeeting}
-            className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md hover:shadow-lg transition-all"
-          >
-            <Video className="size-3.5" />
-            <span className="hidden sm:inline">Start Meeting</span>
-          </button>
-
           <ThemeToggle />
 
           {/* User Avatar + Profile Dropdown */}
@@ -1622,11 +1914,11 @@ function DashboardContent() {
                     <Video className="size-6" />
                   </div>
                   <div>
-                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                      <Video className="size-5 text-blue-600 dark:text-blue-400" /> Start Meeting
+                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      Start Meeting
                     </h3>
                     <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                      Create an instant video meeting and share the room link with your team.
+                      Create an instant video meeting outside of a workspace. No chat history or transcripts are stored.
                     </p>
                   </div>
                 </div>
@@ -1647,8 +1939,8 @@ function DashboardContent() {
                     <Building2 className="size-6" />
                   </div>
                   <div>
-                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                      <Building2 className="size-5 text-blue-600 dark:text-blue-400" /> Create Workspace
+                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      Create Workspace
                     </h3>
                     <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                       Build a shared space for your team with persistent chat, meetings, and AI.
@@ -1672,8 +1964,8 @@ function DashboardContent() {
                     <Users className="size-6" />
                   </div>
                   <div>
-                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-2">
-                      <Users className="size-5 text-blue-600 dark:text-blue-400" /> Join Workspace
+                    <h3 className="font-heading text-xl font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      Join Workspace
                     </h3>
                     <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
                       Enter an existing workspace invitation link or workspace code.
@@ -1700,50 +1992,53 @@ function DashboardContent() {
 
               {workspacesData.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {workspacesData.map((item) => (
-                    <motion.div
-                      key={item.workspace.id}
-                      whileHover={{ y: -4, scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => selectWorkspace(item.workspace.id)}
-                      className="group cursor-pointer p-6 rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-indigo-500/50 hover:bg-slate-50/80 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl relative overflow-hidden"
-                    >
-                      {/* Ambient glow */}
-                      <div className="absolute top-0 right-0 w-36 h-36 bg-gradient-to-bl from-indigo-500/10 via-cyan-500/5 to-transparent rounded-bl-full pointer-events-none group-hover:scale-125 transition-transform duration-500" />
+                  {workspacesData.map((item) => {
+                    const activeMeeting = hubActiveMeetingsMap[item.workspace.id];
+                    const isLive = activeMeeting?.status === 'active';
+                    const isUpcoming = activeMeeting?.scheduled_at && new Date(activeMeeting.scheduled_at).getTime() > currentTime;
+                    return (
+                      <motion.div
+                        key={item.workspace.id}
+                        whileHover={{ y: -4, scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => selectWorkspace(item.workspace.id)}
+                        className="group cursor-pointer p-6 min-h-[170px] rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-900/60 backdrop-blur-xl hover:border-indigo-500/50 hover:bg-slate-50/80 dark:hover:bg-slate-900/90 transition-all duration-300 flex flex-col justify-between gap-6 shadow-md dark:shadow-xl relative overflow-hidden"
+                      >
+                        {/* Ambient glow */}
+                        <div className="absolute top-0 right-0 w-36 h-36 bg-gradient-to-bl from-indigo-500/10 via-cyan-500/5 to-transparent rounded-bl-full pointer-events-none group-hover:scale-125 transition-transform duration-500" />
 
-                      {/* Header: Icon + Title + Open CTA */}
-                      <div className="flex items-start justify-between gap-4 relative z-10">
-                        <div className="flex items-center gap-3.5">
-                          <div className="size-12 rounded-xl bg-blue-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-sm flex-shrink-0">
-                            {renderWorkspaceIcon(item.workspace.icon || 'rocket')}
+                        {/* Header: Icon + Title + Status Badges + Open CTA */}
+                        <div className="flex items-start justify-between gap-4 relative z-10">
+                          <div className="flex items-center gap-3.5 min-w-0">
+                            <div className="size-12 rounded-xl bg-blue-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 flex items-center justify-center shadow-sm flex-shrink-0">
+                              {renderWorkspaceIcon(item.workspace.icon || 'rocket')}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <h3 className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight truncate">
+                                {item.workspace.name}
+                              </h3>
+                              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+                                {item.workspace.topic || 'Team Collaboration & AI Context'}
+                              </p>
+                            </div>
                           </div>
-                          <div className="flex flex-col">
-                            <h3 className="font-bold text-lg text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors tracking-tight">
-                              {item.workspace.name}
-                            </h3>
-                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
-                              {item.workspace.topic || 'Team Collaboration & AI Context'}
-                            </p>
+
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            {isLive ? (
+                              <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 text-[10px] font-bold border border-red-500/30">
+                                <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
+                                LIVE CALL
+                              </span>
+                            ) : isUpcoming ? (
+                              <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono font-bold border border-indigo-500/30">
+                                <Calendar className="size-3 text-indigo-500" /> SYNC
+                              </span>
+                            ) : null}
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 group-hover:bg-indigo-600 group-hover:text-white text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 transition-all shadow-sm">
+                              Open <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 group-hover:bg-indigo-600 group-hover:text-white text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10 transition-all shadow-sm flex-shrink-0">
-                          Open <ArrowRight className="size-3.5 group-hover:translate-x-0.5 transition-transform" />
-                        </div>
-                      </div>
-
-                      {/* Feature Chips */}
-                      <div className="flex flex-wrap items-center gap-2 relative z-10">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/50 dark:border-indigo-500/20 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                          <Video className="size-3 text-indigo-500" /> Meetings
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200/50 dark:border-cyan-500/20 text-[11px] font-bold text-cyan-700 dark:text-cyan-300">
-                          <MessageSquare className="size-3 text-cyan-500" /> Persistent Chat
-                        </span>
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/50 dark:border-emerald-500/20 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-                          <Sparkles className="size-3 text-emerald-500" /> AI Knowledge
-                        </span>
-                      </div>
 
                       {/* Footer */}
                       <div className="flex items-center justify-between pt-3 border-t border-slate-200/80 dark:border-white/10 text-xs text-slate-500 dark:text-slate-400 relative z-10">
@@ -1769,7 +2064,8 @@ function DashboardContent() {
                         </span>
                       </div>
                     </motion.div>
-                  ))}
+                  );
+                })}
                 </div>
               ) : (
                 <div className="p-12 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex flex-col items-center justify-center text-center gap-4">
@@ -2101,10 +2397,16 @@ function DashboardContent() {
 
                     <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       <button
-                        onClick={handleCreateMeeting}
+                        onClick={() => openCreateMeetingModal('instant')}
                         className="px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
                       >
-                        <Video className="size-5" /> Start Instant Workspace Meeting
+                        <Video className="size-5" /> Start Instant Meeting
+                      </button>
+                      <button
+                        onClick={() => openCreateMeetingModal('scheduled')}
+                        className="px-6 py-3.5 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-extrabold text-sm border border-indigo-200 dark:border-indigo-900/60 shadow-sm transition-all flex items-center justify-center gap-2 hover:scale-[1.02]"
+                      >
+                        <Calendar className="size-5 text-indigo-500" /> Schedule Workspace Sync
                       </button>
                     </div>
                   </div>
@@ -2114,12 +2416,12 @@ function DashboardContent() {
               {/* Quick Actions Grid */}
               <div className="grid sm:grid-cols-3 gap-4">
                 <button
-                  onClick={handleCreateMeeting}
+                  onClick={() => openCreateMeetingModal('instant')}
                   className="p-5 rounded-2xl border border-indigo-200 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/40 dark:to-slate-900 text-left hover:scale-[1.02] transition-all group"
                 >
                   <Video className="size-6 text-indigo-600 dark:text-indigo-400 mb-3 group-hover:scale-110 transition-transform" />
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start Workspace Meeting</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Inclusive video space with live captions & automated summaries.</p>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Start / Schedule Meeting</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Instant or scheduled workspace sync.</p>
                 </button>
 
                 <button
@@ -2128,7 +2430,7 @@ function DashboardContent() {
                 >
                   <MessageSquare className="size-6 text-cyan-600 dark:text-cyan-400 mb-3 group-hover:scale-110 transition-transform" />
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">Team Channel Chat</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Real-time messaging with @Talk2Me AI assistant integration.</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Real-time team channel messaging.</p>
                 </button>
 
                 <button
@@ -2137,7 +2439,7 @@ function DashboardContent() {
                 >
                   <Sparkles className="size-6 text-purple-600 dark:text-purple-400 mb-3 group-hover:scale-110 transition-transform" />
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">Ask Talk2Me AI</h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Ask questions across all meeting transcripts and decisions.</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Query meeting transcripts and knowledge.</p>
                 </button>
               </div>
 
@@ -2221,12 +2523,20 @@ function DashboardContent() {
                       Past meetings with AI-formatted transcripts, decisions, and action items.
                     </p>
                   </div>
-                  <button
-                    onClick={handleCreateMeeting}
-                    className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all"
-                  >
-                    <Video className="size-4" /> Start New Meeting
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      onClick={() => openCreateMeetingModal('instant')}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all"
+                    >
+                      <Video className="size-4" /> Start Instant
+                    </button>
+                    <button
+                      onClick={() => openCreateMeetingModal('scheduled')}
+                      className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs flex items-center gap-2 border border-slate-200 dark:border-slate-700 shadow-sm transition-all"
+                    >
+                      <Calendar className="size-4 text-indigo-500" /> Schedule Sync
+                    </button>
+                  </div>
                 </div>
 
                 {/* Two-panel layout */}
@@ -2250,11 +2560,14 @@ function DashboardContent() {
                         const isSelected = m.id === selectedMeetingId;
                         const duration = formatDuration(m.created_at, (m as any).ended_at);
                         const isLive = m.status === 'active';
+                        const isUpcoming = m.scheduled_at && new Date(m.scheduled_at).getTime() > currentTime;
+                        const cd = isUpcoming ? formatCountdown(m.scheduled_at!, currentTime) : null;
+                        const meetingAccess = m.settings?.access_level ?? (m.workspace_id ? 'members_only' : 'open');
                         return (
-                          <button
+                          <div
                             key={m.id}
                             onClick={() => setSelectedMeetingId(m.id)}
-                            className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                            className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer ${
                               isSelected
                                 ? 'border-indigo-500/50 bg-indigo-50 dark:bg-indigo-950/40 shadow-sm'
                                 : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
@@ -2264,13 +2577,20 @@ function DashboardContent() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{m.title}</p>
                                 <p className="text-[11px] text-slate-500 mt-0.5">
-                                  {new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {m.scheduled_at
+                                    ? `Scheduled: ${new Date(m.scheduled_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${new Date(m.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                    : new Date(m.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </p>
                               </div>
                               {isLive ? (
-                                <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[10px] font-bold">
+                                <span className="shrink-0 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 text-[10px] font-bold border border-red-500/30">
                                   <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
-                                  Live
+                                  LIVE NOW
+                                </span>
+                              ) : isUpcoming && cd ? (
+                                <span className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono font-bold border border-indigo-500/30">
+                                  <Clock className="size-3 text-indigo-500" />
+                                  {cd.text}
                                 </span>
                               ) : (
                                 <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] font-semibold">
@@ -2278,12 +2598,46 @@ function DashboardContent() {
                                 </span>
                               )}
                             </div>
-                            {duration && (
-                              <div className="flex items-center gap-1 mt-2 text-[11px] text-slate-500">
-                                <Clock className="size-3" /> {duration}
+
+                            {(isLive || isUpcoming) && (
+                              <div className="pt-2 flex items-center justify-between gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      if (activeWorkspaceId) {
+                                        sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+                                        localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+                                      }
+                                      sessionStorage.setItem('t2_return_tab', activeTab);
+                                      localStorage.setItem('t2_active_tab_v1', activeTab);
+                                    } catch {}
+                                    router.push(`/room/${m.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`);
+                                  }}
+                                  className="w-full py-1.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                                >
+                                  <Video className="size-3.5" /> Join Room Now <ArrowRight className="size-3" />
+                                </button>
                               </div>
                             )}
-                          </button>
+
+                            <div className="flex items-center justify-between gap-2 mt-2">
+                              {duration ? (
+                                <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                                  <Clock className="size-3" /> {duration}
+                                </div>
+                              ) : <div />}
+                              {meetingAccess === 'members_only' ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-500/20">
+                                  <Lock className="size-2.5" /> Members Only
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                                  <Globe className="size-2.5" /> Open
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         );
                       })
                     )}
@@ -3002,6 +3356,11 @@ function DashboardContent() {
                               <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 {m.profile?.full_name || 'Workspace Member'}
                                 {m.user_id === user?.id && <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded font-mono">(You)</span>}
+                                {m.status === 'paused' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold border border-amber-500/20">
+                                    <Pause className="size-2.5" /> Paused
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[10px] text-slate-400 capitalize">{m.role}</div>
                             </div>
@@ -3024,9 +3383,26 @@ function DashboardContent() {
                                   Make Member
                                 </button>
                               )}
+
+                              {m.status === 'paused' ? (
+                                <button
+                                  onClick={() => handleResumeMember(m.id)}
+                                  className="px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 flex items-center gap-1"
+                                >
+                                  <Play className="size-3" /> Unpause
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handlePauseMember(m.id)}
+                                  className="px-2.5 py-1 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[11px] font-bold border border-amber-200 dark:border-amber-800/40 hover:bg-amber-100 flex items-center gap-1"
+                                >
+                                  <Pause className="size-3" /> Pause
+                                </button>
+                              )}
+
                               <button
                                 onClick={() => handleRemoveMember(m.id)}
-                                className="p-1 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 transition-colors"
+                                className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 transition-colors"
                                 title="Remove member"
                               >
                                 <Trash2 className="size-3.5" />
@@ -3037,6 +3413,72 @@ function DashboardContent() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Workspace Status & Danger Zone Controls (Owner / Admin) */}
+                  {currentWorkspaceData && (
+                    <div className="space-y-4 pt-5 border-t border-slate-200 dark:border-slate-800">
+                      <h3 className="text-xs font-extrabold uppercase tracking-wide text-rose-500 flex items-center gap-1.5">
+                        <AlertTriangle className="size-4" /> Workspace Administration & Danger Zone
+                      </h3>
+
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {/* Pause Workspace Card */}
+                        <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20 flex flex-col justify-between gap-3">
+                          <div>
+                            <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                              <Pause className="size-4 text-amber-500" />
+                              {currentWorkspaceData.workspace.status === 'paused' ? 'Workspace is Paused' : 'Pause Workspace'}
+                            </h4>
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1 leading-snug">
+                              Temporarily restrict new messages and meetings while maintaining workspace data.
+                            </p>
+                          </div>
+                          <button
+                            onClick={handleToggleWorkspacePause}
+                            disabled={isTogglingWsPause}
+                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 ${
+                              currentWorkspaceData.workspace.status === 'paused'
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                                : 'bg-amber-600 hover:bg-amber-500 text-white'
+                            }`}
+                          >
+                            {isTogglingWsPause ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : currentWorkspaceData.workspace.status === 'paused' ? (
+                              <>
+                                <Play className="size-3.5" /> Unpause Workspace
+                              </>
+                            ) : (
+                              <>
+                                <Pause className="size-3.5" /> Pause Workspace
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Delete Workspace Card */}
+                        <div className="p-4 rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 flex flex-col justify-between gap-3">
+                          <div>
+                            <h4 className="text-xs font-bold text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                              <Trash2 className="size-4 text-rose-500" /> Delete Workspace
+                            </h4>
+                            <p className="text-[11px] text-rose-700 dark:text-rose-400 mt-1 leading-snug">
+                              Permanently remove this workspace, channels, messages, and meeting records.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDeleteWsConfirmInput('');
+                              setShowDeleteWsModal(true);
+                            }}
+                            className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
+                          >
+                            <Trash2 className="size-3.5" /> Delete Workspace...
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Channel Access Controls */}
                   {currentWorkspaceData && (
@@ -3718,6 +4160,289 @@ function DashboardContent() {
                   {isSavingMemory ? <Loader2 className="size-4 animate-spin" /> : 'Save Memory'}
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── CREATE / SCHEDULE WORKSPACE MEETING MODAL ── */}
+      <AnimatePresence>
+        {showMeetingModal && (
+          <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-slate-950/75 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-6 my-8"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 grid place-items-center">
+                    <Video className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      {activeWorkspaceId ? 'Workspace Meeting' : 'New Meeting'}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Configure instant call or scheduled workspace sync
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowMeetingModal(false)}
+                  className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveWorkspaceMeetingModal} className="space-y-5">
+                {/* Meeting Type Selector (Instant vs Scheduled) */}
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-2">Meeting Type</label>
+                  <div className="grid grid-cols-2 gap-3 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/50">
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalMode('instant')}
+                      className={`py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                        meetingModalMode === 'instant'
+                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Video className="size-4" /> Start Instant
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalMode('scheduled')}
+                      className={`py-2.5 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${
+                        meetingModalMode === 'scheduled'
+                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm border border-slate-200/80 dark:border-slate-700'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Calendar className="size-4" /> Schedule Later
+                    </button>
+                  </div>
+                </div>
+
+                {/* Meeting Title */}
+                <div>
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-1.5">Meeting Title</label>
+                  <input
+                    type="text"
+                    value={meetingModalTitle}
+                    onChange={(e) => setMeetingModalTitle(e.target.value)}
+                    placeholder="e.g. Weekly Product & Architecture Sync"
+                    className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                  />
+                </div>
+
+                {/* Scheduled Date/Time Input */}
+                {meetingModalMode === 'scheduled' && (
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-1.5">Schedule Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      value={meetingModalDate}
+                      onChange={(e) => setMeetingModalDate(e.target.value)}
+                      required
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition"
+                    />
+                  </div>
+                )}
+
+                {/* Access Level Selector (Members Only vs Open to Outsiders) */}
+                {activeWorkspaceId && (
+                  <div className="space-y-2.5 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-900/40">
+                    <label className="text-xs font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 block">
+                      Workspace Access Privacy
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMeetingModalAccessLevel('members_only')}
+                        className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
+                          meetingModalAccessLevel === 'members_only'
+                            ? 'border-indigo-500 bg-white dark:bg-slate-900 shadow-xs'
+                            : 'border-slate-200 dark:border-slate-800 bg-transparent text-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 dark:text-white">
+                          <Lock className="size-3.5 text-amber-500" /> Members Only
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                          Only approved workspace members can enter.
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setMeetingModalAccessLevel('open')}
+                        className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
+                          meetingModalAccessLevel === 'open'
+                            ? 'border-indigo-500 bg-white dark:bg-slate-900 shadow-xs'
+                            : 'border-slate-200 dark:border-slate-800 bg-transparent text-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900 dark:text-white">
+                          <Globe className="size-3.5 text-emerald-500" /> Allow Outsiders
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                          Open to guests & external participants with code.
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Moderation Toggles */}
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">Require Host Approval</div>
+                      <div className="text-[10px] text-slate-500 leading-snug">Participants wait in lobby until admitted.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalRequireApproval(v => !v)}
+                      className={`relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        meetingModalRequireApproval ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                        meetingModalRequireApproval ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">Allow Screen Share</div>
+                      <div className="text-[10px] text-slate-500 leading-snug">Permit non-host members to share screens.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalAllowScreenShare(v => !v)}
+                      className={`relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        meetingModalAllowScreenShare ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                        meetingModalAllowScreenShare ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowMeetingModal(false)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingMeetingModal}
+                    className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                  >
+                    {isSubmittingMeetingModal ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        {meetingModalMode === 'instant' ? 'Start Meeting Now' : 'Schedule Meeting'}
+                        <ArrowRight className="size-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── SECURE WORKSPACE DELETION MODAL (2-STEP CONFIRMATION) ── */}
+      <AnimatePresence>
+        {showDeleteWsModal && currentWorkspaceData && (
+          <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 my-8"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 grid place-items-center">
+                    <AlertTriangle className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Delete Workspace</h3>
+                    <p className="text-xs text-rose-500 font-bold">Action cannot be undone</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDeleteWsModal(false)}
+                  className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-800 dark:text-rose-300 space-y-1.5">
+                <p className="font-bold">⚠️ Warning: Permanent Workspace Deletion</p>
+                <p className="text-[11px] leading-relaxed">
+                  This will permanently delete <strong className="underline">{currentWorkspaceData.workspace.name}</strong>, all channels, chat history, AI memory, and meeting records.
+                </p>
+              </div>
+
+              <form onSubmit={handleConfirmDeleteWorkspace} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+                    Type <span className="font-mono font-black text-rose-500 select-all">&quot;{currentWorkspaceData.workspace.name}&quot;</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteWsConfirmInput}
+                    onChange={(e) => setDeleteWsConfirmInput(e.target.value)}
+                    placeholder={currentWorkspaceData.workspace.name}
+                    className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-rose-500 transition"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteWsModal(false)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isDeletingWs || deleteWsConfirmInput.trim() !== currentWorkspaceData.workspace.name}
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-rose-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    {isDeletingWs ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="size-4" /> Permanently Delete
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

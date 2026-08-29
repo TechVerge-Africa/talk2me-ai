@@ -43,10 +43,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
 
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const isEphemeralFromUrl = searchParams?.get('ephemeral') === 'true' || searchParams?.get('workspaceId') === '';
+  const [isEphemeral, setIsEphemeral] = useState<boolean>(isEphemeralFromUrl);
+
   const transcriptEngineRef = useRef<TranscriptEngine | null>(null);
 
   if (!transcriptEngineRef.current) {
-    transcriptEngineRef.current = new TranscriptEngine(roomCode);
+    transcriptEngineRef.current = new TranscriptEngine(roomCode, isEphemeral);
   }
 
   // ─── ADMIN & SECURITY STATES ──────────────────────────────────────────
@@ -79,6 +83,9 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         if (meeting) {
           setMeetingDbId(meeting.id);
           setMeetingHostId(meeting.host_id);
+          if (meeting.settings?.is_ephemeral || isEphemeralFromUrl) {
+            setIsEphemeral(true);
+          }
           if (meeting.settings) {
             const reqApproval = !!meeting.settings.require_approval;
             setRequireApproval(reqApproval);
@@ -108,6 +115,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
                 role,
                 status: initialStatus,
                 user_id: user?.id || undefined,
+                is_ephemeral: meeting.settings?.is_ephemeral || isEphemeralFromUrl,
               }).catch(e => console.warn('Supabase join participant fallback:', e));
             }
           }
@@ -681,7 +689,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     // Add to local state immediately (optimistic)
     setMessages(prev => [...prev, msg]);
 
-    // Persist to Supabase for late-joiners & rejoiners
+    // Persist to Supabase for late-joiners & rejoiners (skips if ephemeral)
     MeetingService.saveMeetingMessage({
       room_code: roomCode,
       meeting_id: meetingDbId || undefined,
@@ -689,6 +697,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       recipient_id: msg.recipient_id,
       content,
       type: 'chat',
+      is_ephemeral: isEphemeral,
     }).catch(e => console.warn('Failed to persist chat message:', e));
 
     const publishOptions: { reliable: boolean; destinationIdentities?: string[] } = { reliable: true };

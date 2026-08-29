@@ -60,12 +60,12 @@ export async function POST(req: NextRequest) {
     const user = await verifyAuthToken(authHeader);
     const isAuthenticated = !!user;
 
-    // ── 5. Room Existence Check ───────────────────────────────
+    // ── 5. Room Existence & Access Check ─────────────────────
     // Prevent token farming for non-existent rooms
     const adminClient = createAdminClient();
     const { data: meeting, error: dbError } = await adminClient
       .from('meetings')
-      .select('id, is_active, host_id')
+      .select('id, is_active, host_id, workspace_id, settings')
       .eq('room_code', roomNameResult.value)
       .eq('is_active', true)
       .maybeSingle();
@@ -74,8 +74,6 @@ export async function POST(req: NextRequest) {
       console.error('[LiveKit Token API] Database error when checking meeting:', dbError);
     }
 
-    // If no meeting found with that exact name, try matching by room_code as well
-    // (room name might be stored differently)
     const meetingExists = meeting !== null;
 
     // We allow joining even if the meeting isn't in Supabase yet
@@ -86,6 +84,42 @@ export async function POST(req: NextRequest) {
         { error: 'Meeting not found or has ended.' },
         { status: 404 },
       );
+    }
+
+    // Workspace Member Access Enforcement:
+    // If meeting belongs to a workspace and access is set to members_only (default for workspace meetings)
+    if (meeting?.workspace_id) {
+      const settings = meeting.settings as Record<string, unknown> | undefined;
+      const accessLevel = (settings?.access_level as string | undefined) ?? 'members_only';
+      const allowOutsiders = typeof settings?.allow_outsiders === 'boolean'
+        ? settings.allow_outsiders
+        : (accessLevel === 'open');
+
+      if (!allowOutsiders && accessLevel === 'members_only') {
+        if (!user) {
+          return NextResponse.json(
+            { error: 'This workspace meeting is restricted to workspace members. Please sign in.' },
+            { status: 403 },
+          );
+        }
+
+        if (meeting.host_id !== user.id) {
+          const { data: member } = await adminClient
+            .from('workspace_members')
+            .select('id, status')
+            .eq('workspace_id', meeting.workspace_id)
+            .eq('user_id', user.id)
+            .or('status.eq.approved,status.is.null')
+            .maybeSingle();
+
+          if (!member) {
+            return NextResponse.json(
+              { error: 'This meeting is restricted to members of this workspace.' },
+              { status: 403 },
+            );
+          }
+        }
+      }
     }
 
     // ── 6. LiveKit Config Check ───────────────────────────────

@@ -5,7 +5,8 @@ import {
   Mic, MicOff, Video, VideoOff, Type,
   Smile, PhoneOff, Hand, Ear, EarOff,
   MonitorUp, Users, MessageSquare,
-  Copy, Check, MoreHorizontal, X, Shield, ShieldOff
+  Copy, Check, MoreHorizontal, X, Shield, ShieldOff,
+  Lock, Globe
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -38,6 +39,9 @@ interface ControlDockProps {
   aiNoiseOn?: boolean;
   noiseReductionLevel?: number;
   onToggleAiNoise?: () => void;
+  accessLevel?: 'members_only' | 'open';
+  onToggleAccessLevel?: () => void;
+  isWorkspaceMeeting?: boolean;
 }
 
 export function ControlDock({
@@ -55,6 +59,9 @@ export function ControlDock({
   aiNoiseOn = false,
   noiseReductionLevel = 0,
   onToggleAiNoise,
+  accessLevel = 'members_only',
+  onToggleAccessLevel,
+  isWorkspaceMeeting = false,
 }: ControlDockProps) {
   const [copied, setCopied] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -287,6 +294,28 @@ export function ControlDock({
                     </div>
                     <span className="text-[11px] text-white/70 font-medium">
                       {aiNoiseOn ? `AI Shield: ${noiseReductionLevel}%` : "AI Shield Off"}
+                    </span>
+                  </button>
+                )}
+
+                {/* Workspace Access Control Toggle */}
+                {onToggleAccessLevel && (
+                  <button
+                    onClick={() => {
+                      onToggleAccessLevel();
+                    }}
+                    aria-label="Toggle Workspace Meeting Access"
+                    className="flex flex-col items-center gap-2 text-center group cursor-pointer"
+                  >
+                    <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${
+                      accessLevel === 'members_only'
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    }`}>
+                      {accessLevel === 'members_only' ? <Lock className="size-5" /> : <Globe className="size-5" />}
+                    </div>
+                    <span className="text-[11px] text-white/70 font-medium">
+                      {accessLevel === 'members_only' ? "Members Only" : "Open to All"}
                     </span>
                   </button>
                 )}

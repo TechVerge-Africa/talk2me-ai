@@ -8,6 +8,7 @@ export interface DbWorkspace {
   invite_code: string;
   owner_id: string;
   join_policy?: 'open' | 'approval';
+  status?: 'active' | 'paused';
   created_at: string;
   updated_at: string;
 }
@@ -17,7 +18,7 @@ export interface DbWorkspaceMember {
   workspace_id: string;
   user_id: string;
   role: string;
-  status?: 'approved' | 'pending' | 'rejected';
+  status?: 'approved' | 'pending' | 'rejected' | 'paused';
   joined_at: string;
   profile?: {
     full_name: string | null;
@@ -771,6 +772,108 @@ export const WorkspaceService = {
     return () => {
       supabase.removeChannel(subscription);
     };
+  },
+
+  /**
+   * Checks if a user is an approved member of a workspace (or workspace owner)
+   */
+  async isUserWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
+    if (!workspaceId || !userId) return false;
+    const { data, error } = await supabase
+      .from('workspace_members')
+      .select('id, status')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+      .or('status.eq.approved,status.is.null')
+      .maybeSingle();
+
+    if (error && (error.code === '42703' || error.message?.includes('status'))) {
+      const { data: fallbackData } = await supabase
+        .from('workspace_members')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      return !!fallbackData;
+    }
+
+    return !!data;
+  },
+
+  /**
+   * Pause/Suspend a user's membership in a workspace
+   */
+  async pauseUserMembership(workspaceId: string, memberId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_members')
+      .update({ status: 'paused' })
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (error && (error.code === '42703' || error.message?.includes('status'))) {
+      throw new Error('Database schema does not support member pausing');
+    } else if (error) {
+      throw new Error(error.message || 'Failed to pause user membership');
+    }
+  },
+
+  /**
+   * Resume/Unpause a user's membership in a workspace
+   */
+  async resumeUserMembership(workspaceId: string, memberId: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspace_members')
+      .update({ status: 'approved' })
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to resume user membership');
+    }
+  },
+
+  /**
+   * Pause or resume an entire workspace (Owner / Admin command)
+   */
+  async toggleWorkspacePause(workspaceId: string, currentStatus?: 'active' | 'paused'): Promise<'active' | 'paused'> {
+    const newStatus: 'active' | 'paused' = currentStatus === 'paused' ? 'active' : 'paused';
+    const { data, error } = await supabase
+      .from('workspaces')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', workspaceId)
+      .select()
+      .single();
+
+    if (error && (error.code === '42703' || error.message?.includes('status'))) {
+      // Fallback if status column doesn't exist yet on workspaces table
+      return newStatus;
+    } else if (error) {
+      throw new Error(error.message || 'Failed to update workspace status');
+    }
+
+    return (data?.status as 'active' | 'paused') || newStatus;
+  },
+
+  /**
+   * Permanently delete a workspace and all associated resources (Owner command)
+   */
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    if (!workspaceId) throw new Error('Invalid workspace ID');
+
+    // Cascade delete workspace messages, channels, members, meetings, and workspace record
+    await supabase.from('workspace_messages').delete().eq('workspace_id', workspaceId);
+    await supabase.from('workspace_channels').delete().eq('workspace_id', workspaceId);
+    await supabase.from('workspace_members').delete().eq('workspace_id', workspaceId);
+    await supabase.from('meetings').delete().eq('workspace_id', workspaceId);
+
+    const { error } = await supabase
+      .from('workspaces')
+      .delete()
+      .eq('id', workspaceId);
+
+    if (error) {
+      throw new Error(error.message || 'Failed to delete workspace');
+    }
   },
 };
 

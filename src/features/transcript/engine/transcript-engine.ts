@@ -11,6 +11,7 @@ export interface InterimCaptionState {
 
 export class TranscriptEngine {
   private meetingId: string;
+  private isEphemeral: boolean;
   private canonicalTurnMap: Map<string, CanonicalTranscriptEntry> = new Map();
   private activeInterimMap: Map<string, InterimCaptionState> = new Map();
   private listeners: Set<(canonical: CanonicalTranscriptEntry[], activeInterims: InterimCaptionState[]) => void> = new Set();
@@ -18,8 +19,9 @@ export class TranscriptEngine {
   private lastSpeakerId: string | null = null;
   private turnTimeoutMs = 5000; // 5s gap creates a new conversational turn
 
-  constructor(meetingId: string) {
+  constructor(meetingId: string, isEphemeral: boolean = false) {
     this.meetingId = meetingId;
+    this.isEphemeral = isEphemeral;
   }
 
   /**
@@ -142,9 +144,9 @@ export class TranscriptEngine {
 
     this.notify();
 
-    // Persist finalized turn to Supabase Canonical Transcripts DB
+    // Persist finalized turn to Supabase Canonical Transcripts DB (skips if ephemeral)
     try {
-      await TranscriptService.saveCanonicalTurn(targetTurn);
+      await TranscriptService.saveCanonicalTurn(targetTurn, this.isEphemeral);
     } catch (err) {
       console.error('[TranscriptEngine] Failed to persist canonical turn to DB:', err);
     }

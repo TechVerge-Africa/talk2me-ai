@@ -29,6 +29,7 @@ import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
+import { WorkspaceService } from '@/services/supabase/workspaces';
 import { Meeting } from '@/types/meeting';
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
@@ -919,6 +920,9 @@ function RoomContent({
   hostIdentity,
   meetingId: _meetingId,
   isAppAdmin,
+  meetingRecord,
+  accessLevel,
+  onToggleAccessLevel,
 }: {
   code: string;
   isHost: boolean;
@@ -926,6 +930,9 @@ function RoomContent({
   hostIdentity?: string;
   meetingId?: string;
   isAppAdmin?: boolean;
+  meetingRecord?: Meeting | null;
+  accessLevel?: 'members_only' | 'open';
+  onToggleAccessLevel?: () => void;
 }) {
   const {
     micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
@@ -1599,6 +1606,9 @@ function RoomContent({
             aiNoiseOn={aiNoiseShieldOn}
             noiseReductionLevel={noiseReductionLevel}
             onToggleAiNoise={toggleAiNoiseShield}
+            accessLevel={accessLevel}
+            onToggleAccessLevel={isHost || meetingRecord?.workspace_id ? onToggleAccessLevel : undefined}
+            isWorkspaceMeeting={!!meetingRecord?.workspace_id}
           />
         }
       >
@@ -1736,6 +1746,45 @@ function RoomPageInner() {
   const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
   const [endOptionSelected, setEndOptionSelected] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
+  const [meetingAccessLevel, setMeetingAccessLevel] = useState<'members_only' | 'open'>('members_only');
+
+  useEffect(() => {
+    if (meetingRecord?.settings?.access_level) {
+      setMeetingAccessLevel(meetingRecord.settings.access_level);
+    } else if (meetingRecord?.workspace_id) {
+      setMeetingAccessLevel('members_only');
+    } else {
+      setMeetingAccessLevel('open');
+    }
+  }, [meetingRecord]);
+
+  const handleToggleAccessLevel = useCallback(async () => {
+    if (!meetingRecord) return;
+    const newLevel = meetingAccessLevel === 'members_only' ? 'open' : 'members_only';
+    setMeetingAccessLevel(newLevel);
+    setMeetingRecord(prev => prev ? {
+      ...prev,
+      settings: {
+        ...prev.settings,
+        require_approval: prev.settings?.require_approval ?? false,
+        access_level: newLevel,
+        allow_outsiders: newLevel === 'open',
+      }
+    } : prev);
+
+    try {
+      await MeetingService.updateMeetingSettings(meetingRecord.id, {
+        require_approval: meetingRecord.settings?.require_approval ?? false,
+        allow_screen_share: meetingRecord.settings?.allow_screen_share ?? true,
+        sign_language_enabled: meetingRecord.settings?.sign_language_enabled ?? true,
+        is_ephemeral: meetingRecord.settings?.is_ephemeral ?? false,
+        access_level: newLevel,
+        allow_outsiders: newLevel === 'open',
+      });
+    } catch (err) {
+      console.error('Failed to update meeting access level:', err);
+    }
+  }, [meetingRecord, meetingAccessLevel]);
 
   // A user is a host if they're signed in
   const isHost = !!user;
@@ -1811,28 +1860,48 @@ function RoomPageInner() {
     // Fast path: look for an active meeting (works for everyone)
     MeetingService.getMeetingByCode(formattedCode)
       .then(async (m) => {
-        if (m) return m;
-        const mRaw = await MeetingService.getMeetingByCode(code);
-        if (mRaw) return mRaw;
+        let targetMeeting = m ?? await MeetingService.getMeetingByCode(code);
 
-        // Active meeting not found — check if an ended one exists
-        const anyFormatted = await MeetingService.getMeetingByCodeAny(formattedCode);
-        const any = anyFormatted ?? await MeetingService.getMeetingByCodeAny(code);
+        if (!targetMeeting) {
+          // Active meeting not found — check if an ended one exists
+          const anyFormatted = await MeetingService.getMeetingByCodeAny(formattedCode);
+          const any = anyFormatted ?? await MeetingService.getMeetingByCodeAny(code);
 
-        if (!any) {
-          setError('Invalid meeting room link or code. This meeting does not exist.');
-          return null;
+          if (!any) {
+            setError('Invalid meeting room link or code. This meeting does not exist.');
+            return null;
+          }
+
+          // Meeting is ended — only the host (signed-in user whose id matches) may re-enter
+          if (user && any.host_id === user.id) {
+            await MeetingService.reactivateMeeting(any.id);
+            targetMeeting = { ...any, status: 'active' as const };
+          } else {
+            // Everyone else is blocked
+            setError('This meeting has ended. Only the host can reopen it.');
+            return null;
+          }
         }
 
-        // Meeting is ended — only the host (signed-in user whose id matches) may re-enter
-        if (user && any.host_id === user.id) {
-          await MeetingService.reactivateMeeting(any.id);
-          return { ...any, status: 'active' as const };
+        // Workspace Member Access Enforcement:
+        if (targetMeeting.workspace_id) {
+          const isMembersOnly = targetMeeting.settings?.access_level === 'members_only' || targetMeeting.settings?.allow_outsiders === false || (!targetMeeting.settings?.access_level && targetMeeting.settings?.allow_outsiders !== true);
+          if (isMembersOnly) {
+            if (!user) {
+              setError('This meeting is restricted to members of the workspace. Please sign in with a workspace member account.');
+              return null;
+            }
+            if (targetMeeting.host_id !== user.id) {
+              const isMember = await WorkspaceService.isUserWorkspaceMember(targetMeeting.workspace_id, user.id);
+              if (!isMember) {
+                setError('This workspace meeting is restricted to workspace members. Ask an admin or workspace member to allow outsiders if you need guest access.');
+                return null;
+              }
+            }
+          }
         }
 
-        // Everyone else is blocked
-        setError('This meeting has ended. Only the host can reopen it.');
-        return null;
+        return targetMeeting;
       })
       .then(m => { if (m) setMeetingRecord(m); })
       .catch(e => {
@@ -1952,7 +2021,17 @@ function RoomPageInner() {
       options={roomOptions}
     >
       <RoomAudioRenderer />
-      <RoomContent code={code} isHost={isHost} onLeave={handleLeave} hostIdentity={user?.email?.split('@')[0]} meetingId={meetingRecord?.id} isAppAdmin={profile?.role === 'admin'} />
+      <RoomContent
+        code={code}
+        isHost={isHost}
+        onLeave={handleLeave}
+        hostIdentity={user?.email?.split('@')[0]}
+        meetingId={meetingRecord?.id}
+        isAppAdmin={profile?.role === 'admin'}
+        meetingRecord={meetingRecord}
+        accessLevel={meetingAccessLevel}
+        onToggleAccessLevel={handleToggleAccessLevel}
+      />
     </LiveKitRoom>
   );
 }

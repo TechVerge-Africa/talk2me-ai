@@ -1,11 +1,18 @@
 import { supabase } from './client';
 import { generateRoomCode } from '@/packages/shared/rooms';
 import { Meeting, MeetingParticipant, ParticipantRole, ParticipantStatus } from '@/types/meeting';
+export type { Meeting };
 import { AppError } from '@/services/errors';
 
 /** Map a Supabase meetings row to the application Meeting model. */
 function toMeeting(row: Record<string, unknown>): Meeting {
   const settings = row.settings as Record<string, unknown> | undefined;
+  const workspaceId = row.workspace_id as string | undefined;
+  const accessLevel = (settings?.access_level as 'members_only' | 'open' | undefined) ?? (workspaceId ? 'members_only' : 'open');
+  const allowOutsiders = typeof settings?.allow_outsiders === 'boolean'
+    ? settings.allow_outsiders
+    : (accessLevel === 'open');
+
   return {
     id: row.id as string,
     title: row.room_name as string,
@@ -14,12 +21,22 @@ function toMeeting(row: Record<string, unknown>): Meeting {
     livekit_room_id: row.id as string,
     created_at: row.created_at as string,
     scheduled_at: row.scheduled_at as string | undefined,
+    workspace_id: workspaceId,
     status: row.is_active ? 'active' : 'ended',
     settings: settings ? {
       require_approval: !!settings.require_approval,
       allow_screen_share: typeof settings.allow_screen_share === 'boolean' ? !!settings.allow_screen_share : true,
       sign_language_enabled: !!settings.sign_language_enabled,
-    } : undefined,
+      is_ephemeral: !!settings.is_ephemeral,
+      access_level: accessLevel,
+      allow_outsiders: allowOutsiders,
+    } : {
+      require_approval: false,
+      allow_screen_share: true,
+      sign_language_enabled: true,
+      access_level: accessLevel,
+      allow_outsiders: allowOutsiders,
+    },
   };
 }
 
@@ -27,25 +44,42 @@ export const MeetingService = {
   /**
    * Creates a new meeting room
    */
-  async createMeeting(title: string, hostId: string, requireApproval: boolean = false, scheduledAt?: string, allowScreenShare: boolean = true): Promise<Meeting> {
+  async createMeeting(
+    title: string,
+    hostId: string,
+    requireApproval: boolean = false,
+    scheduledAt?: string,
+    allowScreenShare: boolean = true,
+    workspaceId?: string,
+    isEphemeral: boolean = false,
+    accessLevel?: 'members_only' | 'open'
+  ): Promise<Meeting> {
     const roomCode = generateRoomCode();
+    const resolvedAccessLevel = accessLevel ?? (workspaceId ? 'members_only' : 'open');
     
+    const insertPayload: any = {
+      room_name: title,
+      room_code: roomCode,
+      host_id: hostId,
+      is_active: true,
+      scheduled_at: scheduledAt || null,
+      settings: {
+        require_approval: requireApproval,
+        allow_screen_share: allowScreenShare,
+        sign_language_enabled: true,
+        is_ephemeral: isEphemeral,
+        access_level: resolvedAccessLevel,
+        allow_outsiders: resolvedAccessLevel === 'open',
+      }
+    };
+
+    if (workspaceId) {
+      insertPayload.workspace_id = workspaceId;
+    }
+
     const { data, error } = await supabase
       .from('meetings')
-      .insert([
-        {
-          room_name: title,
-          room_code: roomCode,
-          host_id: hostId,
-          is_active: true,
-          scheduled_at: scheduledAt || null,
-          settings: {
-            require_approval: requireApproval,
-            allow_screen_share: allowScreenShare,
-            sign_language_enabled: true
-          }
-        }
-      ])
+      .insert([insertPayload])
       .select()
       .single();
 
@@ -66,7 +100,7 @@ export const MeetingService = {
   async getMeetingByCodeAny(code: string): Promise<Meeting | null> {
     const { data, error } = await supabase
       .from('meetings')
-      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id')
       .eq('room_code', code)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -110,7 +144,7 @@ export const MeetingService = {
   async getMeetingByCode(code: string): Promise<Meeting | null> {
     const { data, error } = await supabase
       .from('meetings')
-      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id')
       .eq('room_code', code)
       .eq('is_active', true)
       .single();
@@ -176,7 +210,17 @@ export const MeetingService = {
   /**
    * Updates meeting settings
    */
-  async updateMeetingSettings(meetingId: string, settings: { require_approval: boolean; allow_screen_share?: boolean; sign_language_enabled?: boolean }): Promise<void> {
+  async updateMeetingSettings(
+    meetingId: string,
+    settings: {
+      require_approval: boolean;
+      allow_screen_share?: boolean;
+      sign_language_enabled?: boolean;
+      is_ephemeral?: boolean;
+      access_level?: 'members_only' | 'open';
+      allow_outsiders?: boolean;
+    }
+  ): Promise<void> {
     const { error } = await supabase
       .from('meetings')
       .update({ settings })
@@ -210,6 +254,24 @@ export const MeetingService = {
       );
     }
 
+    return (data || []).map(row => ({
+      ...toMeeting(row as Record<string, unknown>),
+      ended_at: (row as any).ended_at ?? null,
+    }));
+  },
+
+  /**
+   * Fetches active or upcoming meetings across multiple workspaces
+   */
+  async getActiveWorkspaceMeetings(workspaceIds: string[]): Promise<Meeting[]> {
+    if (!workspaceIds || !workspaceIds.length) return [];
+    const { data, error } = await supabase
+      .from('meetings')
+      .select('*')
+      .in('workspace_id', workspaceIds)
+      .or('is_active.eq.true,scheduled_at.not.is.null');
+
+    if (error) return [];
     return (data || []).map(row => ({
       ...toMeeting(row as Record<string, unknown>),
       ended_at: (row as any).ended_at ?? null,
@@ -268,7 +330,24 @@ export const MeetingService = {
     user_id?: string;
     role?: ParticipantRole;
     status?: ParticipantStatus;
+    is_ephemeral?: boolean;
   }): Promise<MeetingParticipant> {
+    if (params.is_ephemeral) {
+      return {
+        id: `ephemeral_${params.identity}`,
+        meeting_id: params.meeting_id,
+        identity: params.identity,
+        display_name: params.display_name,
+        user_id: params.user_id,
+        role: params.role || 'participant',
+        status: params.status || 'admitted',
+        is_muted: false,
+        is_video_off: false,
+        hand_raised: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
     const payload = {
       meeting_id: params.meeting_id,
       identity: params.identity,
@@ -386,7 +465,11 @@ export const MeetingService = {
     recipient_id?: string;
     content: string;
     type?: string;
+    is_ephemeral?: boolean;
   }): Promise<void> {
+    if (params.is_ephemeral) {
+      return;
+    }
     const { error } = await supabase
       .from('meeting_messages')
       .insert([{
