@@ -54,13 +54,15 @@ import {
   Calendar,
   Pause,
   Play,
-  AlertTriangle
+  AlertTriangle,
+  Layout
 } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/use-auth';
 import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
 import { Meeting, MeetingParticipant } from '@/types/meeting';
+import { WorkspaceWhiteboard } from '@/features/whiteboard/workspace-whiteboard';
 import { TranscriptService, CanonicalTranscriptEntry } from '@/services/supabase/transcripts';
 import {
   WorkspaceService,
@@ -89,7 +91,7 @@ const renderWorkspaceIcon = (iconStr: string) => {
   return <Rocket className="size-5 text-indigo-600 dark:text-indigo-400" />;
 };
 
-type WorkspaceTab = 'home' | 'meetings' | 'chat' | 'ask-ai' | 'settings';
+type WorkspaceTab = 'home' | 'meetings' | 'chat' | 'whiteboard' | 'ask-ai' | 'settings';
 
 function formatCountdown(scheduledAtIso: string, nowMs: number) {
   const diffMs = new Date(scheduledAtIso).getTime() - nowMs;
@@ -138,7 +140,8 @@ function DashboardContent() {
       })() as WorkspaceTab | null;
 
       const validTab = urlTab || storedTab;
-      if (validTab && ['home', 'meetings', 'chat', 'ask-ai', 'settings'].includes(validTab)) {
+      const ALL_TABS: WorkspaceTab[] = ['home', 'meetings', 'chat', 'whiteboard', 'ask-ai', 'settings'];
+      if (validTab && ALL_TABS.includes(validTab)) {
         setActiveTabRaw(validTab);
       }
     }
@@ -1782,6 +1785,7 @@ function DashboardContent() {
                       { id: 'home', label: 'Home', icon: Home },
                       { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
                       { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
+                      { id: 'whiteboard', label: 'Work Board', icon: Layout },
                       { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
                       { id: 'settings', label: 'Settings', icon: Settings },
                     ].map((tab) => {
@@ -2132,6 +2136,7 @@ function DashboardContent() {
               { id: 'home', label: 'Home', icon: Home },
               { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
               { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
+              { id: 'whiteboard', label: 'Work Board', icon: Layout },
               { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => {
@@ -2980,6 +2985,15 @@ function DashboardContent() {
             </div>
           )}
 
+          {/* TAB: VISUAL WHITEBOARD */}
+          {activeTab === 'whiteboard' && activeWorkspaceId && (
+            <WorkspaceWhiteboard
+              workspaceId={activeWorkspaceId}
+              workspaceName={currentWorkspaceData?.workspace.name || 'Workspace'}
+              currentUserId={user?.id || 'guest'}
+              currentUserName={profile?.full_name || user?.email || 'Team Member'}
+            />
+          )}
 
           {/* TAB 4: ASK AI */}
           {activeTab === 'ask-ai' && (
@@ -3695,6 +3709,7 @@ function DashboardContent() {
           {[
             { id: 'home', label: 'Home', icon: Home },
             { id: 'chat', label: 'Chat', icon: MessageSquare },
+            { id: 'whiteboard', label: 'Work Board', icon: Layout },
             { id: 'meetings', label: 'Meetings', icon: Video },
             { id: 'ask-ai', label: 'Ask AI', icon: Sparkles },
             { id: 'settings', label: 'Settings', icon: Settings },
