@@ -44,7 +44,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
 
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const isEphemeralFromUrl = searchParams?.get('ephemeral') === 'true' || searchParams?.get('workspaceId') === '';
+  const isEphemeralFromUrl = searchParams?.get('ephemeral') === 'true';
   const [isEphemeral, setIsEphemeral] = useState<boolean>(isEphemeralFromUrl);
 
   const transcriptEngineRef = useRef<TranscriptEngine | null>(null);
@@ -83,8 +83,10 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         if (meeting) {
           setMeetingDbId(meeting.id);
           setMeetingHostId(meeting.host_id);
-          if (meeting.settings?.is_ephemeral || isEphemeralFromUrl) {
-            setIsEphemeral(true);
+          const isMeetingEphemeral = meeting.workspace_id ? false : (meeting.settings?.is_ephemeral ?? isEphemeralFromUrl);
+          setIsEphemeral(isMeetingEphemeral);
+          if (transcriptEngineRef.current) {
+            transcriptEngineRef.current.setEphemeral(isMeetingEphemeral);
           }
           if (meeting.settings) {
             const reqApproval = !!meeting.settings.require_approval;

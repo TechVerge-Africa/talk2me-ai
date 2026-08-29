@@ -59,28 +59,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Meeting not found' }, { status: 404 });
     }
 
-    // ── 1. Fetch all transcript turns ordered by start time ──────────────
-    const { data: rows, error } = await supabaseAdmin
+    // ── 1. Fetch all transcript turns ──────────────────────────────────────
+    let rows: any[] = [];
+    const { data: primaryRows, error: primaryErr } = await supabaseAdmin
       .from('transcripts')
-      .select('id, speaker_name, speaker_id, content, start_ms, end_ms, start_time, created_at')
-      .eq('meeting_id', uuid)
-      .order('start_ms', { ascending: true })
-      .order('start_time', { ascending: true });
+      .select('*')
+      .eq('meeting_id', uuid);
 
-    if (error) {
-      console.error('[summarize-meeting] DB error:', error.message);
-      return NextResponse.json({ error: 'Failed to fetch transcripts' }, { status: 500 });
+    if (!primaryErr && primaryRows) {
+      rows = primaryRows;
+    } else {
+      console.warn('[summarize-meeting] Notice fetching transcripts:', primaryErr?.message);
     }
 
-    const turns: TranscriptTurn[] = (rows || []).map((r: any) => ({
-      id: r.id,
-      speaker_name: r.speaker_name || r.speaker_id || 'Speaker',
-      speaker_id: r.speaker_id || 'unknown',
-      content: r.content || '',
-      start_ms: r.start_ms ?? Math.round((r.start_time || 0) * 1000),
-      end_ms: r.end_ms ?? 0,
-      created_at: r.created_at,
-    })).filter(t => t.content.trim().length > 0);
+    const turns: TranscriptTurn[] = (rows || [])
+      .map((r: any) => ({
+        id: r.id,
+        speaker_name: r.speaker_name || r.user_id || 'Speaker',
+        speaker_id: r.speaker_id || r.user_id || 'unknown',
+        content: r.content || '',
+        start_ms: r.start_ms ?? Math.round((r.start_time || 0) * 1000),
+        end_ms: r.end_ms ?? Math.round((r.end_time || 0) * 1000),
+        created_at: r.created_at,
+      }))
+      .filter(t => t.content && t.content.trim().length > 0)
+      .sort((a, b) => a.start_ms - b.start_ms);
 
     if (turns.length === 0) {
       return NextResponse.json({

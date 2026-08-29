@@ -24,6 +24,10 @@ export class TranscriptEngine {
     this.isEphemeral = isEphemeral;
   }
 
+  public setEphemeral(isEphemeral: boolean): void {
+    this.isEphemeral = isEphemeral;
+  }
+
   /**
    * Subscribe to Transcript Engine updates (canonical turns & interim state).
    */
