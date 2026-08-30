@@ -22,7 +22,9 @@ import {
   Grid,
   Edit3,
   X,
-  FileText
+  FileText,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import {
   WorkspaceBoardService,
@@ -114,10 +116,24 @@ export function WorkspaceWhiteboard({
   const [selectedColor, setSelectedColor] = useState<StickyNoteColor>('yellow');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
 
+  // Auto-Save Status State & Refs for keystroke debouncing & in-flight preservation
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimerRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const notesRef = useRef<WorkspaceStickyNote[]>([]);
+  const editingNoteIdRef = useRef<string | null>(null);
+
   // Canvas state
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
+  useEffect(() => {
+    editingNoteIdRef.current = editingNoteId;
+  }, [editingNoteId]);
 
   // Fetch all boards for active workspace
   const fetchBoards = useCallback(async () => {
@@ -194,7 +210,16 @@ export function WorkspaceWhiteboard({
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as any;
             setNotes((prev) =>
-              prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n))
+              prev.map((n) => {
+                if (n.id === updated.id) {
+                  // Do not overwrite content if active user is currently typing in this note
+                  if (editingNoteIdRef.current === updated.id) {
+                    return { ...updated, content: n.content };
+                  }
+                  return { ...n, ...updated };
+                }
+                return n;
+              })
             );
           } else if (payload.eventType === 'DELETE') {
             const deletedId = payload.old.id;
@@ -233,10 +258,11 @@ export function WorkspaceWhiteboard({
     }
   };
 
-  // Add new Sticky Note to Canvas
+  // Add new Sticky Note to Canvas with Instant Auto-Save to Database
   const handleAddNote = async (color: StickyNoteColor = selectedColor) => {
     if (!activeBoardId) return;
 
+    setSaveStatus('saving');
     // Grid placement calculation to avoid overlapping notes
     const offsetCount = notes.length;
     const posX = 120 + ((offsetCount * 30) % 600);
@@ -247,7 +273,7 @@ export function WorkspaceWhiteboard({
       workspace_id: workspaceId,
       author_id: currentUserId,
       author_name: currentUserName || 'Team Member',
-      content: 'Click to type your idea...',
+      content: '',
       color,
       category: 'idea' as StickyNoteCategory,
       pos_x: posX,
@@ -256,8 +282,8 @@ export function WorkspaceWhiteboard({
       height: 180,
     };
 
-    // Optimistic UI update
-    const tempId = `temp_${Date.now()}`;
+    // Optimistic UI update for 0ms responsiveness
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const optimisticNote: WorkspaceStickyNote = {
       id: tempId,
       ...newNotePartial,
@@ -268,11 +294,62 @@ export function WorkspaceWhiteboard({
 
     try {
       const saved = await WorkspaceBoardService.saveBoardNote(newNotePartial);
-      setNotes((prev) => prev.map((n) => (n.id === tempId ? saved : n)));
-      setEditingNoteId(saved.id);
+
+      // Replace temp note with saved DB record, preserving any text typed in-flight
+      setNotes((prev) =>
+        prev.map((n) => {
+          if (n.id === tempId) {
+            const userTypedContent = n.content !== '' ? n.content : saved.content;
+            return {
+              ...saved,
+              content: userTypedContent,
+            };
+          }
+          return n;
+        })
+      );
+
+      // Transfer focus to the created DB record ID
+      setEditingNoteId((curr) => (curr === tempId ? saved.id : curr));
+
+      // If user typed content while save request was in-flight, push updated content to DB immediately
+      const activeStateNote = notesRef.current.find((n) => n.id === tempId || n.id === saved.id);
+      if (activeStateNote && activeStateNote.content && activeStateNote.content !== saved.content) {
+        await WorkspaceBoardService.updateNoteContent(saved.id, activeStateNote.content);
+      }
+
+      setSaveStatus('saved');
     } catch (err) {
-      console.error('[Whiteboard] Add note error:', err);
+      console.error('[Whiteboard] Add note auto-save error:', err);
+      setSaveStatus('error');
     }
+  };
+
+  // Debounced Auto-Save to Database as User Types
+  const handleNoteContentChange = (noteId: string, newContent: string) => {
+    // 1. Instant local state update for fluid typing
+    setNotes((prev) =>
+      prev.map((n) => (n.id === noteId ? { ...n, content: newContent } : n))
+    );
+
+    setSaveStatus('saving');
+
+    // 2. Clear existing debounce timer for this note
+    if (saveTimerRef.current[noteId]) {
+      clearTimeout(saveTimerRef.current[noteId]);
+    }
+
+    // 3. Set debounced auto-save (400ms)
+    saveTimerRef.current[noteId] = setTimeout(async () => {
+      try {
+        if (!noteId || noteId.startsWith('temp_')) return;
+        await WorkspaceBoardService.updateNoteContent(noteId, newContent);
+        setSaveStatus('saved');
+      } catch (err) {
+        console.error('[Whiteboard] Auto-save content error:', err);
+        setSaveStatus('error');
+      }
+    }, 400);
   };
 
   // Note Position Drag End
@@ -647,6 +724,25 @@ export function WorkspaceWhiteboard({
             </button>
           </div>
 
+          {saveStatus === 'saving' && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-xs font-bold animate-pulse">
+              <RefreshCw className="size-3.5 animate-spin" />
+              Auto-saving...
+            </div>
+          )}
+          {saveStatus === 'saved' && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
+              <Check className="size-3.5" />
+              Saved to DB
+            </div>
+          )}
+          {saveStatus === 'error' && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 text-xs font-bold">
+              <AlertCircle className="size-3.5" />
+              Save Error
+            </div>
+          )}
+
           <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
             <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
             Realtime Sync
@@ -743,13 +839,7 @@ export function WorkspaceWhiteboard({
                       <textarea
                         autoFocus
                         value={note.content}
-                        onChange={(e) =>
-                          setNotes((prev) =>
-                            prev.map((n) =>
-                              n.id === note.id ? { ...n, content: e.target.value } : n
-                            )
-                          )
-                        }
+                        onChange={(e) => handleNoteContentChange(note.id, e.target.value)}
                         onBlur={() => {
                           setEditingNoteId(null);
                           handleUpdateNote(note.id, note.content);

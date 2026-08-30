@@ -162,7 +162,13 @@ export const WorkspaceBoardService = {
    * Create or update a sticky note
    */
   async saveBoardNote(note: Partial<WorkspaceStickyNote> & { board_id: string; workspace_id: string }): Promise<WorkspaceStickyNote> {
-    const id = note.id || `note_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const isUuid = note.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(note.id);
+    const id = isUuid
+      ? note.id!
+      : typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `00000000-0000-4000-8000-${Math.random().toString(36).slice(2, 14).padEnd(12, '0')}`;
+
     const payload = {
       id,
       board_id: note.board_id,
