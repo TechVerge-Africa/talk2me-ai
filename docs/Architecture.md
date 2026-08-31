@@ -1,92 +1,139 @@
-# Talk2Me AI Architecture
+# Talk2Me AI System Architecture
 
-Talk2Me AI is built as a high-scale, inclusive communication platform. The architecture is designed to be globally distributed, highly available, and accessible by default.
-
-## Core Philosophical Principles
-- **Inclusion by Design**: Accessibility isn't a feature; it's the core infrastructure.
-- **Privacy First**: End-to-end encrypted signals where possible.
-- **Edge-First Execution**: Minimize latency by running logic near the user.
+Talk2Me AI is an inclusive, real-time communication platform engineered to eliminate linguistic, physical, and technical barriers in global and regional collaboration. The architecture is designed for low latency, high availability, acoustic resilience in low-resource mobile environments, and deep support for African languages (Twi, Ghanaian Pidgin, Hausa, Swahili) and accented speech.
 
 ---
 
-## 1. Monorepo Structure (Turborepo)
+## 1. Application Structure
 
-The repository follows a service-oriented monorepo pattern to ensure high cohesion and low coupling.
+The codebase is organized as a modular Next.js App Router application with feature-based domain separation:
 
-```bash
-talk2me/
-├── apps/
-│   └── web/                # Next.js 15+ (App Router) - The primary user interface
-├── packages/
-│   ├── ui/                 # Shared premium design system (Glassmorphism, A11y components)
-│   ├── shared/             # Shared business logic and utilities
-│   └── types/              # Unified TypeScript definitions (Meeting, User, Message)
-├── services/
-│   ├── supabase/           # Database schema, Auth, and Edge Function configurations
-│   ├── livekit/            # Real-time media transport (SFU) service logic
-│   └── ai/                 # Echo Engine - AI Interpretation orchestration
-├── features/
-│   ├── meetings/           # Room logic, participant management
-│   ├── accessibility/      # Sign-to-speech, Speech-to-text, inclusive UI
-│   └── dashboard/          # User management and meeting history
-└── docs/                   # Engineering and product documentation
+```
+talk2me-ai/
+├── src/
+│   ├── app/                      # Next.js 16 App Router pages & API routes
+│   │   ├── api/                  # Serverless API Endpoints (STT, LiveKit, Gemini, AssemblyAI)
+│   │   ├── room/[code]/          # Live WebRTC Meeting Room interface
+│   │   ├── dashboard/            # Meeting workspace, history & context search
+│   │   └── auth/                 # Authentication flows
+│   ├── features/                 # Modular application features
+│   │   ├── accessibility/        # AI Sign-to-Speech & visual accessibility controls
+│   │   ├── ai-assistant/         # Live meeting assistant & workspace context chat
+│   │   ├── captions/             # Real-time caption list & subtitle rendering
+│   │   ├── chat/                 # Meeting chat & persistent messaging
+│   │   ├── meetings/             # Room logic, WebRTC state, LiveKit hook integration
+│   │   ├── transcript/           # AssemblyAI realtime WS, transcript turn engine
+│   │   └── whiteboard/           # Collaborative meeting canvas
+│   ├── services/                 # Backend integrations & data access layer
+│   │   ├── ai/                   # Gemini LLM client, transcript analysis & memory index
+│   │   ├── livekit/              # SFU token generation & room administration
+│   │   └── supabase/             # PostgreSQL clients, Auth & RLS data access
+│   ├── lib/                      # Shared utility core
+│   │   ├── audio/                # RNNoise WASM, PCM resampler, STT hallucination filters
+│   │   ├── nlp/                  # Dialect & regional language helper utilities
+│   │   └── realtime-manager.ts   # WebSocket & Supabase realtime subscription manager
+│   ├── hooks/                    # Reusable React hooks (useWebSpeechSTT, useAuth, etc.)
+│   └── components/               # Design system & reusable glassmorphic UI components
+├── public/
+│   └── worklets/                 # WebAudio worklet processors (rnnoise.js WASM)
+├── supabase/                     # Database migrations, RLS policies & configuration
+└── docs/                         # Technical system documentation
 ```
 
 ---
 
-## 2. Real-Time Media Architecture (LiveKit)
+## 2. Real-Time Media Architecture (LiveKit SFU)
 
-To handle thousands of concurrent users across multiple rooms, we utilize **LiveKit** as our media server (SFU).
+To handle real-time multi-party video, high-frequency audio, and screen sharing across variable network conditions, Talk2Me AI employs **LiveKit SFU (Selective Forwarding Unit)**.
 
-- **Scalability**: LiveKit's SFU architecture allows us to serve massive participant counts by intelligently routing media packets without re-encoding on the fly.
-- **Sign Language Optimized**: We configure our video tracks for high frame rates (60fps) and low latency to ensure accurate sign language interpretation.
-- **Echo Engine Integration**: LiveKit tracks are piped directly into our AI Interpretation layer for real-time sign recognition.
-
----
-
-## 3. Data & Consistency Layer (Supabase)
-
-Supabase serves as the backbone for identity and persistent state.
-
-- **PostgreSQL**: Stores meeting metadata, user profiles, and chat history.
-- **Row Level Security (RLS)**: Enforces strict privacy boundaries between rooms.
-- **Real-time Engine**: Used for low-frequency signals (reactions, participant state changes) while LiveKit handles high-frequency media.
-- **Edge Functions**: Globally distributed serverless logic for generating access tokens (LiveKit JWTs) and offloading AI tasks via Webhooks.
+- **Selective Forwarding**: Media streams are forwarded without expensive server-side re-encoding, preserving sub-100ms media transport latency globally.
+- **Sign Language Stream Optimization**: Video tracks assigned to sign language streams are prioritized for higher frame rates (up to 60fps) to capture rapid hand gestures accurately.
+- **Network Resilience**: Adaptive bitrates automatically adjust video resolution when network throughput degrades, ensuring audio and real-time caption streams remain uninterrupted.
 
 ---
 
-## 4. AI Engine: Echo Interpretation
+## 3. Client-Side Audio Pre-Processing (WASM Noise Filtering)
 
-The **Echo Engine** is our proprietary accessibility layer.
+Before audio feeds are sent to Speech-to-Text (STT) inference engines, raw microphone input passes through a client-side WebAudio processing pipeline:
 
-- **Speech-to-Text (STT)**: Deepgram or OpenAI Whisper (Edge optimized) for low-latency captioning.
-- **Sign-to-Speech**: A vision transformer model (ViT) that analyzes video frames in the browser (via WebAssembly/TensorFlow.js) to detect signs, which are then synthesized into audio.
-- **AI Summary**: Post-meeting summaries generated by Large Language Models, indexed for accessibility milestones.
-
----
-
-## 5. Global Deployment Strategy
-
-- **Frontend**: Vercel (Global Edge Network).
-- **Compute**: Cloudflare Workers / Supabase Edge Functions for zero-cold-start logic.
-- **Media**: LiveKit Cloud (Anycast network) for sub-100ms latency globally.
+1. **WASM RNNoise Processing**: `@shiguredo/rnnoise-wasm` runs in a dedicated AudioWorklet (`public/worklets/rnnoise.js`), stripping ambient background noise (generators, street traffic, market noise) common in low-resource mobile environments.
+2. **PCM Resampling**: `pcm-resampler.ts` downsamples 48kHz audio streams to 16kHz 16-bit mono PCM, optimizing bandwidth and matching speech model input specifications.
 
 ---
 
-## 6. Accessibility & Performance (A11y+Lighthouse)
+## 4. Proprietary Echo Engine & Speech-to-Text (STT) Pipeline
 
-Every component in the `packages/ui` directory is audited for:
-- **WCAG 2.1 Level AAA** compliance.
-- **Keyboard navigation** support.
-- **Screen reader** optimization (ARIA 1.2).
-- **Reduced Motion** support for all glassmorphic animations.
+The **Echo Engine** coordinates multi-engine speech recognition, hallucination defense, and conversational turn reconciliation:
+
+```
+Microphone Audio Track
+        │
+        ▼
+[AudioWorklet: WASM RNNoise Filter]
+        │
+        ▼
+[PCM Resampler (16kHz Mono)]
+        │
+  ┌─────┴─────────────────────────────┐
+  ▼                                   ▼
+[WebSpeech API]            [Multi-Engine Router]
+(Native browser,            ├─ Groq (Whisper-large-v3-turbo)
+ sub-50ms captions)         ├─ Google Gemini 1.5 Flash Audio
+                            └─ AssemblyAI Realtime WebSocket
+                                      │
+                                      ▼
+                      [STT Anti-Hallucination Guard]
+                      ├─ Known artifact blocklist
+                      ├─ Dice bigram repetition loop detector
+                      └─ Physical word/duration density check
+                                      │
+                                      ▼
+                      [Canonical Transcript Engine]
+                      ├─ Turn grouping (< 5s gap)
+                      └─ Supabase PostgreSQL Persistence
+```
+
+### Multi-Engine Router & Fallback Strategy
+
+- **Browser WebSpeech API**: Provides immediate zero-latency local interim captions in supported browsers.
+- **Groq API (`whisper-large-v3-turbo`)**: Ultra-fast cloud STT for high-accuracy multilingual transcription and accented speech recognition.
+- **Google Gemini 1.5 Flash**: Processes raw multimodal audio blobs directly for context-rich transcription and code-switching detection.
+- **AssemblyAI Realtime Engine**: Provides streaming WebSocket-based token-by-token captions with turn timestamps.
+
+### Multi-Layer Hallucination & Repetition Guard (`stt-hallucination-filter.ts`)
+
+To prevent LLM hallucination loops during silent or low-volume audio segments:
+
+- **Dice Bigram Similarity**: Detects and discards repeating phrase loops.
+- **Density Filter**: Blocks transcripts where word count exceeds physically speakable limits for the audio chunk duration.
+- **Minimum Blob Gate**: Drops sub-audible audio chunks (< 8 KB) before API dispatch.
 
 ---
 
-## Scaling Roadmap
+## 5. AI Intelligence, Context Switching & African Languages
 
-| Stage | Target Users | Infrastructure focus |
-| :--- | :--- | :--- |
-| **Alpha** | 100 - 1k | Single LiveKit Region, Shared Supabase |
-| **Beta** | 10k - 50k | Multi-region LiveKit, Supabase Dedicated Instance |
-| **Global** | 100k+ | Custom SFU Cluster, Redis caching layer in Edge Functions |
+The AI intelligence layer is powered by **Google Gemini 2.5 Flash / 1.5 Flash**:
+
+- **African Dialect & Code-Switching Translation**: Recognizes dynamic code-switching between English, Ghanaian Pidgin, Twi, Ga, Ewe, Hausa, and Swahili within single spoken turns, normalizing text into target languages without losing cultural nuances.
+- **Automated Meeting Intelligence**: Generates executive summaries, key decisions, sentiment metrics, and structured action items upon meeting conclusion.
+- **Workspace Conversational Memory (`memory-service.ts`)**: Indexes past meeting transcripts in Supabase with vector embeddings, enabling team members to query meeting context across historical conversations.
+
+---
+
+## 6. Data & Identity Layer (Supabase)
+
+Supabase provides identity management, relational storage, and real-time state synchronization:
+
+- **PostgreSQL Schema**: Manages `profiles`, `meetings`, `meeting_participants`, `transcripts`, `notes`, and `messages`.
+- **Row Level Security (RLS)**: Enforces strict data access rules ensuring participants can only access transcripts and messages for meetings they are authorized to attend.
+- **Realtime Subscriptions**: Synchronizes participant state changes, live chat messages, and collaborative whiteboard updates instantly across users.
+- **Serverless Edge Functions**: Manages secure token creation and offloads asynchronous summary generation.
+
+---
+
+## 7. Global Deployment Architecture
+
+- **Application Frontend & API**: Vercel Global Edge Network.
+- **Media Transport**: LiveKit Cloud / Distributed Anycast SFU nodes.
+- **Database & Edge Compute**: Supabase Managed Cloud Engine.
+- **Inference Pipeline**: Groq LPU infrastructure & Google Gemini Edge endpoints.
