@@ -1,8 +1,99 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Play, Pause, Volume2, Sparkles } from 'lucide-react';
 
 interface FormattedChatMessageProps {
   content: string;
   className?: string;
+}
+
+function VoiceNoteAudioPlayer({ src }: { src: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    const audio = new Audio(src);
+    audioRef.current = audio;
+
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration || 0);
+    };
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime || 0);
+    };
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, [src]);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch((e) => console.error('Audio play exception:', e));
+    }
+  };
+
+  const formatSecs = (sec: number) => {
+    if (!sec || isNaN(sec)) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = String(Math.floor(sec % 60)).padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="flex items-center gap-2.5 my-1.5 p-2 rounded-xl bg-slate-900/10 dark:bg-white/10 border border-slate-300/40 dark:border-white/15 backdrop-blur-md max-w-xs">
+      <button
+        type="button"
+        onClick={togglePlay}
+        className="size-8 rounded-full bg-indigo-600 dark:bg-cyan-400 text-white dark:text-slate-950 flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex-shrink-0"
+      >
+        {isPlaying ? <Pause className="size-4 fill-current" /> : <Play className="size-4 fill-current ml-0.5" />}
+      </button>
+
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        <div
+          className="h-1.5 w-full bg-slate-300 dark:bg-white/20 rounded-full overflow-hidden relative cursor-pointer"
+          onClick={(e) => {
+            if (!audioRef.current || !duration) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            audioRef.current.currentTime = pos * duration;
+          }}
+        >
+          <div
+            className="h-full bg-indigo-600 dark:bg-cyan-400 rounded-full transition-all duration-100"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="flex justify-between items-center text-[10px] font-mono font-bold text-slate-600 dark:text-white/70">
+          <span>{formatSecs(currentTime)}</span>
+          <span>{formatSecs(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -113,6 +204,12 @@ export function FormattedChatMessage({ content, className = '' }: FormattedChatM
           return <div key={lineIdx} className="h-1" />;
         }
 
+        // Audio tag line (e.g. [audio:data:audio/webm;base64,...])
+        if (trimmed.startsWith('[audio:') && trimmed.endsWith(']')) {
+          const audioSrc = trimmed.slice(7, -1);
+          return <VoiceNoteAudioPlayer key={lineIdx} src={audioSrc} />;
+        }
+
         // Headings (###, ##, #)
         if (trimmed.startsWith('### ') || trimmed.startsWith('## ') || trimmed.startsWith('# ')) {
           const headingText = trimmed.replace(/^#+\s*/, '');
@@ -152,6 +249,26 @@ export function FormattedChatMessage({ content, className = '' }: FormattedChatM
           );
         }
 
+        // Voice Note Badge line (e.g. 🎙️ Voice Note (0:14))
+        if (trimmed.startsWith('🎙️') || trimmed.includes('Voice Note (')) {
+          return (
+            <div key={lineIdx} className="flex items-center gap-1.5 py-1 px-2.5 my-1 rounded-lg bg-indigo-500/15 dark:bg-cyan-500/15 border border-indigo-500/25 dark:border-cyan-500/30 text-indigo-700 dark:text-cyan-300 text-[11px] font-extrabold shadow-2xs">
+              <span className="animate-pulse">🎙️</span>
+              <span>{trimmed.replace(/^🎙️\s*/, '')}</span>
+            </div>
+          );
+        }
+
+        // Quote block transcript line (e.g. > "Medaase...")
+        if (trimmed.startsWith('> ')) {
+          const quoteText = trimmed.slice(2);
+          return (
+            <blockquote key={lineIdx} className="border-l-2 border-indigo-500 dark:border-cyan-400 pl-2.5 py-0.5 my-1 text-xs sm:text-sm italic opacity-95">
+              {renderInlineText(quoteText)}
+            </blockquote>
+          );
+        }
+
         // Regular Paragraph Line
         return (
           <p key={lineIdx} className="leading-relaxed text-xs sm:text-sm">
@@ -162,3 +279,5 @@ export function FormattedChatMessage({ content, className = '' }: FormattedChatM
     </div>
   );
 }
+
+

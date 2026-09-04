@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Message } from "@/types/message";
-import { Send, Users, User, ChevronDown, Lock, Sparkles, Bot, Pin } from "lucide-react";
+import { Send, Users, User, ChevronDown, Lock, Sparkles, Bot, Pin, Mic, Square, Trash2, Loader2, Radio } from "lucide-react";
 import type { Participant } from "livekit-client";
 import { MentionAutocomplete, MentionCandidate } from "@/components/ui/mention-autocomplete";
 import { FormattedChatMessage } from "@/components/ui/formatted-chat-message";
@@ -12,6 +12,7 @@ interface ChatPanelProps {
   localParticipantIdentity?: string;
 }
 
+
 export function ChatPanel({
   messages,
   onSendMessage,
@@ -21,9 +22,175 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const [recipient, setRecipient] = useState<"everyone" | string>("everyone");
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Voice Note Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerIntervalRef = useRef<any>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+
+  // Clean up recording stream on unmount
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (recordingStreamRef.current) {
+        recordingStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Microphone recording is not supported in this browser environment.");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+
+      const options = mimeType ? { mimeType } : undefined;
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(100);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => {
+          if (prev >= 44) {
+            // Auto stop at 45 seconds cap for fast voice notes
+            stopAndSendVoiceNote();
+            return 45;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to start voice note recording:", err);
+      alert("Could not access microphone. Please check browser permissions.");
+    }
+  };
+
+  const cancelRecording = () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingStreamRef.current) {
+      recordingStreamRef.current.getTracks().forEach((t) => t.stop());
+      recordingStreamRef.current = null;
+    }
+    setIsRecording(false);
+    setRecordingSeconds(0);
+    audioChunksRef.current = [];
+  };
+
+  const stopAndSendVoiceNote = () => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return;
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
+    const durationSec = recordingSeconds;
+    const recorder = mediaRecorderRef.current;
+
+    recorder.onstop = async () => {
+      if (recordingStreamRef.current) {
+        recordingStreamRef.current.getTracks().forEach((t) => t.stop());
+        recordingStreamRef.current = null;
+      }
+
+      const audioBlob = new Blob(audioChunksRef.current, {
+        type: recorder.mimeType || "audio/webm",
+      });
+
+      setIsRecording(false);
+      setRecordingSeconds(0);
+
+      if (audioBlob.size < 1000) {
+        // Audio too short or empty
+        return;
+      }
+
+      setIsTranscribing(true);
+
+      // Read audio blob as Base64 for inline playback
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = async () => {
+        const base64Audio = (reader.result as string) || "";
+
+        try {
+          const formData = new FormData();
+          formData.append("file", audioBlob, "voicenote.webm");
+          formData.append("language", "en");
+
+          const res = await fetch("/api/stt/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!res.ok) {
+            throw new Error(`STT failed with status ${res.status}`);
+          }
+
+          const data = await res.json();
+          const transcript = (data.text || "").trim();
+
+          if (transcript) {
+            const mins = Math.floor(durationSec / 60);
+            const secs = String(durationSec % 60).padStart(2, "0");
+            const durationStr = `${mins}:${secs}`;
+
+            // Format message with playable audio tag + transcript quote
+            const voiceNoteMessage = `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`;
+
+            onSendMessage(voiceNoteMessage, recipient === "everyone" ? undefined : recipient);
+          } else {
+            alert("No speech was detected in your voice note.");
+          }
+        } catch (err) {
+          console.error("Voice note transcription error:", err);
+          alert("Failed to transcribe voice note. Please try again.");
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+    };
+
+    recorder.stop();
+  };
+
 
   const mentionCandidates: MentionCandidate[] = useMemo(() => {
     const candidates: MentionCandidate[] = [
@@ -305,30 +472,83 @@ export function ChatPanel({
             inputRef={chatInputRef}
           />
 
-          {/* Text input area */}
-          <div className="flex items-center gap-2 pl-1">
-            <input
-              ref={chatInputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={recipient === "everyone" ? "Write a message or type @ to tag..." : `Send private message to ${selectedParticipant?.identity || recipient}...`}
-              className="flex-1 bg-transparent border-0 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/35 py-1 text-sm focus:outline-none focus:ring-0 outline-none"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className={`size-9 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all flex-shrink-0 active:scale-95 cursor-pointer shadow-md ${
-                recipient === "everyone"
-                  ? "bg-blue-600 hover:bg-blue-700 text-white"
-                  : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/10"
-              }`}
-            >
-              <Send className="size-4" />
-            </button>
-          </div>
+          {/* Text input area / Voice Note Recording Bar */}
+          {isTranscribing ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 dark:text-cyan-300 text-xs font-bold animate-pulse">
+              <Loader2 className="size-4 animate-spin text-cyan-500" />
+              <span>Transcribing voice note with Talk2Me AI...</span>
+            </div>
+          ) : isRecording ? (
+            <div className="flex items-center justify-between gap-2 px-2 py-1 bg-red-500/10 border border-red-500/30 rounded-xl animate-in fade-in duration-150">
+              <div className="flex items-center gap-2">
+                <span className="relative flex size-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full size-3 bg-red-500"></span>
+                </span>
+                <span className="text-xs font-bold text-red-600 dark:text-red-400 font-mono">
+                  Recording {Math.floor(recordingSeconds / 60)}:{String(recordingSeconds % 60).padStart(2, "0")} / 0:45
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={cancelRecording}
+                  title="Cancel voice note"
+                  className="p-1.5 rounded-lg bg-slate-200 dark:bg-white/10 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={stopAndSendVoiceNote}
+                  title="Send voice note"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  <Send className="size-3.5" />
+                  <span>Send</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 pl-1">
+              <input
+                ref={chatInputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={recipient === "everyone" ? "Write a message, voice note, or @ to tag..." : `Send private message to ${selectedParticipant?.identity || recipient}...`}
+                className="flex-1 bg-transparent border-0 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/35 py-1 text-sm focus:outline-none focus:ring-0 outline-none"
+              />
+
+              {/* Dynamic Send / Voice Record Button */}
+              {input.trim() ? (
+                <button
+                  type="submit"
+                  className={`size-9 rounded-xl flex items-center justify-center transition-all flex-shrink-0 active:scale-95 cursor-pointer shadow-md animate-in fade-in zoom-in-95 duration-150 ${
+                    recipient === "everyone"
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-600/10"
+                  }`}
+                >
+                  <Send className="size-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  title="Record Voice Note"
+                  className="size-9 rounded-xl flex items-center justify-center bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-cyan-400 border border-indigo-500/20 dark:border-cyan-500/30 transition-all active:scale-95 cursor-pointer flex-shrink-0 animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <Mic className="size-4" />
+                </button>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>
   );
 }
+
+

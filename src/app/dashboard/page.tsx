@@ -55,8 +55,11 @@ import {
   Pause,
   Play,
   AlertTriangle,
-  Layout
+  Layout,
+  Square,
+  Radio
 } from 'lucide-react';
+
 
 import { useAuth } from '@/features/auth/use-auth';
 import { supabase } from '@/services/supabase/client';
@@ -282,6 +285,190 @@ function DashboardContent() {
   const [isChatInputVisible, setIsChatInputVisible] = useState<boolean>(true);
   const lastChatScrollTopRef = React.useRef<number>(0);
   const chatMessagesEndRef = React.useRef<HTMLDivElement>(null);
+
+  // Voice Note Recording State (Dashboard Channel Chat)
+  const [isVoiceRecording, setIsVoiceRecording] = useState<boolean>(false);
+  const [isVoiceTranscribing, setIsVoiceTranscribing] = useState<boolean>(false);
+  const [voiceRecordingSeconds, setVoiceRecordingSeconds] = useState<number>(0);
+
+  const voiceMediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const voiceAudioChunksRef = React.useRef<Blob[]>([]);
+  const voiceTimerRef = React.useRef<any>(null);
+  const voiceStreamRef = React.useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
+      if (voiceStreamRef.current) {
+        voiceStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const handleStartVoiceRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Microphone recording is not supported in this browser.");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+
+      const options = mimeType ? { mimeType } : undefined;
+      const recorder = new MediaRecorder(stream, options);
+      voiceMediaRecorderRef.current = recorder;
+      voiceAudioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          voiceAudioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(100);
+      setIsVoiceRecording(true);
+      setVoiceRecordingSeconds(0);
+
+      voiceTimerRef.current = setInterval(() => {
+        setVoiceRecordingSeconds((prev) => {
+          if (prev >= 44) {
+            handleStopAndSendVoiceNote();
+            return 45;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      console.error("Dashboard voice recording error:", err);
+      alert("Could not access microphone. Please check browser permissions.");
+    }
+  };
+
+  const handleCancelVoiceRecording = () => {
+    if (voiceTimerRef.current) {
+      clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    if (voiceMediaRecorderRef.current && voiceMediaRecorderRef.current.state !== "inactive") {
+      voiceMediaRecorderRef.current.onstop = null;
+      voiceMediaRecorderRef.current.stop();
+    }
+    if (voiceStreamRef.current) {
+      voiceStreamRef.current.getTracks().forEach((t) => t.stop());
+      voiceStreamRef.current = null;
+    }
+    setIsVoiceRecording(false);
+    setVoiceRecordingSeconds(0);
+    voiceAudioChunksRef.current = [];
+  };
+
+  const handleStopAndSendVoiceNote = () => {
+    if (!voiceMediaRecorderRef.current || voiceMediaRecorderRef.current.state === "inactive") return;
+
+    if (voiceTimerRef.current) {
+      clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+
+    const durationSec = voiceRecordingSeconds;
+    const recorder = voiceMediaRecorderRef.current;
+
+    recorder.onstop = async () => {
+      if (voiceStreamRef.current) {
+        voiceStreamRef.current.getTracks().forEach((t) => t.stop());
+        voiceStreamRef.current = null;
+      }
+
+      const audioBlob = new Blob(voiceAudioChunksRef.current, {
+        type: recorder.mimeType || "audio/webm",
+      });
+
+      setIsVoiceRecording(false);
+      setVoiceRecordingSeconds(0);
+
+      if (audioBlob.size < 1000) return;
+
+      setIsVoiceTranscribing(true);
+
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      reader.onloadend = async () => {
+        const base64Audio = (reader.result as string) || "";
+
+        try {
+          const formData = new FormData();
+          formData.append("file", audioBlob, "voicenote.webm");
+          formData.append("language", "en");
+
+          const res = await fetch("/api/stt/transcribe", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!res.ok) throw new Error(`STT error: ${res.status}`);
+
+          const data = await res.json();
+          const transcript = (data.text || "").trim();
+
+          if (transcript) {
+            const mins = Math.floor(durationSec / 60);
+            const secs = String(durationSec % 60).padStart(2, "0");
+            const durationStr = `${mins}:${secs}`;
+
+            // Format message with playable inline audio + transcript quote
+            const voiceMessageText = `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`;
+
+            if (user && currentWorkspaceData) {
+              const userMsg = await WorkspaceService.sendWorkspaceMessage({
+                workspaceId: currentWorkspaceData.workspace.id,
+                channelName: selectedChannel,
+                senderId: user.id,
+                senderName: userDisplayName,
+                content: voiceMessageText,
+              });
+
+              setWorkspacesData((prev) =>
+                prev.map((item) => {
+                  if (item.workspace.id !== currentWorkspaceData.workspace.id) return item;
+                  const currentMsgs = item.messages[selectedChannel] || [];
+                  return {
+                    ...item,
+                    messages: {
+                      ...item.messages,
+                      [selectedChannel]: [...currentMsgs, userMsg],
+                    },
+                  };
+                })
+              );
+
+              setTimeout(() => {
+                chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 50);
+            }
+          } else {
+            alert("No speech was detected in your voice note.");
+          }
+        } catch (err) {
+          console.error("Dashboard voice note transcription error:", err);
+          alert("Failed to transcribe voice note. Please try again.");
+        } finally {
+          setIsVoiceTranscribing(false);
+        }
+      };
+    };
+
+    recorder.stop();
+  };
+
 
   const handleChannelChatScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const currentScrollTop = e.currentTarget.scrollTop;
@@ -2951,23 +3138,79 @@ function DashboardContent() {
                     candidates={mentionCandidates}
                     inputRef={chatInputRef}
                   />
-                  <input
-                    ref={chatInputRef}
-                    type="text"
-                    value={chatInputText}
-                    onChange={(e) => setChatInputText(e.target.value)}
-                    onFocus={() => setIsChatInputVisible(true)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                    placeholder={`Send message to ${selectedChannel} or type @ for AI...`}
-                    className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 outline-none focus:border-indigo-600 dark:focus:border-cyan-400 transition-all"
-                  />
-                  <button
-                    onClick={handleSendChatMessage}
-                    className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer shrink-0"
-                  >
-                    <Send className="size-4" /> Send
-                  </button>
+
+                  {isVoiceTranscribing ? (
+                    <div className="flex-1 flex items-center gap-2 px-4 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 dark:text-cyan-300 text-xs sm:text-sm font-bold animate-pulse">
+                      <Loader2 className="size-4 animate-spin text-cyan-500" />
+                      <span>Transcribing voice note with Talk2Me AI...</span>
+                    </div>
+                  ) : isVoiceRecording ? (
+                    <div className="flex-1 flex items-center justify-between gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl animate-in fade-in duration-150">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex size-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full size-3 bg-red-500"></span>
+                        </span>
+                        <span className="text-xs sm:text-sm font-bold text-red-600 dark:text-red-400 font-mono">
+                          Recording {Math.floor(voiceRecordingSeconds / 60)}:{String(voiceRecordingSeconds % 60).padStart(2, "0")} / 0:45
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCancelVoiceRecording}
+                          title="Cancel voice note"
+                          className="p-2 rounded-lg bg-slate-200 dark:bg-white/10 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleStopAndSendVoiceNote}
+                          title="Send voice note"
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Send className="size-4" />
+                          <span>Send Voice Note</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        ref={chatInputRef}
+                        type="text"
+                        value={chatInputText}
+                        onChange={(e) => setChatInputText(e.target.value)}
+                        onFocus={() => setIsChatInputVisible(true)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
+                        placeholder={`Send message to ${selectedChannel} or type @ for AI...`}
+                        className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 outline-none focus:border-indigo-600 dark:focus:border-cyan-400 transition-all"
+                      />
+
+                      {/* Dynamic Send / Voice Record Button */}
+                      {chatInputText.trim() ? (
+                        <button
+                          onClick={handleSendChatMessage}
+                          className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer shrink-0 animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          <Send className="size-4" /> Send
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleStartVoiceRecording}
+                          title="Record Voice Note"
+                          className="p-3 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-cyan-400 border border-indigo-500/20 dark:border-cyan-500/30 transition-all active:scale-95 cursor-pointer shrink-0 animate-in fade-in zoom-in-95 duration-150"
+                        >
+                          <Mic className="size-4 sm:size-5" />
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
+
               </div>
 
               {/* Floating quick button when input is hidden */}

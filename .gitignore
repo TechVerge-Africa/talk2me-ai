@@ -38,3 +38,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Internal strategy & pitch documents — NEVER commit to GitHub
+docs/STRATEGY_SESSION.md
+docs/*STRATEGY*
+
