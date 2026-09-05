@@ -10,6 +10,18 @@ interface CanonicalTranscriptViewProps {
   onTurnClick?: (turn: CanonicalTranscriptEntry) => void;
 }
 
+function formatSpeakerName(rawName: string): string {
+  if (!rawName) return 'Speaker';
+  let clean = rawName.split('@')[0];
+  clean = clean.replace(/\d+$/, '');
+  clean = clean.replace(/[._-]+/g, ' ').trim();
+  if (!clean) return rawName;
+  return clean
+    .split(/\s+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export function CanonicalTranscriptView({
   transcripts,
   highlightedMs,
@@ -158,7 +170,7 @@ export function CanonicalTranscriptView({
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 px-2 py-0.5 bg-cyan-500/10 rounded border border-cyan-500/20">
-                      {turn.speaker_name}
+                      {formatSpeakerName(turn.speaker_name)}
                     </span>
                     <span className="text-[9px] font-mono text-cyan-400/70 bg-cyan-950/30 px-1.5 py-0.5 rounded">
                       {timeStr}

@@ -24,16 +24,24 @@ export async function POST(req: NextRequest) {
 
     const language = (formData.get('language') as string) || 'en';
 
-    // Option 1: Groq Whisper API (Ultra-fast, high-accuracy model)
+    const langCode = language.split('-')[0]?.toLowerCase() || 'en';
+    // Option 1: Groq Whisper API
+    // Use distil-whisper-large-v3-en for English (dramatically lower hallucination rate, 2x faster)
+    // Use whisper-large-v3-turbo for multilingual speech
     if (groqApiKey) {
       const groqFormData = new FormData();
       const fileName = file instanceof File && file.name ? file.name : 'audio.webm';
+      const groqModel = langCode === 'en' ? 'distil-whisper-large-v3-en' : 'whisper-large-v3-turbo';
       groqFormData.append('file', file, fileName);
-      groqFormData.append('model', 'whisper-large-v3-turbo');
+      groqFormData.append('model', groqModel);
       groqFormData.append('response_format', 'json');
-      groqFormData.append('language', language.split('-')[0] || 'en');
+      groqFormData.append('language', langCode);
       groqFormData.append('temperature', '0.0');
-      groqFormData.append('prompt', GROQ_ANTI_HALLUCINATION_PROMPT);
+
+      const customPrompt = (formData.get('prompt') as string) || GROQ_ANTI_HALLUCINATION_PROMPT;
+      if (customPrompt) {
+        groqFormData.append('prompt', customPrompt);
+      }
 
       const groqRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',

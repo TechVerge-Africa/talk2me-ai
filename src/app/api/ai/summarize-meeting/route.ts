@@ -139,7 +139,7 @@ ${transcriptText}`;
 
       try {
         const result = await GeminiService.generateContent(prompt, {
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.5-flash-lite',
           responseMimeType: 'application/json',
         });
         const parsed = JSON.parse(result.text || '{}');

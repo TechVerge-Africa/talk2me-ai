@@ -99,10 +99,13 @@ ${chatContext}
 
     const userPrompt = `User Query for @Talk2Me AI: "${query}"`;
 
-    if (GeminiService.getApiKey()) {
+    const apiKeyConfigured = Boolean(GeminiService.getApiKey());
+    let lastErrorMsg = '';
+
+    if (apiKeyConfigured) {
       try {
         const geminiResult = await GeminiService.generateContent(userPrompt, {
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.5-flash-lite',
           systemInstruction,
           temperature: 0.3,
         });
@@ -128,14 +131,19 @@ ${chatContext}
             sources,
           });
         }
-      } catch (geminiErr) {
+      } catch (geminiErr: any) {
+        lastErrorMsg = geminiErr?.message || '';
         console.warn('[Talk2Me AI Chat Endpoint Gemini Exception]:', geminiErr);
       }
     }
 
-    // Fallback response if no Gemini API key is configured or API call fails
+    // Informative fallback response
+    const statusNote = apiKeyConfigured
+      ? `(AI inference temporarily unavailable: ${lastErrorMsg || 'rate limit reached'}. Please retry shortly.)`
+      : `(Configure GEMINI_API_KEY in .env.local for full LLM generative capabilities)`;
+
     return NextResponse.json({
-      text: `[Talk2Me AI]: I analyzed your query: "${query}". Based on workspace memories and records, your team has ${Array.isArray(memoriesList) ? memoriesList.length : 0} long-term memory item(s) saved! (Configure GEMINI_API_KEY in .env.local for full LLM generative capabilities)`,
+      text: `[Talk2Me AI]: I analyzed your query: "${query}". Based on workspace memories and records, your team has ${Array.isArray(memoriesList) ? memoriesList.length : 0} long-term memory item(s) saved! ${statusNote}`,
       sources: ['Workspace AI Memory'],
     });
 

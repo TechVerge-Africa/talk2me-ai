@@ -208,6 +208,8 @@ function DashboardContent() {
   const [meetingSummaries, setMeetingSummaries] = useState<Record<string, MeetingSummaryData>>({});
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [transcriptSpeakerFilter, setTranscriptSpeakerFilter] = useState<string>('all');
+  const [transcriptSearchQuery, setTranscriptSearchQuery] = useState<string>('');
+  const [copiedTranscript, setCopiedTranscript] = useState<boolean>(false);
   const [decisionCategoryFilter, setDecisionCategoryFilter] = useState<string>('all');
 
   // Workspaces from Supabase DB
@@ -550,9 +552,8 @@ function DashboardContent() {
   const [isSavingMemory, setIsSavingMemory] = useState<boolean>(false);
   const [isExtractingAiMemory, setIsExtractingAiMemory] = useState<boolean>(false);
 
-  // Live Countdown Timer & Active Meeting Members state
+  // Live Countdown Timer state
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
-  const [liveMeetingParticipants, setLiveMeetingParticipants] = useState<MeetingParticipant[]>([]);
 
   // Compute active live meeting or upcoming scheduled meeting for single hero card
   const activeLiveMeeting = useMemo(() => {
@@ -573,17 +574,6 @@ function DashboardContent() {
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // Fetch / subscribe to participants when a meeting is active
-  useEffect(() => {
-    if (activeLiveMeeting) {
-      MeetingService.getMeetingParticipants(activeLiveMeeting.id)
-        .then((pts) => setLiveMeetingParticipants(pts))
-        .catch((err) => console.error('[Dashboard] Live participants error:', err));
-    } else {
-      setLiveMeetingParticipants([]);
-    }
-  }, [activeLiveMeeting]);
 
   // Sync workspace memories when active workspace changes
   useEffect(() => {
@@ -1415,6 +1405,7 @@ function DashboardContent() {
     if (meetingSummaries[selectedMeetingId]) return; // already cached
     setIsLoadingDetail(true);
     setTranscriptSpeakerFilter('all');
+    setTranscriptSearchQuery('');
     setDecisionCategoryFilter('all');
     fetch('/api/ai/summarize-meeting', {
       method: 'POST',
@@ -2441,49 +2432,10 @@ function DashboardContent() {
                         {activeLiveMeeting.title || (activeLiveMeeting as any).room_name || 'Workspace Sync Room'}
                       </h2>
                       <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
-                        Your team is currently live in this workspace with real-time captions, sign-language tools, and automated meeting insights.
+                        Meeting in session. Jump in to join your team.
                       </p>
                     </div>
 
-                    {/* Real-time Members Currently in the Call */}
-                    <div className="space-y-3 pt-2">
-                      <div className="text-xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
-                        <Users className="size-4 text-emerald-500" /> Realtime Members in Meeting ({liveMeetingParticipants.length || 1})
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        {liveMeetingParticipants.length > 0 ? (
-                          liveMeetingParticipants.map((p) => (
-                            <div
-                              key={p.id || p.identity}
-                              className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-800/90 border border-emerald-500/30 shadow-sm flex items-center gap-2.5"
-                            >
-                              <div className="size-7 rounded-full bg-emerald-600 text-white font-bold text-xs grid place-items-center">
-                                {(p.display_name || 'M').charAt(0).toUpperCase()}
-                              </div>
-                              <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                {p.display_name || 'Participant'}
-                              </span>
-                              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" title="Active in call" />
-                            </div>
-                          ))
-                        ) : (
-                          members.slice(0, 4).map((m) => (
-                            <div
-                              key={m.id}
-                              className="px-3.5 py-2 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-2.5"
-                            >
-                              <div className="size-7 rounded-full bg-indigo-600 text-white font-bold text-xs grid place-items-center">
-                                {(m.profile?.full_name || 'M').charAt(0).toUpperCase()}
-                              </div>
-                              <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                {m.profile?.full_name || 'Member'}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
 
                     {/* Action Button */}
                     <div className="pt-2 flex items-center gap-4">
@@ -2662,14 +2614,114 @@ function DashboardContent() {
             const selectedMeeting = workspaceMeetings.find(m => m.id === selectedMeetingId);
             const detail = selectedMeetingId ? meetingSummaries[selectedMeetingId] : null;
 
+            // Helper to format raw handles like "abdulmoominishaq21" or emails into clean display names
+            const formatSpeakerDisplayName = (rawName: string): string => {
+              if (!rawName) return 'Speaker';
+
+              if (members && members.length > 0) {
+                const matchedMember = members.find(m => {
+                  const fn = m.profile?.full_name?.toLowerCase();
+                  const uid = m.user_id?.toLowerCase();
+                  const raw = rawName.toLowerCase();
+                  return fn === raw || uid === raw;
+                });
+                if (matchedMember?.profile?.full_name) {
+                  return matchedMember.profile.full_name;
+                }
+              }
+
+              const parts = (selectedMeeting as any)?.participants as Array<{ name?: string; email?: string; user_id?: string }> | undefined;
+              if (parts && parts.length > 0) {
+                const matchedPart = parts.find(p =>
+                  p.name?.toLowerCase() === rawName.toLowerCase() ||
+                  p.email?.toLowerCase() === rawName.toLowerCase() ||
+                  p.user_id?.toLowerCase() === rawName.toLowerCase()
+                );
+                if (matchedPart?.name) return matchedPart.name;
+              }
+
+              let clean = rawName.split('@')[0];
+              clean = clean.replace(/\d+$/, '');
+              clean = clean.replace(/[._-]+/g, ' ').trim();
+              if (!clean) return rawName;
+
+              return clean
+                .split(/\s+/)
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(' ');
+            };
+
             // Unique speakers in the selected meeting's transcript
             const speakers = detail
               ? Array.from(new Set(detail.turns.map(t => t.speaker_name)))
               : [];
 
-            const filteredTurns = detail?.turns.filter(t =>
-              transcriptSpeakerFilter === 'all' || t.speaker_name === transcriptSpeakerFilter
-            ) ?? [];
+            const filteredTurns = detail?.turns.filter(t => {
+              const formattedName = formatSpeakerDisplayName(t.speaker_name);
+              const matchSpeaker = transcriptSpeakerFilter === 'all' || t.speaker_name === transcriptSpeakerFilter;
+              const q = transcriptSearchQuery.trim().toLowerCase();
+              const matchSearch = !q ||
+                t.content.toLowerCase().includes(q) ||
+                t.speaker_name.toLowerCase().includes(q) ||
+                formattedName.toLowerCase().includes(q);
+              return matchSpeaker && matchSearch;
+            }) ?? [];
+
+            interface GroupedTurnBlock {
+              id: string;
+              speaker_name: string;
+              formatted_speaker_name: string;
+              start_ms: number;
+              end_ms: number;
+              items: Array<{ id: string; content: string; start_ms: number; end_ms?: number }>;
+            }
+
+            const groupedBlocks: GroupedTurnBlock[] = [];
+            filteredTurns.forEach((turn, idx) => {
+              const prevBlock = groupedBlocks[groupedBlocks.length - 1];
+              const isSameSpeaker = prevBlock && prevBlock.speaker_name === turn.speaker_name;
+              const isCloseInTime = prevBlock && (turn.start_ms - prevBlock.start_ms <= 30000 || (prevBlock.end_ms && turn.start_ms - prevBlock.end_ms <= 15000));
+
+              if (isSameSpeaker && isCloseInTime) {
+                prevBlock.items.push({
+                  id: turn.id || `turn_${idx}`,
+                  content: turn.content,
+                  start_ms: turn.start_ms,
+                  end_ms: turn.end_ms,
+                });
+                if (turn.end_ms && turn.end_ms > prevBlock.end_ms) {
+                  prevBlock.end_ms = turn.end_ms;
+                }
+              } else {
+                groupedBlocks.push({
+                  id: turn.id || `block_${idx}`,
+                  speaker_name: turn.speaker_name,
+                  formatted_speaker_name: formatSpeakerDisplayName(turn.speaker_name),
+                  start_ms: turn.start_ms,
+                  end_ms: turn.end_ms || turn.start_ms,
+                  items: [{
+                    id: turn.id || `turn_${idx}`,
+                    content: turn.content,
+                    start_ms: turn.start_ms,
+                    end_ms: turn.end_ms,
+                  }],
+                });
+              }
+            });
+
+            const handleCopyTranscript = () => {
+              if (!detail || !detail.turns || detail.turns.length === 0) return;
+              const text = groupedBlocks.map(block => {
+                const time = formatMs(block.start_ms);
+                const speaker = block.formatted_speaker_name;
+                const body = block.items.map(it => it.content).join(' ');
+                return `[${time}] ${speaker}:\n${body}`;
+              }).join('\n\n');
+
+              navigator.clipboard.writeText(text);
+              setCopiedTranscript(true);
+              setTimeout(() => setCopiedTranscript(false), 2000);
+            };
 
             const filteredDecisions = detail?.decisions.filter(d =>
               decisionCategoryFilter === 'all' || d.category === decisionCategoryFilter
@@ -2697,13 +2749,60 @@ function DashboardContent() {
               return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
             };
 
-            // Assign a color per speaker (cycles through palette)
+            // Assign rich color styles per speaker
             const speakerPalette = [
-              'bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500',
-              'bg-cyan-500', 'bg-rose-500', 'bg-teal-500', 'bg-orange-500',
+              {
+                avatarBg: 'bg-gradient-to-br from-indigo-500 to-indigo-700',
+                borderColor: 'border-l-indigo-500 dark:border-l-indigo-400',
+                badgeStyle: 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-emerald-500 to-teal-700',
+                borderColor: 'border-l-emerald-500 dark:border-l-emerald-400',
+                badgeStyle: 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-amber-500 to-orange-700',
+                borderColor: 'border-l-amber-500 dark:border-l-amber-400',
+                badgeStyle: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-purple-500 to-violet-700',
+                borderColor: 'border-l-purple-500 dark:border-l-purple-400',
+                badgeStyle: 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-cyan-500 to-blue-700',
+                borderColor: 'border-l-cyan-500 dark:border-l-cyan-400',
+                badgeStyle: 'bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-rose-500 to-pink-700',
+                borderColor: 'border-l-rose-500 dark:border-l-rose-400',
+                badgeStyle: 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-teal-500 to-emerald-700',
+                borderColor: 'border-l-teal-500 dark:border-l-teal-400',
+                badgeStyle: 'bg-teal-500/10 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-500/30',
+                initialsColor: 'text-white'
+              },
+              {
+                avatarBg: 'bg-gradient-to-br from-fuchsia-500 to-purple-700',
+                borderColor: 'border-l-fuchsia-500 dark:border-l-fuchsia-400',
+                badgeStyle: 'bg-fuchsia-500/10 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-500/30',
+                initialsColor: 'text-white'
+              },
             ];
-            const speakerColorMap: Record<string, string> = {};
-            speakers.forEach((sp, i) => { speakerColorMap[sp] = speakerPalette[i % speakerPalette.length]; });
+
+            const speakerStyleMap: Record<string, typeof speakerPalette[0]> = {};
+            speakers.forEach((sp, i) => { speakerStyleMap[sp] = speakerPalette[i % speakerPalette.length]; });
 
             return (
               <div className="flex flex-col gap-5 h-full">
@@ -2857,161 +2956,288 @@ function DashboardContent() {
                     ) : (
                       <>
                         {/* Meeting header */}
-                        <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div>
-                              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">{selectedMeeting.title}</h2>
-                              <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
-                                <span className="flex items-center gap-1">
-                                  <CalendarDays className="size-3" />
-                                  {new Date(selectedMeeting.created_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {/* Top Metadata Pills Bar */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* Date Chip */}
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              <CalendarDays className="size-3.5 text-slate-400" />
+                              <span>{new Date(selectedMeeting.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit' })}</span>
+                            </div>
+
+                            {/* Category / Workspace Chip */}
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              <Building2 className="size-3.5 text-slate-400" />
+                              <span>{workspacesData.find(w => w.workspace.id === activeWorkspaceId)?.workspace.name || 'Work'}</span>
+                            </div>
+
+                            {/* Attendees Chip */}
+                            {speakers.length > 0 && (
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                <div className="size-4 rounded-full bg-indigo-600 text-white text-[9px] font-black grid place-items-center">
+                                  {formatSpeakerDisplayName(speakers[0])[0]}
+                                </div>
+                                <span>
+                                  {formatSpeakerDisplayName(speakers[0]).split(' ')[0]}
+                                  {speakers.length > 1 ? ` +${speakers.length - 1}` : ''}
                                 </span>
-                                {(selectedMeeting as any).ended_at && (
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="size-3" />
-                                    {formatDuration(selectedMeeting.created_at, (selectedMeeting as any).ended_at)}
-                                  </span>
-                                )}
-                                {detail && detail.turns.length > 0 && (
-                                  <span className="flex items-center gap-1">
-                                    <Mic className="size-3" />
-                                    {detail.turns.length} turns
-                                  </span>
-                                )}
                               </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={handleRefreshSummary}
-                                className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 flex items-center gap-1.5 transition-all"
-                                title="Re-run AI analysis"
-                              >
-                                <RefreshCw className="size-3" /> Re-analyze
-                              </button>
-                              <Link
-                                href={`/room/${selectedMeeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`}
-                                onClick={() => {
-                                  try {
-                                    if (activeWorkspaceId) {
-                                      sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
-                                      localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
-                                    }
-                                    sessionStorage.setItem('t2_return_tab', activeTab);
-                                    localStorage.setItem('t2_active_tab_v1', activeTab);
-                                  } catch {}
-                                }}
-                                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-sm transition-all"
-                              >
-                                <Video className="size-3" /> Rejoin
-                              </Link>
-                            </div>
+                            )}
+
+                            <span className="text-xs font-bold text-slate-900 dark:text-white ml-1">
+                              {selectedMeeting.title}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-start sm:self-auto">
+                            <button
+                              onClick={handleRefreshSummary}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 flex items-center gap-1.5 transition-all"
+                              title="Re-run AI analysis"
+                            >
+                              <RefreshCw className="size-3" /> Re-analyze
+                            </button>
+                            <Link
+                              href={`/room/${selectedMeeting.room_code}?workspaceId=${activeWorkspaceId}&tab=${activeTab}`}
+                              onClick={() => {
+                                try {
+                                  if (activeWorkspaceId) {
+                                    sessionStorage.setItem('t2_return_workspace_id', activeWorkspaceId);
+                                    localStorage.setItem('t2_active_workspace_v1', activeWorkspaceId);
+                                  }
+                                  sessionStorage.setItem('t2_return_tab', activeTab);
+                                  localStorage.setItem('t2_active_tab_v1', activeTab);
+                                } catch {}
+                              }}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-sm transition-all"
+                            >
+                              <Video className="size-3" /> Rejoin
+                            </Link>
                           </div>
                         </div>
 
-                        {/* AI Summary */}
+                        {/* AI Summary Card */}
                         {detail && (detail.summary || detail.decisions.length > 0) && (
-                          <div className="p-5 rounded-2xl border border-purple-200 dark:border-purple-900/50 bg-gradient-to-br from-purple-50/80 to-indigo-50/50 dark:from-purple-950/30 dark:to-indigo-950/20">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Sparkles className="size-4 text-purple-600 dark:text-purple-400" />
-                              <span className="text-xs font-extrabold text-purple-700 dark:text-purple-300 uppercase tracking-wide">AI Summary</span>
+                          <div className="flex flex-col gap-4 p-5 rounded-2xl bg-gradient-to-br from-sky-50/90 via-blue-50/80 to-indigo-50/60 dark:from-sky-950/40 dark:via-blue-950/30 dark:to-indigo-950/20 border border-sky-200/80 dark:border-sky-800/40 shadow-2xs">
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="size-4 text-sky-600 dark:text-sky-400" />
+                              <span className="text-xs font-extrabold text-sky-900 dark:text-sky-200 uppercase tracking-wide">
+                                AI Summary
+                              </span>
                             </div>
                             {detail.summary && (
-                              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed mb-4">{detail.summary}</p>
+                              <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                                {detail.summary}
+                              </p>
                             )}
-                            {detail.decisions.length > 0 && (
-                              <>
-                                {/* Category filter pills */}
-                                <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                                  {['all', 'decision', 'action_item', 'proposal', 'question', 'suggestion'].map(cat => {
-                                    const count = cat === 'all'
-                                      ? detail.decisions.length
-                                      : detail.decisions.filter(d => d.category === cat).length;
-                                    if (cat !== 'all' && count === 0) return null;
-                                    const meta = decisionCategoryMeta[cat];
-                                    return (
-                                      <button
-                                        key={cat}
-                                        onClick={() => setDecisionCategoryFilter(cat)}
-                                        className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all ${
-                                          decisionCategoryFilter === cat
-                                            ? 'bg-indigo-600 border-indigo-600 text-white'
-                                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                                        }`}
-                                      >
-                                        {cat === 'all' ? `All (${count})` : `${meta.label} (${count})`}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                          </div>
+                        )}
 
-                                <div className="flex flex-col gap-2">
-                                  {filteredDecisions.map((d, i) => {
-                                    const meta = decisionCategoryMeta[d.category];
-                                    const Icon = meta?.icon || CheckCircle2;
-                                    return (
-                                      <div key={i} className={`p-3 rounded-xl border text-xs ${meta?.color || ''}`}>
-                                        <div className="flex items-start gap-2">
-                                          <Icon className="size-3.5 mt-0.5 shrink-0" />
-                                          <div className="flex-1 min-w-0">
-                                            <p className="font-semibold leading-snug">{d.text}</p>
-                                            <p className="mt-1 opacity-70 italic">
-                                              — {d.evidence_speaker} at {formatMs(d.evidence_timestamp_ms)}: &ldquo;{d.evidence_quote}&rdquo;
+                        {/* Categorized Summary Sections (Key Decisions, Action Items, etc.) */}
+                        {detail && detail.decisions.length > 0 && (
+                          <div className="flex flex-col gap-4">
+                            {[
+                              { category: 'decision', title: 'Key Decisions' },
+                              { category: 'action_item', title: 'Action Items' },
+                              { category: 'proposal', title: 'Proposals & Initiatives' },
+                              { category: 'question', title: 'Questions & Discussion' },
+                              { category: 'suggestion', title: 'Suggestions' },
+                            ].map(sec => {
+                              const sectionItems = detail.decisions.filter(d => d.category === sec.category);
+                              if (sectionItems.length === 0) return null;
+
+                              return (
+                                <div key={sec.category} className="flex flex-col gap-2.5">
+                                  {/* Grey Section Banner Header */}
+                                  <div className="px-4 py-2 rounded-xl bg-slate-100/90 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80 text-xs font-extrabold text-slate-800 dark:text-slate-200">
+                                    {sec.title}
+                                  </div>
+
+                                  {/* Bullet Items */}
+                                  <ul className="space-y-2.5 px-3">
+                                    {sectionItems.map((item, i) => (
+                                      <li key={i} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                        <span className="text-slate-400 font-extrabold text-base leading-none select-none mt-0.5">•</span>
+                                        <div className="flex-1 min-w-0">
+                                          <span className="font-semibold text-slate-900 dark:text-white">{item.text}</span>
+                                          {item.evidence_quote && (
+                                            <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500 italic">
+                                              — {formatSpeakerDisplayName(item.evidence_speaker)} at {formatMs(item.evidence_timestamp_ms)}: &ldquo;{item.evidence_quote}&rdquo;
                                             </p>
-                                          </div>
+                                          )}
                                         </div>
-                                      </div>
-                                    );
-                                  })}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </>
-                            )}
+                              );
+                            })}
                           </div>
                         )}
 
                         {/* Full Transcript */}
                         {detail && detail.turns.length > 0 ? (
-                          <div className="flex flex-col gap-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                                <Mic className="size-4 text-slate-400" /> Full Transcript
-                              </h3>
-                              {/* Speaker filter */}
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {['all', ...speakers].map(sp => (
+                          <div className="flex flex-col gap-4">
+                            {/* Transcript Filter & Search Header */}
+                            <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col gap-4">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="size-8 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 grid place-items-center">
+                                    <Mic className="size-4" />
+                                  </div>
+                                  <div>
+                                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                                      Full Meeting Transcript
+                                    </h3>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                      {detail.turns.length} total turns · {groupedBlocks.length} dialogue block{groupedBlocks.length === 1 ? '' : 's'} · {speakers.length} speaker{speakers.length === 1 ? '' : 's'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Actions: Search & Copy */}
+                                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                  <div className="relative flex-1 sm:w-56">
+                                    <Search className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                      type="text"
+                                      value={transcriptSearchQuery}
+                                      onChange={(e) => setTranscriptSearchQuery(e.target.value)}
+                                      placeholder="Search transcript..."
+                                      className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                    />
+                                    {transcriptSearchQuery && (
+                                      <button
+                                        onClick={() => setTranscriptSearchQuery('')}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                      >
+                                        <X className="size-3" />
+                                      </button>
+                                    )}
+                                  </div>
+
                                   <button
-                                    key={sp}
-                                    onClick={() => setTranscriptSpeakerFilter(sp)}
-                                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all ${
-                                      transcriptSpeakerFilter === sp
-                                        ? 'bg-slate-800 dark:bg-white border-slate-800 dark:border-white text-white dark:text-slate-900'
-                                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5'
-                                    }`}
+                                    onClick={handleCopyTranscript}
+                                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/80 flex items-center gap-1.5 transition-all shrink-0"
+                                    title="Copy full transcript to clipboard"
                                   >
-                                    {sp === 'all' ? 'All Speakers' : sp}
+                                    {copiedTranscript ? (
+                                      <>
+                                        <Check className="size-3.5 text-emerald-500" />
+                                        <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="size-3.5 text-slate-400" />
+                                        <span>Copy</span>
+                                      </>
+                                    )}
                                   </button>
-                                ))}
+                                </div>
+                              </div>
+
+                              {/* Speaker filter pills */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Filter Speakers:</span>
+                                {['all', ...speakers].map(sp => {
+                                  const isSelected = transcriptSpeakerFilter === sp;
+                                  const formattedName = sp === 'all' ? 'All Speakers' : formatSpeakerDisplayName(sp);
+                                  const turnCount = sp === 'all'
+                                    ? detail.turns.length
+                                    : detail.turns.filter(t => t.speaker_name === sp).length;
+                                  const style = sp !== 'all' ? (speakerStyleMap[sp] || speakerPalette[0]) : null;
+
+                                  return (
+                                    <button
+                                      key={sp}
+                                      onClick={() => setTranscriptSpeakerFilter(sp)}
+                                      className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                                        isSelected
+                                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                                          : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                      }`}
+                                    >
+                                      {sp !== 'all' && style && (
+                                        <span className={`size-2 rounded-full ${style.avatarBg}`} />
+                                      )}
+                                      <span>{formattedName}</span>
+                                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                                        isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                                      }`}>
+                                        {turnCount}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
 
-                            <div className="flex flex-col gap-1.5">
-                              {filteredTurns.map((turn, i) => {
-                                const avatarColor = speakerColorMap[turn.speaker_name] || 'bg-slate-500';
-                                const initials = turn.speaker_name.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
-                                return (
-                                  <div key={turn.id || i} className="flex gap-3 group">
-                                    <div className={`size-7 rounded-full ${avatarColor} grid place-items-center text-white text-[10px] font-black shrink-0 mt-0.5`}>
-                                      {initials}
-                                    </div>
-                                    <div className="flex-1 min-w-0 p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
-                                      <div className="flex items-center justify-between gap-2 mb-1">
-                                        <span className="text-[11px] font-bold text-slate-900 dark:text-white">{turn.speaker_name}</span>
-                                        <span className="text-[10px] text-slate-400 font-mono">{formatMs(turn.start_ms)}</span>
+                            {/* Dialogue blocks list */}
+                            <div className="flex flex-col gap-3">
+                              {groupedBlocks.length === 0 ? (
+                                <div className="p-8 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500">
+                                  No matching transcript entries found for &ldquo;{transcriptSearchQuery}&rdquo;
+                                </div>
+                              ) : (
+                                groupedBlocks.map((block) => {
+                                  const style = speakerStyleMap[block.speaker_name] || speakerPalette[0];
+                                  const initials = block.formatted_speaker_name
+                                    .split(' ')
+                                    .map(n => n[0])
+                                    .filter(Boolean)
+                                    .slice(0, 2)
+                                    .join('')
+                                    .toUpperCase() || 'SP';
+
+                                  const timeRange = block.end_ms && block.end_ms > block.start_ms + 1000
+                                    ? `${formatMs(block.start_ms)} - ${formatMs(block.end_ms)}`
+                                    : formatMs(block.start_ms);
+
+                                  return (
+                                    <div
+                                      key={block.id}
+                                      className={`group flex gap-3.5 p-4 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800/90 border-l-4 ${style.borderColor} shadow-2xs hover:shadow-xs transition-all`}
+                                    >
+                                      {/* Avatar */}
+                                      <div className={`size-9 rounded-2xl ${style.avatarBg} grid place-items-center ${style.initialsColor} text-xs font-black shrink-0 shadow-xs mt-0.5`}>
+                                        {initials}
                                       </div>
-                                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{turn.content}</p>
+
+                                      {/* Content */}
+                                      <div className="flex-1 min-w-0">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg border ${style.badgeStyle}`}>
+                                              {block.formatted_speaker_name}
+                                            </span>
+                                            {block.items.length > 1 && (
+                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md">
+                                                {block.items.length} segments
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md">
+                                            {timeRange}
+                                          </span>
+                                        </div>
+
+                                        {/* Speech items */}
+                                        <div className="space-y-1.5">
+                                          {block.items.map((item, itemIdx) => (
+                                            <p
+                                              key={item.id || itemIdx}
+                                              className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal"
+                                            >
+                                              {item.content}
+                                            </p>
+                                          ))}
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })
+                              )}
                             </div>
                           </div>
                         ) : detail && detail.turns.length === 0 ? (

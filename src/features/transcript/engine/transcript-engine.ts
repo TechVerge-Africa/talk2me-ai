@@ -96,14 +96,33 @@ export class TranscriptEngine {
     const currentCanonical = this.getCanonicalList();
     const lastTurn = currentCanonical.length > 0 ? currentCanonical[currentCanonical.length - 1] : null;
 
+    // 1. Duplicate Turn Suppression: Discard if identical or subset of last turn
+    if (lastTurn && lastTurn.speaker_id === speakerId) {
+      const normLast = lastTurn.content.toLowerCase().replace(/[.,!?;:"'()\[\]{}]/g, '').trim();
+      const normNew = cleanedText.toLowerCase().replace(/[.,!?;:"'()\[\]{}]/g, '').trim();
+      if (normLast === normNew || (normLast.length > 8 && normLast.includes(normNew))) {
+        return lastTurn;
+      }
+    }
+
     let targetTurn: CanonicalTranscriptEntry;
 
-    // Group into same turn if same speaker and within turn timeout window
-    if (
+    // 2. Decide whether to group into existing turn or create a new turn
+    // A new turn should start when:
+    // - Speaker changes
+    // - There is a natural pause (> 2000ms)
+    // - The current turn has already reached a complete thought (>= 20 words or >= 7000ms duration)
+    const lastWordCount = lastTurn ? lastTurn.content.trim().split(/\s+/).length : 0;
+    const isLastTurnLong = lastWordCount >= 20 || (lastTurn ? (lastTurn.end_ms - lastTurn.start_ms >= 7000) : false);
+    const isWithinPauseWindow = lastTurn ? (startMs - lastTurn.end_ms <= 2000) : false;
+
+    const shouldGroup =
       lastTurn &&
       lastTurn.speaker_id === speakerId &&
-      (startMs - lastTurn.end_ms <= this.turnTimeoutMs || Math.abs(startMs - lastTurn.start_ms) < 15000)
-    ) {
+      isWithinPauseWindow &&
+      !isLastTurnLong;
+
+    if (shouldGroup) {
       const updatedContent = mergeContinuousText(lastTurn.content, cleanedText);
 
       // If merged content is identical to existing content, skip saving duplicate chunk
@@ -124,7 +143,7 @@ export class TranscriptEngine {
 
       this.canonicalTurnMap.set(lastTurn.id!, targetTurn);
     } else {
-      // Create new speaker turn
+      // Create new clean speaker turn
       const newTurnId = `turn_${nowMs}_${Math.random().toString(36).substring(2, 7)}`;
       targetTurn = {
         id: newTurnId,

@@ -224,17 +224,20 @@ export class RepetitionDetector {
 
 /**
  * Removes internal repeating consecutive sentences or clauses inside a single STT transcript string.
- * Example: "Hello? Hello? How are you? How are you?" → "Hello? How are you?"
+ * Handles both immediate stutters ("Hi. Hi. Hi.") and multi-phrase loops ("I'm AI. I'm AI.").
  */
 export function cleanRepeatedPhrases(text: string): string {
   if (!text || !text.trim()) return '';
 
-  const raw = text.trim();
+  let raw = text.trim();
+
+  // 1. Collapse immediate consecutive word repetitions ("video. video. video." -> "video.")
+  raw = raw.replace(/\b([a-zA-Z]+)(?:[.,!?;:]*\s+\1\b){2,}/gi, '$1');
+
   // Split into sentences / clauses keeping punctuation attached
   const parts = raw.match(/[^.!?]+[.!?]*|\s+/g) || [raw];
   const cleanedParts: string[] = [];
-
-  let prevNorm = '';
+  const recentNorms: string[] = [];
 
   for (const part of parts) {
     const trimmed = part.trim();
@@ -247,19 +250,26 @@ export function cleanRepeatedPhrases(text: string): string {
 
     if (!norm) continue;
 
-    // Check if this clause is identical or nearly identical to the previous clause
-    if (prevNorm && (norm === prevNorm || (norm.length > 5 && isSimilar(norm, prevNorm)))) {
+    // Check if this clause matches any of the last 3 clauses
+    const isRecentDuplicate = recentNorms.some(
+      (past) => past === norm || (norm.length > 5 && isSimilar(norm, past))
+    );
+
+    if (isRecentDuplicate) {
       continue; // Skip duplicate clause
     }
 
     cleanedParts.push(trimmed);
-    prevNorm = norm;
+    recentNorms.push(norm);
+    if (recentNorms.length > 4) {
+      recentNorms.shift();
+    }
   }
 
   // Join cleaned sentences with space
   let result = cleanedParts.join(' ');
 
-  // Fix spacing around punctuation
+  // Fix spacing around punctuation and collapse double spaces
   result = result
     .replace(/\s+([.,!?])/g, '$1')
     .replace(/\s+/g, ' ')
@@ -270,20 +280,24 @@ export function cleanRepeatedPhrases(text: string): string {
 
 function isSimilar(a: string, b: string): boolean {
   if (a === b) return true;
-  const aWords = new Set(a.split(' '));
-  const bWords = new Set(b.split(' '));
+  const aWords = a.split(' ');
+  const bWords = b.split(' ');
+  if (aWords.length === 0 || bWords.length === 0) return false;
+
+  const aSet = new Set(aWords);
+  const bSet = new Set(bWords);
   let matchCount = 0;
-  for (const w of aWords) {
-    if (bWords.has(w)) matchCount++;
+  for (const w of aSet) {
+    if (bSet.has(w)) matchCount++;
   }
-  const ratio = (2 * matchCount) / (aWords.size + bWords.size);
-  return ratio > 0.85;
+  const ratio = (2 * matchCount) / (aSet.size + bSet.size);
+  return ratio > 0.75;
 }
 
 /**
  * Merges new STT speech output into an existing ongoing speaker turn cleanly.
  * Deduplicates overlapping word sequences at the boundary between chunks
- * and handles proper sentence separation and capitalization.
+ * and prevents duplicating phrases already committed to the turn.
  */
 export function mergeContinuousText(existingText: string, newText: string): string {
   const existing = (existingText || '').trim();
@@ -342,7 +356,25 @@ export function mergeContinuousText(existingText: string, newText: string): stri
     return `${existing} ${nonOverlappingNewWords.join(' ')}`;
   }
 
-  // 3. Clean join with sentence formatting
+  // 3. Sentence-level similarity check with the tail of existing text
+  // Prevent re-appending slightly modified versions of the previous sentence
+  const existingSentences = existing.split(/(?<=[.!?])\s+/);
+  const lastSentence = existingSentences[existingSentences.length - 1] || '';
+  const normLastSentence = lastSentence
+    .toLowerCase()
+    .replace(/[.,!?;:"'()\[\]{}]/g, '')
+    .trim();
+
+  if (normLastSentence && normNew && isSimilar(normLastSentence, normNew)) {
+    // New text is an echo or slight variation of the last sentence — prefer the longer/cleaner one
+    if (cleanedNew.length > lastSentence.length) {
+      existingSentences[existingSentences.length - 1] = cleanedNew;
+      return existingSentences.join(' ');
+    }
+    return existing;
+  }
+
+  // 4. Clean join with sentence formatting
   let formattedNew = cleanedNew;
   const lastChar = existing.slice(-1);
   const endsWithPunctuation = ['.', '!', '?'].includes(lastChar);
@@ -397,15 +429,14 @@ export function hasAudibleSpeech(pcmArrayBuffer: ArrayBuffer): boolean {
   return rms >= MIN_SPEECH_RMS;
 }
 
-// ─── 6. Groq Anti-Hallucination Prompt ───────────────────────────
+// ─── 6. Groq Whisper Context Prompt ───────────────────────────
+// Note: Whisper is an autoregressive decoder, NOT an instruction-following LLM.
+// Giving it instructions (e.g. "Do not complete sentences") causes it to echo those instructions
+// when audio is quiet. Instead, supply natural meeting context and domain keywords.
+export const GROQ_WHISPER_CONTEXT_PROMPT =
+  'Talk2Me AI meeting transcript, live video conference conversation.';
 
-export const GROQ_ANTI_HALLUCINATION_PROMPT =
-  'Verbatim voice dictation transcript. ' +
-  'Output only the exact words spoken by the speaker. ' +
-  'If the audio is silent or contains only background noise, output nothing at all. ' +
-  'Do not complete unfinished sentences. ' +
-  'Do not repeat phrases. ' +
-  'Do not add punctuation, commentary, or filler text.';
+export const GROQ_ANTI_HALLUCINATION_PROMPT = GROQ_WHISPER_CONTEXT_PROMPT;
 
 // ─── 7. Minimum audible blob size ────────────────────────────────
 

@@ -7,7 +7,7 @@ import {
   isPhysicallyImpossible,
   RepetitionDetector,
   MIN_AUDIBLE_BLOB_BYTES,
-  GROQ_ANTI_HALLUCINATION_PROMPT,
+  GROQ_WHISPER_CONTEXT_PROMPT,
 } from '@/lib/audio/stt-hallucination-filter';
 
 export interface AssemblyAIWord {
@@ -116,7 +116,14 @@ export function useAssemblyAIRealtime({
   const fallbackRecorderRef = useRef<MediaRecorder | null>(null);
   const fallbackStreamRef = useRef<MediaStream | null>(null);
   const fallbackActiveRef = useRef<boolean>(false);
-  const fallbackIntervalRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const vadAnalyserRef = useRef<AnalyserNode | null>(null);
+  const vadIntervalRef = useRef<number | null>(null);
+  const isRecordingUtteranceRef = useRef<boolean>(false);
+  const speechSilenceStartRef = useRef<number>(0);
+  const utteranceStartTimeRef = useRef<number>(0);
+  const webSpeechActiveRef = useRef<boolean>(false);
+  const activeEngineRef = useRef<'assemblyai' | 'webspeech' | 'groq' | 'none'>('none');
 
   // Audio Ring Buffer (Capacity: 120 audio frames in memory)
   const audioRingBufferRef = useRef(new AudioRingBuffer<ArrayBuffer | Blob>(120));
@@ -153,13 +160,234 @@ export function useAssemblyAIRealtime({
     onErrorRef.current = onError;
   }, [onInterimResult, onFinalResult, onError]);
 
+  // ── STOP GROQ VAD FALLBACK ──────────────────────────────────────
+  const stopFallback = useCallback(() => {
+    fallbackActiveRef.current = false;
+    isRecordingUtteranceRef.current = false;
+    speechSilenceStartRef.current = 0;
+    utteranceStartTimeRef.current = 0;
+
+    if (vadIntervalRef.current !== null) {
+      window.clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+
+    if (vadAnalyserRef.current) {
+      try { vadAnalyserRef.current.disconnect(); } catch {}
+      vadAnalyserRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      try {
+        if (audioContextRef.current.state !== 'closed') {
+          audioContextRef.current.close();
+        }
+      } catch {}
+      audioContextRef.current = null;
+    }
+
+    if (fallbackRecorderRef.current) {
+      try {
+        fallbackRecorderRef.current.ondataavailable = null;
+        fallbackRecorderRef.current.onstop = null;
+        if (fallbackRecorderRef.current.state !== 'inactive') {
+          fallbackRecorderRef.current.stop();
+        }
+      } catch {}
+      fallbackRecorderRef.current = null;
+    }
+
+    if (fallbackStreamRef.current && !audioTrack) {
+      fallbackStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    fallbackStreamRef.current = null;
+  }, [audioTrack]);
+
+  // ── START GROQ VAD FALLBACK (Voice Activity Detected, Standalone WebM) ──
+  const startGroqFallback = useCallback(async (stream?: MediaStream) => {
+    if (fallbackActiveRef.current || isIntentionalStopRef.current) return;
+    try {
+      const fallbackStream = stream ?? (audioTrack && audioTrack.readyState === 'live'
+        ? new MediaStream([audioTrack])
+        : await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: false,
+              autoGainControl: true,
+              channelCount: 1,
+            },
+          }));
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : '';
+
+      if (!mimeType) {
+        throw new Error('Groq fallback requires WebM audio support');
+      }
+
+      fallbackStreamRef.current = fallbackStream;
+      fallbackActiveRef.current = true;
+      setIsMockMode(true);
+      setIsConnected(true);
+      setIsListening(true);
+
+      // 1. Web Audio API Voice Activity Detection (VAD) via AnalyserNode
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtxClass) {
+        try {
+          const audioCtx = new AudioCtxClass();
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
+          audioContextRef.current = audioCtx;
+          const source = audioCtx.createMediaStreamSource(fallbackStream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.2;
+          source.connect(analyser);
+          vadAnalyserRef.current = analyser;
+        } catch (audioCtxErr) {
+          console.warn('[VAD AudioContext init warning]:', audioCtxErr);
+        }
+      }
+
+      // 2. Utterance-based MediaRecorder (each start/stop generates a standalone, valid WebM container)
+      const recorder = new MediaRecorder(fallbackStream, { mimeType });
+      fallbackRecorderRef.current = recorder;
+
+      recorder.ondataavailable = async (event) => {
+        if (activeEngineRef.current !== 'groq') return;
+        if (!event.data || event.data.size < 1000 || !fallbackActiveRef.current) return;
+
+        const chunkDuration = Date.now() - utteranceStartTimeRef.current;
+        // Discard short blips (< 600ms) to avoid mic taps or clicks
+        if (chunkDuration < 600) {
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', event.data, `utterance-${Date.now()}.webm`);
+        formData.append('language', 'en');
+        // Clean context prompt instead of instructional prompt
+        formData.append('prompt', GROQ_WHISPER_CONTEXT_PROMPT);
+
+        try {
+          const response = await fetch('/api/stt/transcribe', { method: 'POST', body: formData });
+          const data = await response.json();
+          const text = typeof data.text === 'string' ? data.text.trim() : '';
+          if (response.ok && text && fallbackActiveRef.current && shouldAcceptFinal(text, chunkDuration)) {
+            onFinalResultRef.current?.({
+              messageType: 'FinalTranscript',
+              text,
+              speakerId: participantId,
+              speakerName: participantName,
+              audioStart: Date.now() - startTimeRef.current - chunkDuration,
+              audioEnd: Date.now() - startTimeRef.current,
+              confidence: 0.95,
+              words: [],
+            });
+          }
+        } catch (error) {
+          console.warn('[Groq Whisper fallback]', error);
+        }
+      };
+
+      recorder.onstop = () => {
+        // If continuing speech triggered a split at MAX_UTTERANCE_MS, immediately restart
+        if (isRecordingUtteranceRef.current && fallbackActiveRef.current && !isIntentionalStopRef.current) {
+          try {
+            if (recorder.state === 'inactive') {
+              recorder.start();
+            }
+          } catch (err) {
+            console.warn('[VAD] Failed to restart recorder in onstop:', err);
+          }
+        }
+      };
+
+      // 3. VAD Loop: polls RMS energy every 100ms
+      const SPEECH_RMS_THRESHOLD = 0.014;
+      const SILENCE_HANGOVER_MS = 800;
+      const MAX_UTTERANCE_MS = 6000;
+      const pcmData = new Float32Array(vadAnalyserRef.current?.fftSize || 512);
+
+      vadIntervalRef.current = window.setInterval(() => {
+        if (!fallbackActiveRef.current) return;
+
+        let rms = 0;
+        if (vadAnalyserRef.current) {
+          vadAnalyserRef.current.getFloatTimeDomainData(pcmData);
+          let sumSquares = 0;
+          for (let i = 0; i < pcmData.length; i++) {
+            sumSquares += pcmData[i] * pcmData[i];
+          }
+          rms = Math.sqrt(sumSquares / pcmData.length);
+        }
+
+        const isVoiceDetected = rms >= SPEECH_RMS_THRESHOLD;
+        const now = Date.now();
+
+        if (isVoiceDetected) {
+          speechSilenceStartRef.current = 0;
+          if (!isRecordingUtteranceRef.current) {
+            // Speech started: start recording fresh standalone WebM
+            isRecordingUtteranceRef.current = true;
+            utteranceStartTimeRef.current = now;
+            try {
+              if (recorder.state === 'inactive') {
+                recorder.start();
+              }
+            } catch {}
+          } else {
+            // Speech continuing: check if continuous utterance reached maximum duration
+            if (now - utteranceStartTimeRef.current >= MAX_UTTERANCE_MS) {
+              utteranceStartTimeRef.current = now;
+              try {
+                if (recorder.state === 'recording') {
+                  recorder.stop();
+                }
+              } catch {}
+            }
+          }
+        } else {
+          // Silence or ambient room noise
+          if (isRecordingUtteranceRef.current) {
+            if (speechSilenceStartRef.current === 0) {
+              speechSilenceStartRef.current = now;
+            } else if (now - speechSilenceStartRef.current >= SILENCE_HANGOVER_MS) {
+              // Silence persisted for hangover window: finalize utterance
+              isRecordingUtteranceRef.current = false;
+              speechSilenceStartRef.current = 0;
+              try {
+                if (recorder.state === 'recording') {
+                  recorder.stop();
+                }
+              } catch {}
+            }
+          }
+        }
+      }, 100);
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Groq Whisper fallback failed';
+      setError(message);
+      onErrorRef.current?.(message);
+    }
+  }, [audioTrack, participantId, participantName, shouldAcceptFinal]);
+
   // ── START LOCAL WEBSPEECH API FOR 0ms INSTANT CAPTIONS ──────────
   const startLocalWebSpeechEngine = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    if (speechRecRef.current) return;
+    if (typeof window === 'undefined') return false;
+    if (speechRecRef.current) return true;
 
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) return;
+    if (!SpeechRec) {
+      webSpeechActiveRef.current = false;
+      return false;
+    }
 
     try {
       const rec = new SpeechRec();
@@ -168,7 +396,13 @@ export function useAssemblyAIRealtime({
       rec.maxAlternatives = 1;
       rec.lang = 'en-US';
 
+      rec.onstart = () => {
+        webSpeechActiveRef.current = true;
+        console.log('⚡ [STT Engine] Sub-50ms Local WebSpeech engine active!');
+      };
+
       rec.onresult = (e: any) => {
+        if (activeEngineRef.current !== 'webspeech') return;
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const res = e.results[i];
           const text = (res[0].transcript || '').trim();
@@ -203,128 +437,38 @@ export function useAssemblyAIRealtime({
       };
 
       rec.onerror = (e: any) => {
-        console.warn('[Local WebSpeech Error]:', e?.error || e);
+        console.warn('[Local WebSpeech Warning]:', e?.error || e);
+        if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed' || e?.error === 'audio-capture') {
+          webSpeechActiveRef.current = false;
+          if (activeEngineRef.current === 'webspeech' && !isIntentionalStopRef.current && enabled) {
+            console.log('🔄 [STT Engine] WebSpeech unavailable. Switching to Groq VAD fallback...');
+            activeEngineRef.current = 'groq';
+            void startGroqFallback(mediaStreamRef.current ?? undefined);
+          }
+        }
       };
 
       rec.onend = () => {
-        if (!isIntentionalStopRef.current && enabled) {
+        if (!isIntentionalStopRef.current && enabled && activeEngineRef.current === 'webspeech') {
           try { rec.start(); } catch {}
         }
       };
 
       rec.start();
       speechRecRef.current = rec;
-      console.log('⚡ [STT Engine] Sub-50ms Local WebSpeech engine active!');
+      webSpeechActiveRef.current = true;
+      return true;
     } catch (e) {
       console.warn('Failed to start WebSpeech local engine:', e);
+      webSpeechActiveRef.current = false;
+      return false;
     }
-  }, [enabled, participantId, participantName, shouldAcceptFinal]);
-
-  const stopFallback = useCallback(() => {
-    fallbackActiveRef.current = false;
-    if (fallbackIntervalRef.current !== null) {
-      window.clearInterval(fallbackIntervalRef.current);
-      fallbackIntervalRef.current = null;
-    }
-    if (fallbackRecorderRef.current) {
-      try { fallbackRecorderRef.current.stop(); } catch {}
-      fallbackRecorderRef.current = null;
-    }
-    if (fallbackStreamRef.current && !audioTrack) {
-      fallbackStreamRef.current.getTracks().forEach((track) => track.stop());
-    }
-    fallbackStreamRef.current = null;
-  }, [audioTrack]);
-
-  const headerBlobRef = useRef<Blob | null>(null);
-
-  const startGroqFallback = useCallback(async (stream?: MediaStream) => {
-    if (fallbackActiveRef.current || isIntentionalStopRef.current) return;
-    try {
-      headerBlobRef.current = null;
-      const fallbackStream = stream ?? (audioTrack && audioTrack.readyState === 'live'
-        ? new MediaStream([audioTrack])
-        : await navigator.mediaDevices.getUserMedia({ audio: true }));
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : '';
-      if (!mimeType) {
-        throw new Error('Groq fallback requires WebM audio support');
-      }
-      fallbackStreamRef.current = fallbackStream;
-      fallbackActiveRef.current = true;
-      setIsMockMode(true);
-      setIsConnected(true);
-      setIsListening(true);
-      const recorder = new MediaRecorder(fallbackStream, { mimeType });
-      fallbackRecorderRef.current = recorder;
-      recorder.ondataavailable = async (event) => {
-        if (!event.data || !event.data.size || !fallbackActiveRef.current) return;
-
-        // Push into Audio Ring Buffer for resilient zero-loss audio processing
-        audioRingBufferRef.current.push(event.data);
-
-        let sendBlob: Blob;
-        if (!headerBlobRef.current) {
-          headerBlobRef.current = event.data;
-          sendBlob = event.data;
-        } else {
-          sendBlob = new Blob([headerBlobRef.current, event.data], { type: mimeType });
-        }
-
-        if (sendBlob.size < MIN_AUDIBLE_BLOB_BYTES) {
-          return;
-        }
-
-        const chunkStart = Date.now();
-        const formData = new FormData();
-        formData.append('file', sendBlob, `caption-${Date.now()}.webm`);
-        formData.append('language', 'en');
-        formData.append('prompt', GROQ_ANTI_HALLUCINATION_PROMPT);
-        try {
-          const response = await fetch('/api/stt/transcribe', { method: 'POST', body: formData });
-          const data = await response.json();
-          const text = typeof data.text === 'string' ? data.text.trim() : '';
-          const durationMs = Date.now() - chunkStart + 1000;
-          if (response.ok && text && fallbackActiveRef.current && shouldAcceptFinal(text, durationMs)) {
-            onFinalResultRef.current?.({
-              messageType: 'FinalTranscript',
-              text,
-              speakerId: participantId,
-              speakerName: participantName,
-              audioStart: Date.now() - startTimeRef.current - 1000,
-              audioEnd: Date.now() - startTimeRef.current,
-              confidence: 0.9,
-              words: [],
-            });
-          }
-        } catch (error) {
-          console.warn('[Groq Whisper fallback]', error);
-        }
-      };
-      recorder.onstop = () => {
-        if (fallbackActiveRef.current && !isIntentionalStopRef.current) {
-          try { recorder.start(); } catch {}
-        }
-      };
-      recorder.start();
-      
-      // Fast 800ms sliding window chunks for real-time fallback response on poor networks
-      fallbackIntervalRef.current = window.setInterval(() => {
-        if (fallbackActiveRef.current && recorder.state === 'recording') recorder.stop();
-      }, 800);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Groq Whisper fallback failed';
-      setError(message);
-      onErrorRef.current?.(message);
-    }
-  }, [audioTrack, participantId, participantName, shouldAcceptFinal]);
+  }, [enabled, participantId, participantName, shouldAcceptFinal, startGroqFallback]);
 
   const stopListening = useCallback(() => {
     isIntentionalStopRef.current = true;
     isConnectingRef.current = false;
+    webSpeechActiveRef.current = false;
     stopFallback();
     audioRingBufferRef.current.clear();
 
@@ -365,6 +509,7 @@ export function useAssemblyAIRealtime({
       wsRef.current = null;
     }
 
+    activeEngineRef.current = 'none';
     setIsListening(false);
     setIsConnected(false);
   }, [audioTrack, stopFallback]);
@@ -377,21 +522,13 @@ export function useAssemblyAIRealtime({
     isIntentionalStopRef.current = false;
     setError(null);
 
-    // ⚡ Start Local Browser WebSpeech API immediately for 0ms sub-50ms instant captioning
-    startLocalWebSpeechEngine();
-
+    // 1. Fetch AssemblyAI Temporary Token
     try {
-      // 1. Fetch AssemblyAI Temporary Token
       const tokenRes = await fetch('/api/assemblyai/token');
       const tokenData = await tokenRes.json();
 
       if (!tokenRes.ok || !tokenData.token) {
         throw new Error(tokenData.error || 'Unable to obtain AssemblyAI session token');
-      }
-
-      if (tokenData.is_mock) {
-        setIsMockMode(true);
-        console.warn('[AssemblyAI Realtime] Running in fallback transcriber mode.');
       }
 
       // 2. Obtain Audio MediaStream (Reuse existing LiveKit audioTrack if provided)
@@ -418,17 +555,33 @@ export function useAssemblyAIRealtime({
       mediaStreamRef.current = stream;
       startTimeRef.current = Date.now();
 
+      // 3. EXCLUSIVE ENGINE SELECTION:
+      // If token is mock / unconfigured, select WebSpeech or Groq VAD.
+      // If token is real, select AssemblyAI v3 WebSocket exclusively.
       if (tokenData.is_mock) {
+        setIsMockMode(true);
         setIsConnected(true);
         setIsListening(true);
         isConnectingRef.current = false;
-        void startGroqFallback(stream);
+
+        const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRec) {
+          activeEngineRef.current = 'webspeech';
+          console.log('⚡ [STT Engine] WebSpeech active as exclusive transcriber (0 silence hallucinations).');
+          startLocalWebSpeechEngine();
+        } else {
+          activeEngineRef.current = 'groq';
+          console.log('🎙️ [STT Engine] Groq VAD active as exclusive engine...');
+          void startGroqFallback(stream);
+        }
         return;
       }
 
-      // 3. Construct AssemblyAI Realtime WebSocket URL (AssemblyAI v3 Streaming API)
+      // 4. Connect AssemblyAI Realtime WebSocket (Exclusive Engine)
+      activeEngineRef.current = 'assemblyai';
+      setIsMockMode(false);
       const token = tokenData.token;
-      console.log('🔑 [STT Debug] Token fetched successfully. Connecting to AssemblyAI v3 WS...');
+      console.log('🔑 [STT Debug] Connecting AssemblyAI v3 WS as exclusive engine...');
       const wsUrl = `wss://streaming.assemblyai.com/v3/ws?token=${encodeURIComponent(token)}&sample_rate=16000&encoding=pcm_s16le`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -446,7 +599,7 @@ export function useAssemblyAIRealtime({
           // Push into memory AudioRingBuffer for zero packet loss
           audioRingBufferRef.current.push(pcmArrayBuffer);
 
-          if (ws.readyState === WebSocket.OPEN) {
+          if (ws.readyState === WebSocket.OPEN && activeEngineRef.current === 'assemblyai') {
             ws.send(pcmArrayBuffer);
             pcmChunkCount++;
             if (pcmChunkCount % 30 === 0) {
@@ -465,6 +618,7 @@ export function useAssemblyAIRealtime({
       };
 
       ws.onmessage = (event) => {
+        if (activeEngineRef.current !== 'assemblyai') return;
         try {
           const data = JSON.parse(event.data);
           const msgType = data.type || data.message_type;
@@ -516,24 +670,18 @@ export function useAssemblyAIRealtime({
       };
 
       ws.onerror = (evt) => {
-        if (!isIntentionalStopRef.current) {
-          const message = 'AssemblyAI realtime connection failed';
-          console.error('❌ [STT Debug] WebSocket error:', evt);
-          setError(message);
-          onErrorRef.current?.(message);
+        if (!isIntentionalStopRef.current && activeEngineRef.current === 'assemblyai') {
+          console.error('❌ [STT Debug] AssemblyAI WebSocket error. Switching to Groq VAD fallback:', evt);
+          activeEngineRef.current = 'groq';
           void startGroqFallback(mediaStreamRef.current ?? undefined);
         }
       };
 
       ws.onclose = (evt) => {
-        isConnectingRef.current = false;
-        setIsConnected(false);
-        setIsListening(false);
         wsRef.current = null;
-        console.warn(`⚠️ [STT Debug] WebSocket closed with code: ${evt.code}, reason: "${evt.reason}"`);
-
-        if (!isIntentionalStopRef.current && enabled && !fallbackActiveRef.current) {
-          console.log('🔄 [STT Debug] Triggering Groq STT fallback...');
+        if (!isIntentionalStopRef.current && enabled && activeEngineRef.current === 'assemblyai') {
+          console.warn(`⚠️ [STT Debug] AssemblyAI WebSocket closed (${evt.code}). Switching to Groq VAD fallback`);
+          activeEngineRef.current = 'groq';
           void startGroqFallback(mediaStreamRef.current ?? undefined);
         }
       };

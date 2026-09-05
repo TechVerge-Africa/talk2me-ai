@@ -85,6 +85,25 @@ export const TranscriptService = {
       language: entry.language || 'en',
     };
 
+    if (entry.turn_id) {
+      // Check if this turn_id has already been persisted for this meeting
+      const { data: existing } = await supabase
+        .from('transcripts')
+        .select('id')
+        .eq('meeting_id', dbMeetingUuid)
+        .eq('turn_id', entry.turn_id)
+        .maybeSingle();
+
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from('transcripts')
+          .update(payload)
+          .eq('id', existing.id);
+
+        if (!updateError) return;
+      }
+    }
+
     const { error } = await supabase
       .from('transcripts')
       .insert([payload]);
@@ -140,7 +159,26 @@ export const TranscriptService = {
         .order('start_ms', { ascending: true });
 
       if (!error && data) {
-        return data.map((row: any) => ({
+        // Deduplicate turns: if multiple rows share the same turn_id, keep the most complete one
+        const turnMap = new Map<string, any>();
+        const orphanRows: any[] = [];
+
+        for (const row of data) {
+          if (row.turn_id) {
+            const existing = turnMap.get(row.turn_id);
+            if (!existing || (row.content && row.content.length > (existing.content?.length || 0))) {
+              turnMap.set(row.turn_id, row);
+            }
+          } else {
+            orphanRows.push(row);
+          }
+        }
+
+        const consolidated = [...turnMap.values(), ...orphanRows].sort(
+          (a, b) => (a.start_ms ?? (a.start_time || 0) * 1000) - (b.start_ms ?? (b.start_time || 0) * 1000)
+        );
+
+        return consolidated.map((row: any) => ({
           id: row.id,
           meeting_id: row.meeting_id,
           user_id: row.user_id,

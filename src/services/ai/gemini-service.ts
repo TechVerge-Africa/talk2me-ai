@@ -29,8 +29,10 @@ export const GeminiService = {
       throw new Error('GEMINI_API_KEY or GOOGLE_API_KEY is not configured in environment variables.');
     }
 
-    const modelName = options.model || 'gemini-2.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const primaryModel = options.model || 'gemini-2.5-flash-lite';
+    const candidateModels = Array.from(
+      new Set([primaryModel, 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'])
+    );
 
     const contents = typeof prompt === 'string'
       ? [{ parts: [{ text: prompt }] }]
@@ -53,23 +55,42 @@ export const GeminiService = {
       };
     }
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let lastError: Error | null = null;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`[Gemini API Error ${res.status}]:`, errText);
-      throw new Error(`Gemini API call failed with status ${res.status}`);
+    for (const modelName of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          console.warn(`[Gemini API Warning - Model ${modelName} returned status ${res.status}]:`, errText.slice(0, 200));
+          lastError = new Error(`Gemini API call to ${modelName} failed with status ${res.status}`);
+          // If quota exceeded (429) or model not found (404), continue to next candidate model
+          if (res.status === 429 || res.status === 404 || res.status === 503) {
+            continue;
+          }
+          throw lastError;
+        }
+
+        const data = await res.json();
+        const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        return {
+          model: modelName,
+          text: textResult,
+          raw: data,
+        };
+      } catch (err: any) {
+        lastError = err;
+        // Continue to fallback if not at end of candidate list
+      }
     }
 
-    const data = await res.json();
-    const textResult = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-    return {
-      text: textResult,
-      raw: data,
-    };
+    throw lastError || new Error('All Gemini candidate models failed to respond.');
   }
 };
