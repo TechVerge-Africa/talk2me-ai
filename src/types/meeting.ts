@@ -9,6 +9,7 @@ export interface Meeting {
   created_at: string;
   scheduled_at?: string;
   workspace_id?: string;
+  board_id?: string;
   status: MeetingStatus;
   settings?: {
     require_approval: boolean;

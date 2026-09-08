@@ -43,3 +43,5 @@ dist-ssr
 docs/STRATEGY_SESSION.md
 docs/*STRATEGY*
 
+# TypeScript build info
+*.tsbuildinfo

@@ -22,6 +22,7 @@ import {
   X,
   LogOut,
   Sparkles,
+  Shield,
   Menu,
   Rocket,
   Palette,
@@ -56,6 +57,7 @@ import {
   Play,
   AlertTriangle,
   Layout,
+  LayoutGrid,
   Square,
   Radio
 } from 'lucide-react';
@@ -66,6 +68,9 @@ import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
 import { Meeting, MeetingParticipant } from '@/types/meeting';
 import { WorkspaceWhiteboard } from '@/features/whiteboard/workspace-whiteboard';
+import { WorkspaceBoardView } from '@/features/work-boards/workspace-board-view';
+import { WorkBoardService } from '@/services/supabase/work-boards';
+import { WorkspaceBoard } from '@/types/work-board';
 import { TranscriptService, CanonicalTranscriptEntry } from '@/services/supabase/transcripts';
 import {
   WorkspaceService,
@@ -94,7 +99,7 @@ const renderWorkspaceIcon = (iconStr: string) => {
   return <Rocket className="size-5 text-indigo-600 dark:text-indigo-400" />;
 };
 
-type WorkspaceTab = 'home' | 'meetings' | 'chat' | 'whiteboard' | 'ask-ai' | 'settings';
+type WorkspaceTab = 'home' | 'meetings' | 'boards' | 'chat' | 'whiteboard' | 'ask-ai' | 'settings';
 
 function formatCountdown(scheduledAtIso: string, nowMs: number) {
   const diffMs = new Date(scheduledAtIso).getTime() - nowMs;
@@ -256,6 +261,7 @@ function DashboardContent() {
   // Workspace Meeting Creation & Scheduling Modal State
   const [showMeetingModal, setShowMeetingModal] = useState<boolean>(false);
   const [meetingModalMode, setMeetingModalMode] = useState<'instant' | 'scheduled'>('instant');
+  const [meetingModalStorageMode, setMeetingModalStorageMode] = useState<'ephemeral' | 'persistent'>('persistent');
   const [meetingModalTitle, setMeetingModalTitle] = useState<string>('');
   const [meetingModalDate, setMeetingModalDate] = useState<string>('');
   const [meetingModalAccessLevel, setMeetingModalAccessLevel] = useState<'members_only' | 'open'>('members_only');
@@ -263,12 +269,35 @@ function DashboardContent() {
   const [meetingModalAllowScreenShare, setMeetingModalAllowScreenShare] = useState<boolean>(true);
   const [isSubmittingMeetingModal, setIsSubmittingMeetingModal] = useState<boolean>(false);
 
+  // Workspace Boards State
+  const [workspaceBoardsList, setWorkspaceBoardsList] = useState<WorkspaceBoard[]>([]);
+  const [meetingModalBoardId, setMeetingModalBoardId] = useState<string>('');
+
+  useEffect(() => {
+    let mounted = true;
+    if (activeWorkspaceId) {
+      WorkBoardService.getWorkspaceBoards(activeWorkspaceId).then((b) => {
+        if (mounted) {
+          setWorkspaceBoardsList(b);
+          if (b.length > 0 && !meetingModalBoardId) {
+            setMeetingModalBoardId(b[0].id);
+          }
+        }
+      });
+    }
+    return () => { mounted = false; };
+  }, [activeWorkspaceId]);
+
   const openCreateMeetingModal = (mode: 'instant' | 'scheduled' = 'instant') => {
     setMeetingModalMode(mode);
-    setMeetingModalTitle(activeWorkspaceId ? `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync` : 'Instant Sync Meeting');
+    setMeetingModalStorageMode(activeWorkspaceId ? 'persistent' : 'ephemeral');
+    setMeetingModalTitle(activeWorkspaceId ? `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync` : 'Instant Meeting');
     setMeetingModalAccessLevel(activeWorkspaceId ? 'members_only' : 'open');
     setMeetingModalRequireApproval(false);
     setMeetingModalAllowScreenShare(true);
+    if (workspaceBoardsList.length > 0) {
+      setMeetingModalBoardId(workspaceBoardsList[0].id);
+    }
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(10, 0, 0, 0);
@@ -1310,7 +1339,9 @@ function DashboardContent() {
         undefined,
         true,
         activeWorkspaceId || undefined,
-        isOutsideWorkspace
+        isOutsideWorkspace,
+        undefined,
+        workspaceBoardsList[0]?.id
       );
       try {
         if (activeWorkspaceId) {
@@ -1334,8 +1365,11 @@ function DashboardContent() {
     if (!user) return;
     setIsSubmittingMeetingModal(true);
     try {
-      const isOutsideWorkspace = !activeWorkspaceId;
-      const title = meetingModalTitle.trim() || (isOutsideWorkspace ? 'Instant Ephemeral Meeting' : `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync`);
+      const isEphemeral = meetingModalStorageMode === 'ephemeral';
+      const defaultTitle = isEphemeral
+        ? 'Instant Private Meeting'
+        : (activeWorkspaceId ? `${currentWorkspaceData?.workspace.name || 'Workspace'} Sync` : 'AI Smart Meeting');
+      const title = meetingModalTitle.trim() || defaultTitle;
       const scheduledAtIso = meetingModalMode === 'scheduled' && meetingModalDate ? new Date(meetingModalDate).toISOString() : undefined;
 
       const meeting = await MeetingService.createMeeting(
@@ -1345,8 +1379,9 @@ function DashboardContent() {
         scheduledAtIso,
         meetingModalAllowScreenShare,
         activeWorkspaceId || undefined,
-        isOutsideWorkspace,
-        meetingModalAccessLevel
+        isEphemeral,
+        meetingModalAccessLevel,
+        meetingModalBoardId || workspaceBoardsList[0]?.id
       );
 
       setShowMeetingModal(false);
@@ -1363,7 +1398,7 @@ function DashboardContent() {
           sessionStorage.setItem('t2_return_tab', activeTab);
           localStorage.setItem('t2_active_tab_v1', activeTab);
         } catch {}
-        router.push(`/room/${meeting.room_code}?workspaceId=${activeWorkspaceId || ''}&ephemeral=${isOutsideWorkspace}&tab=${activeTab}`);
+        router.push(`/room/${meeting.room_code}?workspaceId=${activeWorkspaceId || ''}&ephemeral=${isEphemeral}&tab=${activeTab}`);
       } else {
         await fetchWorkspaceMeetings();
       }
@@ -1962,8 +1997,9 @@ function DashboardContent() {
                     {[
                       { id: 'home', label: 'Home', icon: Home },
                       { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
+                      { id: 'boards', label: 'Action Boards', icon: LayoutGrid },
                       { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
-                      { id: 'whiteboard', label: 'Work Board', icon: Layout },
+                      { id: 'whiteboard', label: 'Visual Canvas', icon: Layout },
                       { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
                       { id: 'settings', label: 'Settings', icon: Settings },
                     ].map((tab) => {
@@ -2088,7 +2124,7 @@ function DashboardContent() {
               <motion.div
                 whileHover={{ y: -4, scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
-                onClick={handleCreateMeeting}
+                onClick={() => openCreateMeetingModal('instant')}
                 className="group cursor-pointer p-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-blue-600 dark:hover:border-blue-500 transition-all duration-200 flex flex-col justify-between gap-6 shadow-sm"
               >
                 <div className="flex flex-col gap-4">
@@ -2100,7 +2136,7 @@ function DashboardContent() {
                       Start Meeting
                     </h3>
                     <p className="font-sans text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                      Create an instant video meeting outside of a workspace. No chat history or transcripts are stored.
+                      Host an instant video call. Choose between private off-the-record meetings or full AI transcription and summaries.
                     </p>
                   </div>
                 </div>
@@ -2313,8 +2349,9 @@ function DashboardContent() {
             {[
               { id: 'home', label: 'Home', icon: Home },
               { id: 'meetings', label: 'Meetings & Syncs', icon: Video },
+              { id: 'boards', label: 'Action Boards', icon: LayoutGrid },
               { id: 'chat', label: 'Channel Chat', icon: MessageSquare },
-              { id: 'whiteboard', label: 'Work Board', icon: Layout },
+              { id: 'whiteboard', label: 'Visual Canvas', icon: Layout },
               { id: 'ask-ai', label: 'Talk2Me AI', icon: Sparkles },
               { id: 'settings', label: 'Settings', icon: Settings },
             ].map((tab) => {
@@ -3454,6 +3491,17 @@ function DashboardContent() {
             </div>
           )}
 
+          {/* TAB: TEAM ACTION BOARDS */}
+          {activeTab === 'boards' && activeWorkspaceId && (
+            <WorkspaceBoardView
+              workspaceId={activeWorkspaceId}
+              currentUserId={user?.id}
+              currentUserName={profile?.full_name || user?.email || 'Team Member'}
+              members={currentWorkspaceData?.members || []}
+              channels={currentWorkspaceData?.channels || []}
+            />
+          )}
+
           {/* TAB: VISUAL WHITEBOARD */}
           {activeTab === 'whiteboard' && activeWorkspaceId && (
             <WorkspaceWhiteboard
@@ -4177,9 +4225,10 @@ function DashboardContent() {
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-lg">
           {[
             { id: 'home', label: 'Home', icon: Home },
-            { id: 'chat', label: 'Chat', icon: MessageSquare },
-            { id: 'whiteboard', label: 'Work Board', icon: Layout },
+            { id: 'boards', label: 'Boards', icon: LayoutGrid },
             { id: 'meetings', label: 'Meetings', icon: Video },
+            { id: 'chat', label: 'Chat', icon: MessageSquare },
+            { id: 'whiteboard', label: 'Canvas', icon: Layout },
             { id: 'ask-ai', label: 'Ask AI', icon: Sparkles },
             { id: 'settings', label: 'Settings', icon: Settings },
           ].map((tab) => {
@@ -4723,6 +4772,83 @@ function DashboardContent() {
                   />
                 </div>
 
+                {/* Data Privacy & AI Storage Mode */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-400 block">
+                      Data Retention & AI Mode
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Ephemeral / Private */}
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalStorageMode('ephemeral')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2.5 ${
+                        meetingModalStorageMode === 'ephemeral'
+                          ? 'border-amber-500/80 bg-amber-500/10 shadow-xs ring-1 ring-amber-500/40'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 font-black text-xs text-slate-900 dark:text-white">
+                            <Shield className="size-3.5 text-amber-500" /> Private / Off-the-Record
+                          </div>
+                          {meetingModalStorageMode === 'ephemeral' && (
+                            <span className="size-2 rounded-full bg-amber-500 shadow-xs" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                          For quick 1:1s or audience broadcasts. Live captions run in-call, but zero transcripts or summaries are saved.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                          No Logs Saved
+                        </span>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                          Zero Footprint
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Persistent / Smart AI Sync */}
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalStorageMode('persistent')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-2.5 ${
+                        meetingModalStorageMode === 'persistent'
+                          ? 'border-indigo-500/80 bg-indigo-500/10 shadow-xs ring-1 ring-indigo-500/40'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 font-black text-xs text-slate-900 dark:text-white">
+                            <Sparkles className="size-3.5 text-indigo-500" /> Smart AI Meeting
+                          </div>
+                          {meetingModalStorageMode === 'persistent' && (
+                            <span className="size-2 rounded-full bg-indigo-500 shadow-xs" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                          For team syncs & reviews. Transcripts, AI summaries, action items, and searchable history are preserved.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-600 dark:text-indigo-400">
+                          AI Summaries
+                        </span>
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                          Saved to History
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Scheduled Date/Time Input */}
                 {meetingModalMode === 'scheduled' && (
                   <div>
@@ -4779,6 +4905,29 @@ function DashboardContent() {
                         </span>
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {/* Target Team Work Board Selector */}
+                {activeWorkspaceId && workspaceBoardsList.length > 0 && (
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-400 block mb-1.5">
+                      Connected Team Work Board
+                    </label>
+                    <select
+                      value={meetingModalBoardId}
+                      onChange={(e) => setMeetingModalBoardId(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      {workspaceBoardsList.map((b) => (
+                        <option key={b.id} value={b.id} className="bg-white dark:bg-slate-900">
+                          {b.name} (Alerts {b.target_channel_name} on done)
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                      Confirmed tasks and milestones from this meeting will automatically land on this board.
+                    </p>
                   </div>
                 )}
 

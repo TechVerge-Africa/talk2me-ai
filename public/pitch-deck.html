@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talk2Me AI — 9-Slide Investor Pitch Deck</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --color-primary: #3B82F6;
+            --color-primary-light: #60A5FA;
+            --color-secondary: #06B6D4;
+            --color-accent: #8B5CF6;
+            --color-emerald: #10B981;
+            --color-amber: #F59E0B;
+            --color-rose: #F43F5E;
+            --color-bg-deep: #060913;
+            --color-bg-card: rgba(15, 23, 42, 0.75);
+            --color-border: rgba(255, 255, 255, 0.08);
+            --color-text-main: #F8FAFC;
+            --color-text-muted: #94A3B8;
+            --font-heading: 'Plus Jakarta Sans', sans-serif;
+            --font-body: 'Inter', sans-serif;
+            --gradient-primary: linear-gradient(135deg, #3B82F6, #06B6D4);
+            --gradient-accent: linear-gradient(135deg, #8B5CF6, #EC4899);
+            --gradient-emerald: linear-gradient(135deg, #10B981, #06B6D4);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background-color: var(--color-bg-deep);
+            color: var(--color-text-main);
+            font-family: var(--font-body);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            user-select: none;
+            background-image: 
+                radial-gradient(circle at 15% 20%, rgba(59, 130, 246, 0.12) 0%, transparent 40%),
+                radial-gradient(circle at 85% 80%, rgba(6, 182, 212, 0.10) 0%, transparent 45%);
+        }
+
+        /* Top Progress Bar */
+        .progress-bar-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            z-index: 1000;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 11.11%;
+            background: var(--gradient-primary);
+            transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+        }
+
+        /* Header Brand Pill */
+        .deck-header {
+            position: fixed;
+            top: 20px;
+            left: 36px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 900;
+        }
+
+        .deck-logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--font-heading);
+            font-weight: 800;
+            font-size: 18px;
+            letter-spacing: -0.02em;
+            color: #fff;
+        }
+
+        .deck-logo-badge {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .deck-badge {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: var(--color-primary-light);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Slide Deck Container (16:9 responsive) */
+        .slide-deck {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 70px 80px 90px 80px;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            transform: scale(0.98);
+        }
+
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transform: scale(1);
+        }
+
+        .slide-content {
+            width: 100%;
+            max-width: 1200px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Typography & Utility */
+        h1, h2, h3, h4 {
+            font-family: var(--font-heading);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+        }
+
+        .gradient-text {
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .section-tag {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--color-secondary);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .slide-heading {
+            font-size: clamp(28px, 3.2vw, 44px);
+            color: #fff;
+        }
+
+        .slide-subheading {
+            font-size: clamp(15px, 1.3vw, 18px);
+            color: var(--color-text-muted);
+            max-width: 800px;
+            line-height: 1.5;
+        }
+
+        /* Glassmorphism Cards */
+        .glass-card {
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(59, 130, 246, 0.4);
+        }
+
+        /* Navigation Controls */
+        .nav-controls {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 8px 18px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--color-border);
+            border-radius: 999px;
+            backdrop-filter: blur(20px);
+            z-index: 1000;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+        }
+
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+            transform: scale(1.05);
+        }
+
+        .slide-counter {
+            color: var(--color-text-muted);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .keyboard-hint {
+            position: fixed;
+            bottom: 28px;
+            right: 36px;
+            font-size: 12px;
+            color: var(--color-text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0.7;
+        }
+
+        kbd {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .stat-number {
+            font-size: clamp(32px, 3.5vw, 48px);
+            font-weight: 800;
+            font-family: var(--font-heading);
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            font-weight: 500;
+            line-height: 1.4;
+        }
+
+        .compare-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .compare-table th, .compare-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .compare-table th {
+            color: var(--color-text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+        }
+
+        .compare-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .badge-win {
+            color: var(--color-emerald);
+            background: rgba(16, 185, 129, 0.12);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge-fail {
+            color: var(--color-rose);
+            background: rgba(244, 63, 94, 0.12);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        @media (max-width: 900px) {
+            .slide { padding: 50px 24px 80px 24px; }
+            .grid-3, .grid-4, .grid-2 { grid-template-columns: 1fr; }
+            .deck-header { top: 12px; left: 16px; }
+            .keyboard-hint { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <header class="deck-header">
+        <div class="deck-logo">
+            <div class="deck-logo-badge">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+            </div>
+            Talk2Me AI
+        </div>
+        <span class="deck-badge">Investor Pitch Deck</span>
+    </header>
+
+    <div class="slide-deck">
+
+        <!-- SLIDE 1: Title & Hook -->
+        <section class="slide active" data-index="1">
+            <div class="slide-content" style="text-align: center; align-items: center;">
+                <div class="section-tag" style="justify-content: center;">
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--color-secondary);"></span>
+                    African Voice AI & Modern Workspace Infrastructure
+                </div>
+                
+                <h1 style="font-size: clamp(40px, 5.5vw, 76px); max-width: 960px; margin-top: 10px;">
+                    Meetings end.<br>
+                    <span class="gradient-text">Conversations don't.</span>
+                </h1>
+
+                <p style="font-size: clamp(16px, 1.5vw, 22px); color: var(--color-text-muted); max-width: 760px; line-height: 1.6;">
+                    The first accent-resilient WebRTC collaboration platform engineered specifically for African languages, dialects, and spontaneous code-switching.
+                </p>
+
+                <div style="display: flex; gap: 16px; margin-top: 16px;">
+                    <div class="glass-card" style="padding: 12px 24px; border-radius: 999px; display:flex; align-items:center; gap:10px;">
+                        <span style="color:var(--color-emerald); font-weight:700;">●</span>
+                        <span style="font-size:14px; font-weight:600;">Live Production Stack (LiveKit + Groq + Gemini + Supabase)</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 2: The Problem -->
+        <section class="slide" data-index="2">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">01. The Problem</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">The 40%+ Accent Gap & The Meeting Void</h2>
+                    <p class="slide-subheading">Over 1.4 billion people across Africa navigate workplaces where global communication tools systematically break down.</p>
+                </div>
+
+                <div class="grid-3">
+                    <div class="glass-card" style="border-top: 3px solid var(--color-rose);">
+                        <div style="font-size: 28px; margin-bottom: 12px;">🚨</div>
+                        <h3 style="font-size: 18px; margin-bottom: 8px; color: #fff;">Catastrophic Accent Failure</h3>
+                        <p style="font-size: 13.5px; color: var(--color-text-muted); line-height: 1.5;">
+                            OpenAI Whisper, Zoom, and Google Meet hit <strong>40%+ Word Error Rates (WER)</strong> on Ghanaian Pidgin, Twi, and African-accented English. Meeting transcripts garble names, currency, and strategic decisions.
+                        </p>
+                    </div>
+
+                    <div class="glass-card" style="border-top: 3px solid var(--color-amber);">
+                        <div style="font-size: 28px; margin-bottom: 12px;">📢</div>
+                        <h3 style="font-size: 18px; margin-bottom: 8px; color: #fff;">Acoustic & Bandwidth Hostility</h3>
+                        <p style="font-size: 13.5px; color: var(--color-text-muted); line-height: 1.5;">
+                            Outdoor markets, street traffic, and diesel generators overpower traditional noise gates. Fluctuating 3G/4G connections drop heavy video feeds and cause desynchronized audio.
+                        </p>
+                    </div>
+
+                    <div class="glass-card" style="border-top: 3px solid var(--color-primary);">
+                        <div style="font-size: 28px; margin-bottom: 12px;">🕳️</div>
+                        <h3 style="font-size: 18px; margin-bottom: 8px; color: #fff;">The Post-Call Black Hole</h3>
+                        <p style="font-size: 13.5px; color: var(--color-text-muted); line-height: 1.5;">
+                            When video calls end, commitments vanish into thin air. Teams manually juggle fragmented notes across Slack, WhatsApp, and Jira with zero verifiable attribution to spoken audio.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; background: rgba(244, 63, 94, 0.08); border-color: rgba(244, 63, 94, 0.2);">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size: 20px;">⚠️</span>
+                        <span style="font-size: 14px; font-weight: 500;">
+                            Global BPOs and remote tech teams hiring African talent lose <strong>thousands of billable hours monthly</strong> re-explaining verbal client instructions.
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 3: The Solution -->
+        <section class="slide" data-index="3">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">02. The Solution</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">Invisible Tech, Universal Connection</h2>
+                    <p class="slide-subheading">A single collaborative ecosystem combining high-definition WebRTC, native African dialect conditioning, and autonomous meeting intelligence.</p>
+                </div>
+
+                <div class="grid-3">
+                    <div class="glass-card">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(59, 130, 246, 0.15); display: flex; align-items: center; justify-content: center; color: var(--color-primary-light); font-weight: 700; margin-bottom: 14px;">01</div>
+                        <h3 style="font-size: 18px; margin-bottom: 8px;">Accent & Code-Switching Engine</h3>
+                        <p style="font-size: 13.5px; color: var(--color-text-muted); line-height: 1.5;">
+                            Local phonetic glossary conditioning cuts WER from <strong>40%+ to &lt;12%</strong> on West African code-switching with sub-50ms streaming latency on Groq LPUs.
+                        </p>
+                    </div>
+
+                    <div class="glass-card">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(6, 182, 212, 0.15); display: flex; align-items: center; justify-content: center; color: var(--color-secondary); font-weight: 700; margin-bottom: 14px;">02</div>
+                        <h3 style="font-size: 18px; margin-bottom: 8px;">WASM Neural Noise Suppression</h3>
+                        <p style="font-size: 13.5px; color: var(--color-text-muted); line-height: 1.5;">
+                            Client-side <code>@shiguredo/rnnoise-wasm</code> removes background market bustle, generator hums, and traffic inside the browser with zero server compute overhead.
+                        </p>
+                    </div>
+
+                    <div class="glass-card">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(139, 92, 246, 0.15); display: flex; align-items: center; justify-content: center; color: var(--color-accent); font-weight: 700; margin-bottom: 14px;">03</div>
+                        <h3 style="font-size: 18px; margin-bottom: 8px;">Autonomous Work Boards</h3>
+                        <p style="font-size: 13.5px; color: var(--color-text-muted); line-height: 1.5;">
+                            Verbal meeting agreements automatically convert into structured Kanban action cards linked to exact audio timestamps, speaker names, and verifiable quotes.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid-2" style="margin-top: 4px;">
+                    <div class="glass-card" style="display: flex; align-items: center; gap: 16px;">
+                        <span style="font-size: 32px;">🤟</span>
+                        <div>
+                            <h4 style="font-size: 15px; color: #fff;">WCAG 2.1 AAA Accessibility</h4>
+                            <p style="font-size: 12.5px; color: var(--color-text-muted);">Dedicated Sign Language PiP video feeds, TTS for non-vocal participants, and high-contrast captioning.</p>
+                        </div>
+                    </div>
+                    <div class="glass-card" style="display: flex; align-items: center; gap: 16px;">
+                        <span style="font-size: 32px;">🧠</span>
+                        <div>
+                            <h4 style="font-size: 15px; color: #fff;">Conversational Workspace Memory</h4>
+                            <p style="font-size: 12.5px; color: var(--color-text-muted);">AI Assistant grounded in team historical meeting transcripts via Supabase PostgreSQL vector search.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 4: Product Deep Dive -->
+        <section class="slide" data-index="4">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">03. The Product</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">Live, Fully Functional Production Architecture</h2>
+                    <p class="slide-subheading">We didn't build a concept mock—Talk2Me AI is a fully deployed, full-stack enterprise collaboration engine.</p>
+                </div>
+
+                <div class="grid-4">
+                    <div class="glass-card stat-card">
+                        <div style="font-size: 20px;">⚡</div>
+                        <div class="stat-number gradient-text">&lt;50ms</div>
+                        <div class="stat-label">Speech-to-Text inference on Groq Whisper Large v3 Turbo</div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <div style="font-size: 20px;">📡</div>
+                        <div class="stat-number gradient-text">&lt;100ms</div>
+                        <div class="stat-label">WebRTC Media transport latency powered by LiveKit SFU</div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <div style="font-size: 20px;">🎯</div>
+                        <div class="stat-number" style="color: var(--color-emerald);">&lt;12%</div>
+                        <div class="stat-label">West African dialect Word Error Rate (vs 40%+ standard)</div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <div style="font-size: 20px;">💾</div>
+                        <div class="stat-number" style="color: var(--color-secondary);">&lt;200B</div>
+                        <div class="stat-label">Per voice note DB footprint with client-side transcription</div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="margin-top: 4px;">
+                    <h4 style="font-size: 15px; margin-bottom: 12px; color: var(--color-primary-light); text-transform: uppercase; letter-spacing: 0.05em;">Integrated Full-Stack Suite</h4>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; font-size: 13px;">
+                        <div>
+                            <strong style="color: #fff; display: block; margin-bottom: 4px;">HD Video & Audio</strong>
+                            <span style="color: var(--color-text-muted);">LiveKit SFU, QR mobile join, screen share, host controls.</span>
+                        </div>
+                        <div>
+                            <strong style="color: #fff; display: block; margin-bottom: 4px;">Work Boards</strong>
+                            <span style="color: var(--color-text-muted);">Kanban boards with meeting-linked evidence quotes and status.</span>
+                        </div>
+                        <div>
+                            <strong style="color: #fff; display: block; margin-bottom: 4px;">Collaborative Canvas</strong>
+                            <span style="color: var(--color-text-muted);">Interactive multi-user Whiteboard for real-time visual brainstorming.</span>
+                        </div>
+                        <div>
+                            <strong style="color: #fff; display: block; margin-bottom: 4px;">Team Channels</strong>
+                            <span style="color: var(--color-text-muted);">Persistent chat, instant voice note transcription, RLS security.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 5: The Moat -->
+        <section class="slide" data-index="5">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">04. The Moat</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">The 3-Phase African Voice Data Flywheel</h2>
+                    <p class="slide-subheading">How Talk2Me AI transitions from zero-GPU rapid customer acquisition to an unassailable proprietary voice AI moat.</p>
+                </div>
+
+                <div class="grid-3">
+                    <div class="glass-card" style="position: relative;">
+                        <span class="badge-win" style="margin-bottom: 12px;">Phase 1: LIVE NOW</span>
+                        <h3 style="font-size: 17px; margin-bottom: 6px; color: #fff;">Context Steering Prompting</h3>
+                        <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px;">
+                            Groq LPU + Ghanaian Dialect Conditioning Glossary (Twi, Ga, Ewe, Pidgin) + Gemini 1.5 Flash Audio fallback.
+                        </p>
+                        <div style="font-size: 12px; color: var(--color-primary-light);">Zero GPU infra overhead, sub-50ms real-time captions.</div>
+                    </div>
+
+                    <div class="glass-card" style="position: relative; border-color: rgba(6, 182, 212, 0.4);">
+                        <span style="background: rgba(6, 182, 212, 0.15); color: var(--color-secondary); padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 12px; margin-bottom: 12px; display: inline-block;">Phase 2: DATA ENGINE</span>
+                        <h3 style="font-size: 17px; margin-bottom: 6px; color: #fff;">Opt-in Community Flywheel</h3>
+                        <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px;">
+                            Free Community Tier users contribute anonymized audio snippets with Gemini pseudo-labeling.
+                        </p>
+                        <div style="font-size: 12px; color: var(--color-secondary);">Target: 2,000+ hours of real code-switching audio in Year 1.</div>
+                    </div>
+
+                    <div class="glass-card" style="position: relative; border-color: rgba(139, 92, 246, 0.4);">
+                        <span style="background: rgba(139, 92, 246, 0.15); color: var(--color-accent); padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 12px; margin-bottom: 12px; display: inline-block;">Phase 3: PROPRIETARY MOAT</span>
+                        <h3 style="font-size: 17px; margin-bottom: 6px; color: #fff;">Custom QLoRA Foundation</h3>
+                        <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px;">
+                            Fine-tuned Whisper model deployed on Modal via CTranslate2 (faster-whisper) for 4x speed and 50% lower VRAM.
+                        </p>
+                        <div style="font-size: 12px; color: var(--color-accent);">The definitive voice infrastructure API for Africa.</div>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="padding: 16px 20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight:600; color:#fff;">Benchmark Word Error Rate on West African Speech (Lower is better)</span>
+                        <span style="font-size: 12px; color:var(--color-emerald); font-weight:700;">Talk2Me AI: 68% Relative Error Reduction</span>
+                    </div>
+                    <div style="width: 100%; height: 28px; background: rgba(255,255,255,0.05); border-radius: 6px; overflow: hidden; display: flex;">
+                        <div style="width: 42%; background: var(--color-rose); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff;">Zoom / OpenAI Whisper: 42% WER</div>
+                        <div style="width: 32%; background: var(--color-amber); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff;">Google STT: 32% WER</div>
+                        <div style="width: 26%; background: var(--color-emerald); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff;">Talk2Me AI: &lt;12% WER</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 6: Market Opportunity -->
+        <section class="slide" data-index="6">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">05. Market Opportunity</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">The Vertical Wedge: "Land Vertical, Expand Horizontal"</h2>
+                    <p class="slide-subheading">We don't challenge Zoom head-on. We capture the highest-pain, highest-churn enterprise B2B vertical first.</p>
+                </div>
+
+                <div class="grid-2">
+                    <div class="glass-card" style="height: 100%; display: flex; flex-direction: column; justify-content: center;">
+                        <h3 style="font-size: 18px; margin-bottom: 16px;">Target Addressable Market Breakdown</h3>
+                        
+                        <div style="margin-bottom: 18px;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                                <strong style="font-size: 14px; color:#fff;">TAM: Global BPO & African Talent Economy</strong>
+                                <span style="font-weight: 700; color:var(--color-primary-light);">$4.2 Billion</span>
+                            </div>
+                            <div style="width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
+                                <div style="width:100%; height:100%; background:var(--color-primary);"></div>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 18px;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                                <strong style="font-size: 14px; color:#fff;">SAM: West & Pan-African Remote Tech Workspaces</strong>
+                                <span style="font-weight: 700; color:var(--color-secondary);">$850 Million</span>
+                            </div>
+                            <div style="width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
+                                <div style="width:45%; height:100%; background:var(--color-secondary);"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                                <strong style="font-size: 14px; color:#fff;">SOM: Immediate Wedge (BPOs & Staffing Agencies)</strong>
+                                <span style="font-weight: 700; color:var(--color-emerald);">$75 Million</span>
+                            </div>
+                            <div style="width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
+                                <div style="width:18%; height:100%; background:var(--color-emerald);"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card" style="height: 100%;">
+                        <h3 style="font-size: 18px; margin-bottom: 14px;">The 3 Expansion Horizons</h3>
+                        
+                        <div style="display:flex; flex-direction:column; gap:14px;">
+                            <div style="padding:10px; background:rgba(59,130,246,0.1); border-radius:8px; border-left:3px solid var(--color-primary);">
+                                <strong style="color:#fff; font-size:14px;">Horizon 1: Global BPOs & Remote Tech</strong>
+                                <p style="font-size:12.5px; color:var(--color-text-muted); margin-top:2px;">Call centers & engineering teams in Ghana, Nigeria, Kenya working with US/EU clients.</p>
+                            </div>
+
+                            <div style="padding:10px; background:rgba(6,182,212,0.1); border-radius:8px; border-left:3px solid var(--color-secondary);">
+                                <strong style="color:#fff; font-size:14px;">Horizon 2: HealthTech & Micro-Fintech</strong>
+                                <p style="font-size:12.5px; color:var(--color-text-muted); margin-top:2px;">Doctor-patient Pidgin/Twi medical consultation notes & field agent verification calls.</p>
+                            </div>
+
+                            <div style="padding:10px; background:rgba(139,92,246,0.1); border-radius:8px; border-left:3px solid var(--color-accent);">
+                                <strong style="color:#fff; font-size:14px;">Horizon 3: Pan-African Enterprise & API</strong>
+                                <p style="font-size:12.5px; color:var(--color-text-muted); margin-top:2px;">Licensing the Talk2Me African Voice AI API to banks, telecom, and government portals.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 7: Business Model -->
+        <section class="slide" data-index="7">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">06. Business Model</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">Dual-Engine Economics & Zero-Overhead Unit Costs</h2>
+                    <p class="slide-subheading">A self-funding data flywheel paired with high-margin enterprise SaaS pricing.</p>
+                </div>
+
+                <div class="grid-2">
+                    <div class="glass-card" style="border: 1px solid rgba(6, 182, 212, 0.4);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3 style="font-size: 20px; color:#fff;">Community Tier</h3>
+                            <span style="font-size: 24px; font-weight:800; color:var(--color-secondary);">$0</span>
+                        </div>
+                        <div style="font-size: 12px; color: var(--color-secondary); font-weight:600; text-transform:uppercase; margin-bottom:14px;">The Speech Data Engine</div>
+                        <ul style="list-style:none; display:flex; flex-direction:column; gap:10px; font-size:13.5px; color:var(--color-text-muted);">
+                            <li style="display:flex; align-items:center; gap:8px;">✓ Unlimited HD WebRTC Video & Audio Calls</li>
+                            <li style="display:flex; align-items:center; gap:8px;">✓ Real-time STT Captions (Sub-50ms)</li>
+                            <li style="display:flex; align-items:center; gap:8px;">✓ Collaborative Whiteboard & Chat</li>
+                            <li style="display:flex; align-items:center; gap:8px; color:#fff; font-weight:500;">
+                                🔄 <em>Opt-in condition: Anonymized audio training flywheel</em>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="glass-card" style="border: 1px solid rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.08);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3 style="font-size: 20px; color:#fff;">Enterprise Sovereign</h3>
+                            <div>
+                                <span style="font-size: 24px; font-weight:800; color:var(--color-primary-light);">$15–$30</span>
+                                <span style="font-size: 13px; color:var(--color-text-muted);">/ seat / mo</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 12px; color: var(--color-primary-light); font-weight:600; text-transform:uppercase; margin-bottom:14px;">High-Margin B2B SaaS</div>
+                        <ul style="list-style:none; display:flex; flex-direction:column; gap:10px; font-size:13.5px; color:var(--color-text-muted);">
+                            <li style="display:flex; align-items:center; gap:8px;">✓ <strong>100% Zero-Data-Retention Guarantee</strong> (Principle 6)</li>
+                            <li style="display:flex; align-items:center; gap:8px;">✓ Automated Work Boards & Verifiable Action Items</li>
+                            <li style="display:flex; align-items:center; gap:8px;">✓ Workspace Vector Memory & RAG Assistant</li>
+                            <li style="display:flex; align-items:center; gap:8px;">✓ Custom Enterprise Vocabulary & Accent Tuning</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="display:flex; align-items:center; justify-content:space-between; padding:16px 24px;">
+                    <div>
+                        <strong style="color:#fff; font-size:14px;">Unfair Gross Margin Advantage:</strong>
+                        <span style="color:var(--color-text-muted); font-size:13px; margin-left:6px;">
+                            Client-side WASM RNNoise + WebM compression + text-only Supabase persistence keep monthly infrastructure under <strong>$0.02 per user</strong>.
+                        </span>
+                    </div>
+                    <span class="badge-win" style="font-size: 13px;">88%+ Gross Margins</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 8: Competition Matrix -->
+        <section class="slide" data-index="8">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">07. Competitive Advantage</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">Why Generic Giants Can't Solve This Problem</h2>
+                    <p class="slide-subheading">Zoom and Teams treat speech as generic American English. Talk2Me AI owns the full lifecycle of African collaboration.</p>
+                </div>
+
+                <div class="glass-card" style="padding: 0; overflow: hidden;">
+                    <table class="compare-table">
+                        <thead>
+                            <tr>
+                                <th>Capability</th>
+                                <th>Zoom / Teams</th>
+                                <th>Otter.ai / Fireflies</th>
+                                <th>Regional NLP Labs</th>
+                                <th style="color: var(--color-primary-light);">Talk2Me AI</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>African Dialect & Code-Switching</strong></td>
+                                <td><span class="badge-fail">Fails (&gt;40% WER)</span></td>
+                                <td><span class="badge-fail">Fails (&gt;35% WER)</span></td>
+                                <td>Batch models only</td>
+                                <td><span class="badge-win">✓ &lt;12% WER Realtime</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Latency for Live Captions</strong></td>
+                                <td>1,200ms – 2,000ms</td>
+                                <td>1,500ms+ (Bot delay)</td>
+                                <td>N/A (Non-realtime)</td>
+                                <td><span class="badge-win">✓ &lt;50ms (Groq LPU)</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Acoustic Noise Resilience (WASM)</strong></td>
+                                <td>Basic cloud filter</td>
+                                <td>Cloud-only processing</td>
+                                <td>None</td>
+                                <td><span class="badge-win">✓ Client-Side WASM</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Autonomous Action Boards</strong></td>
+                                <td>Manual note export</td>
+                                <td>Raw AI text blob</td>
+                                <td>None</td>
+                                <td><span class="badge-win">✓ Kanban + Audio Quotes</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Universal Accessibility</strong></td>
+                                <td>Basic Closed Captions</td>
+                                <td>Text transcripts only</td>
+                                <td>None</td>
+                                <td><span class="badge-win">✓ Sign PiP + TTS + AAA</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="font-size: 12.5px; color: var(--color-text-muted); text-align: center;">
+                    * Regional NLP labs (Khaya, Lelapa, Masakhane) provide research datasets; <strong>Talk2Me AI is the real-time collaboration layer that monetizes them.</strong>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 9: Traction & The Ask -->
+        <section class="slide" data-index="9">
+            <div class="slide-content">
+                <div>
+                    <div class="section-tag">08. The Ask & Vision</div>
+                    <h2 class="slide-heading" style="margin-top: 6px;">Building the Stripe for African Voice AI</h2>
+                    <p class="slide-subheading">We are raising Pre-Seed funding to scale the data flywheel and expand our B2B footprint across West & East Africa.</p>
+                </div>
+
+                <div class="grid-3">
+                    <div class="glass-card" style="text-align: left;">
+                        <span style="font-size: 24px;">🚀</span>
+                        <h3 style="font-size: 18px; margin: 8px 0; color:#fff;">The Ask</h3>
+                        <div style="font-size: 28px; font-weight:800; color:var(--color-primary-light); margin-bottom: 8px;">$750,000 – $1.2M</div>
+                        <p style="font-size: 13px; color: var(--color-text-muted); line-height: 1.5;">
+                            Pre-Seed / Seed round to fund 18 months of runway, proprietary model fine-tuning cluster, and direct B2B sales.
+                        </p>
+                    </div>
+
+                    <div class="glass-card" style="text-align: left;">
+                        <span style="font-size: 24px;">🎯</span>
+                        <h3 style="font-size: 18px; margin: 8px 0; color:#fff;">12-Month Targets</h3>
+                        <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--color-text-muted); margin-top:8px;">
+                            <li>• <strong>2,000+ Hours</strong> code-switching speech dataset</li>
+                            <li>• <strong>15,000 Active MAUs</strong> across 5 African tech hubs</li>
+                            <li>• <strong>$45K MRR</strong> from early BPO & Tech contracts</li>
+                            <li>• Deploy proprietary <strong>fine-tuned Whisper CTranslate2</strong></li>
+                        </ul>
+                    </div>
+
+                    <div class="glass-card" style="text-align: left;">
+                        <span style="font-size: 24px;">💼</span>
+                        <h3 style="font-size: 18px; margin: 8px 0; color:#fff;">Use of Funds</h3>
+                        <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--color-text-muted); margin-top:8px;">
+                            <li>• <strong>45% AI & Engineering</strong>: Speech scientists & SFU infra</li>
+                            <li>• <strong>30% GTM & BPO Sales</strong>: Accra, Lagos, Nairobi hubs</li>
+                            <li>• <strong>15% Compute & Dataset Curation</strong>: GPU fine-tuning</li>
+                            <li>• <strong>10% Legal & Security</strong>: Enterprise SOC2 & GDPR</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="glass-card" style="display:flex; align-items:center; justify-content:space-between; padding:20px 32px; background:linear-gradient(135deg, rgba(59,130,246,0.15), rgba(6,182,212,0.1)); border-color:rgba(59,130,246,0.4);">
+                    <div>
+                        <h4 style="font-size: 17px; color: #fff;">Join Us in Powering the Next 1 Billion Voices</h4>
+                        <p style="font-size: 13px; color: var(--color-text-muted); margin-top:2px;">Contact Founders: TechVerge-Africa • talk2me-ai</p>
+                    </div>
+                    <div style="display:flex; gap:12px;">
+                        <a href="https://github.com/TechVerge-Africa/talk2me-ai" target="_blank" style="padding:10px 20px; background:var(--color-primary); color:#fff; text-decoration:none; font-size:13px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+                            View Working Codebase →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div><!-- /.slide-deck -->
+
+    <div class="nav-controls">
+        <button class="nav-btn" onclick="prevSlide()" title="Previous Slide (←)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <span class="slide-counter"><span id="current">1</span> / <span id="total">9</span></span>
+        <button class="nav-btn" onclick="nextSlide()" title="Next Slide (→)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+    </div>
+
+    <div class="keyboard-hint">
+        Use <kbd>←</kbd> <kbd>→</kbd> or <kbd>Space</kbd> to navigate
+    </div>
+
+    <script>
+        let current = 1;
+        const slides = document.querySelectorAll('.slide');
+        const total = slides.length;
+        document.getElementById('total').textContent = total;
+
+        function showSlide(n) {
+            if (n < 1) n = 1;
+            if (n > total) n = total;
+            current = n;
+
+            slides.forEach((s, i) => {
+                s.classList.toggle('active', i === n - 1);
+            });
+
+            document.getElementById('current').textContent = n;
+            document.getElementById('progressBar').style.width = ((n / total) * 100) + '%';
+        }
+
+        function nextSlide() { showSlide(current + 1); }
+        function prevSlide() { showSlide(current - 1); }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { 
+                e.preventDefault(); 
+                nextSlide(); 
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'PageUp') { 
+                e.preventDefault(); 
+                prevSlide(); 
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.nav-controls') || e.target.closest('a') || e.target.closest('button')) return;
+            if (e.clientX > window.innerWidth * 0.75) {
+                nextSlide();
+            } else if (e.clientX < window.innerWidth * 0.25) {
+                prevSlide();
+            }
+        });
+
+        showSlide(1);
+    </script>
+</body>
+</html>

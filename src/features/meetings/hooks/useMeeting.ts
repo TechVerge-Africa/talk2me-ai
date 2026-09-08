@@ -83,7 +83,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
         if (meeting) {
           setMeetingDbId(meeting.id);
           setMeetingHostId(meeting.host_id);
-          const isMeetingEphemeral = meeting.workspace_id ? false : (meeting.settings?.is_ephemeral ?? isEphemeralFromUrl);
+          const isMeetingEphemeral = meeting.settings?.is_ephemeral ?? isEphemeralFromUrl;
           setIsEphemeral(isMeetingEphemeral);
           if (transcriptEngineRef.current) {
             transcriptEngineRef.current.setEphemeral(isMeetingEphemeral);
@@ -1147,6 +1147,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     // Admin properties
     requireApproval,
     isAdmitted,
+    isEphemeral,
     joinRequests,
     cohosts,
     meetingHostId,

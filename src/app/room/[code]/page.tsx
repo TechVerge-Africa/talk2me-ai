@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2 } from 'lucide-react';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
@@ -31,6 +31,11 @@ import { supabase } from '@/services/supabase/client';
 import { MeetingService } from '@/services/supabase/meetings';
 import { WorkspaceService } from '@/services/supabase/workspaces';
 import { Meeting } from '@/types/meeting';
+import { ActionDetectorService, DetectedActionCandidate } from '@/services/ai/action-detector';
+import { ActionConfirmationToast } from '@/features/meetings/room/action-confirmation-toast';
+import { MeetingWorkBoardPanel } from '@/features/meetings/room/meeting-work-board-panel';
+import { WorkBoardService } from '@/services/supabase/work-boards';
+import { WorkspaceBoard, BoardActionItem, BoardActionStatus } from '@/types/work-board';
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
 
@@ -941,7 +946,7 @@ function RoomContent({
     toggleMic, toggleCam, toggleScreenShare, toggleDeafMode, sendMessage, requestMute,
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
 
-    isAdmitted, joinRequests, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
+    isAdmitted, joinRequests, isEphemeral, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
     approveJoinRequest, denyJoinRequest, admitAllJoinRequests, muteAllParticipants, updateSettings, changeParticipantRole, stopParticipantScreenShare
   } = useMeeting(code, hostIdentity, () => onLeave(false), isAppAdmin);
 
@@ -961,7 +966,154 @@ function RoomContent({
 
 
   const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'transcript' | 'chat'>('transcript');
+  const [activeTab, setActiveTab] = useState<'transcript' | 'chat' | 'board'>('transcript');
+
+  const roomSearchParams = useSearchParams();
+  const currentWorkspaceId = meetingRecord?.workspace_id || roomSearchParams.get('workspaceId') || roomSearchParams.get('ws') || '';
+
+  // Work Board & Real-time Action state
+  const [workspaceBoards, setWorkspaceBoards] = useState<WorkspaceBoard[]>([]);
+  const [activeBoardId, setActiveBoardId] = useState<string>(meetingRecord?.board_id || '');
+  const [meetingActionItems, setMeetingActionItems] = useState<BoardActionItem[]>([]);
+  const [detectedCandidate, setDetectedCandidate] = useState<DetectedActionCandidate | null>(null);
+  const [evidenceHighlightedMs, setEvidenceHighlightedMs] = useState<number | null>(null);
+  const processedTurnsRef = useRef<Set<string>>(new Set());
+
+  // Load boards for the workspace
+  useEffect(() => {
+    let mounted = true;
+    if (!currentWorkspaceId) return;
+
+    async function loadBoards() {
+      try {
+        const fetched = await WorkBoardService.getWorkspaceBoards(currentWorkspaceId);
+        if (mounted) {
+          setWorkspaceBoards(fetched);
+          if (!activeBoardId && fetched.length > 0) {
+            setActiveBoardId(meetingRecord?.board_id || fetched[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn('[RoomContent] Error loading workspace boards:', err);
+      }
+    }
+
+    loadBoards();
+    return () => { mounted = false; };
+  }, [currentWorkspaceId, activeBoardId, meetingRecord?.board_id]);
+
+  // Load and subscribe to meeting action items
+  useEffect(() => {
+    let mounted = true;
+    async function loadItems() {
+      try {
+        const items = await WorkBoardService.getMeetingActionItems(code);
+        if (mounted) setMeetingActionItems(items);
+      } catch (err) {
+        console.warn('[RoomContent] Error loading meeting action items:', err);
+      }
+    }
+
+    loadItems();
+
+    const unsub = WorkBoardService.subscribeToMeetingActionItems(code, () => {
+      loadItems();
+    });
+
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, [code]);
+
+  // Real-time Action & Milestone Detection from Canonical Transcripts
+  useEffect(() => {
+    if (!canonicalTranscripts || canonicalTranscripts.length === 0) return;
+    const latestTurn = canonicalTranscripts[canonicalTranscripts.length - 1];
+    if (!latestTurn || !latestTurn.content) return;
+
+    const turnKey = latestTurn.turn_id || `${latestTurn.start_ms}_${latestTurn.content.slice(0, 30)}`;
+    if (processedTurnsRef.current.has(turnKey)) return;
+    processedTurnsRef.current.add(turnKey);
+
+    const participantInfos = participants.map((p) => ({
+      id: p.identity,
+      name: p.identity,
+    }));
+
+    const cand = ActionDetectorService.detectActionCandidate(latestTurn, participantInfos);
+    if (cand) {
+      setDetectedCandidate(cand);
+    }
+  }, [canonicalTranscripts, participants]);
+
+  const handleConfirmCandidate = async (cand: DetectedActionCandidate, targetBoardId: string) => {
+    try {
+      const created = await WorkBoardService.createActionItem({
+        board_id: targetBoardId,
+        workspace_id: currentWorkspaceId,
+        meeting_id: code,
+        title: cand.title,
+        category: cand.category,
+        assignee_name: cand.assignee_name,
+        assignee_id: cand.assignee_id,
+        due_date: cand.due_date,
+        priority: cand.priority,
+        evidence_quote: cand.evidence_quote,
+        evidence_timestamp_ms: cand.evidence_timestamp_ms,
+        evidence_speaker: cand.evidence_speaker,
+        created_by: localParticipant?.identity,
+      });
+
+      setMeetingActionItems((prev) => [...prev, created]);
+      setDetectedCandidate(null);
+    } catch (err) {
+      console.error('[RoomContent] Failed to confirm action candidate:', err);
+      setDetectedCandidate(null);
+    }
+  };
+
+  const handleUpdateMeetingActionStatus = async (itemId: string, newStatus: BoardActionStatus) => {
+    try {
+      setMeetingActionItems((prev) =>
+        prev.map((i) => (i.id === itemId ? { ...i, status: newStatus } : i))
+      );
+      await WorkBoardService.updateActionItemStatus(itemId, newStatus, localParticipant?.identity, localParticipant?.identity);
+    } catch (err) {
+      console.error('[RoomContent] Failed to update action status:', err);
+    }
+  };
+
+  const handleCreateMeetingActionManual = async (
+    title: string,
+    assigneeName: string,
+    category: 'action_item' | 'milestone'
+  ) => {
+    const targetBId = activeBoardId || workspaceBoards[0]?.id;
+    if (!targetBId) return;
+    try {
+      const created = await WorkBoardService.createActionItem({
+        board_id: targetBId,
+        workspace_id: currentWorkspaceId,
+        meeting_id: code,
+        title,
+        assignee_name: assigneeName,
+        category,
+        created_by: localParticipant?.identity,
+      });
+      setMeetingActionItems((prev) => [...prev, created]);
+    } catch (err) {
+      console.error('[RoomContent] Failed to create manual action:', err);
+    }
+  };
+
+  const handleSwitchMeetingBoard = async (boardId: string) => {
+    setActiveBoardId(boardId);
+    if (meetingRecord?.id) {
+      await MeetingService.updateMeetingBoard(meetingRecord.id, boardId);
+    }
+  };
+
   const [captionSize, setCaptionSize] = useState<'sm' | 'md' | 'lg'>('md');
   const [codeCopied, setCodeCopied] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -1235,6 +1387,25 @@ function RoomContent({
             <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
             {formatDuration(secondsElapsed)}
           </div>
+
+          {/* Privacy & Retention Badge */}
+          {isEphemeral ? (
+            <div
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 rounded-full text-[10px] font-bold text-amber-300 shadow-sm"
+              title="Private & Off-the-Record: Transcripts and summaries are not saved to the database."
+            >
+              <Shield className="size-3 text-amber-400" />
+              <span>Off-the-Record</span>
+            </div>
+          ) : (
+            <div
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/15 border border-indigo-500/30 rounded-full text-[10px] font-bold text-indigo-300 shadow-sm"
+              title="Smart AI Sync: Transcripts and AI meeting notes will be preserved."
+            >
+              <Sparkles className="size-3 text-indigo-400" />
+              <span>AI Sync Active</span>
+            </div>
+          )}
         </div>
 
 
@@ -1330,6 +1501,21 @@ function RoomContent({
           >
             Chat
           </button>
+          <button
+            onClick={() => setActiveTab('board')}
+            className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
+              activeTab === 'board'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            <span>Board</span>
+            {meetingActionItems.length > 0 && (
+              <span className="size-3.5 rounded-full bg-white/20 text-[9px] font-mono flex items-center justify-center">
+                {meetingActionItems.length}
+              </span>
+            )}
+          </button>
         </div>
         {/* Close button */}
         <button
@@ -1346,11 +1532,26 @@ function RoomContent({
         {activeTab === 'transcript' ? (
           <CanonicalTranscriptView
             transcripts={canonicalTranscripts}
-            highlightedMs={highlightedMs}
+            highlightedMs={highlightedMs || evidenceHighlightedMs}
           />
-        ) : (
+        ) : activeTab === 'chat' ? (
           <div className="h-full">
             <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
+          </div>
+        ) : (
+          <div className="h-full">
+            <MeetingWorkBoardPanel
+              board={workspaceBoards.find(b => b.id === activeBoardId) || workspaceBoards[0] || null}
+              boards={workspaceBoards}
+              actionItems={meetingActionItems}
+              onSelectBoard={handleSwitchMeetingBoard}
+              onCreateActionItem={handleCreateMeetingActionManual}
+              onUpdateStatus={handleUpdateMeetingActionStatus}
+              onEvidenceClick={(timestampMs) => {
+                setEvidenceHighlightedMs(timestampMs);
+                setActiveTab('transcript');
+              }}
+            />
           </div>
         )}
       </div>
@@ -1637,6 +1838,15 @@ function RoomContent({
               />
             )}
           </AnimatePresence>
+
+          {/* Real-Time Action Confirmation Toast */}
+          <ActionConfirmationToast
+            candidate={detectedCandidate}
+            boards={workspaceBoards}
+            selectedBoardId={activeBoardId}
+            onConfirm={handleConfirmCandidate}
+            onDismiss={() => setDetectedCandidate(null)}
+          />
         </div>
       </MeetingLayout>
 

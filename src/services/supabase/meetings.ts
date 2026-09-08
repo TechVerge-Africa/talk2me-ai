@@ -22,6 +22,7 @@ function toMeeting(row: Record<string, unknown>): Meeting {
     created_at: row.created_at as string,
     scheduled_at: row.scheduled_at as string | undefined,
     workspace_id: workspaceId,
+    board_id: row.board_id as string | undefined,
     status: row.is_active ? 'active' : 'ended',
     settings: settings ? {
       require_approval: !!settings.require_approval,
@@ -52,7 +53,8 @@ export const MeetingService = {
     allowScreenShare: boolean = true,
     workspaceId?: string,
     isEphemeral: boolean = false,
-    accessLevel?: 'members_only' | 'open'
+    accessLevel?: 'members_only' | 'open',
+    boardId?: string
   ): Promise<Meeting> {
     const roomCode = generateRoomCode();
     const resolvedAccessLevel = accessLevel ?? (workspaceId ? 'members_only' : 'open');
@@ -75,6 +77,9 @@ export const MeetingService = {
 
     if (workspaceId) {
       insertPayload.workspace_id = workspaceId;
+    }
+    if (boardId) {
+      insertPayload.board_id = boardId;
     }
 
     const { data, error } = await supabase
@@ -100,7 +105,7 @@ export const MeetingService = {
   async getMeetingByCodeAny(code: string): Promise<Meeting | null> {
     const { data, error } = await supabase
       .from('meetings')
-      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id, board_id')
       .eq('room_code', code)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -137,6 +142,19 @@ export const MeetingService = {
     }
   },
 
+  /**
+   * Updates the connected board for a meeting.
+   */
+  async updateMeetingBoard(meetingId: string, boardId: string): Promise<void> {
+    const { error } = await supabase
+      .from('meetings')
+      .update({ board_id: boardId })
+      .eq('id', meetingId);
+
+    if (error) {
+      console.warn('[MeetingService] updateMeetingBoard error:', error.message);
+    }
+  },
 
   /**
    * Fetches an active meeting by its room code
@@ -144,7 +162,7 @@ export const MeetingService = {
   async getMeetingByCode(code: string): Promise<Meeting | null> {
     const { data, error } = await supabase
       .from('meetings')
-      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id, board_id')
       .eq('room_code', code)
       .eq('is_active', true)
       .single();
@@ -241,7 +259,7 @@ export const MeetingService = {
   async getWorkspaceMeetings(workspaceId: string): Promise<(Meeting & { ended_at?: string | null })[]> {
     const { data, error } = await supabase
       .from('meetings')
-      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id')
+      .select('id, room_name, room_code, host_id, is_active, settings, created_at, scheduled_at, ended_at, workspace_id, board_id')
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
       .limit(50);
