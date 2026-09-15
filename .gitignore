@@ -45,3 +45,7 @@ docs/*STRATEGY*
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Generated PDFs and scripts
+*.pdf
+scripts/generate_pdf.py
