@@ -302,6 +302,8 @@ export const WorkBoardService = {
    */
   async createActionItem(params: CreateActionItemParams): Promise<BoardActionItem> {
     const dbMeetingUuid = await resolveMeetingUuid(params.meeting_id);
+    const isUUID = (val?: string | null): boolean =>
+      !!val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
     const payload = {
       board_id: params.board_id,
@@ -311,7 +313,7 @@ export const WorkBoardService = {
       description: params.description?.trim() || '',
       status: params.status || 'todo',
       category: params.category || 'action_item',
-      assignee_id: params.assignee_id || null,
+      assignee_id: isUUID(params.assignee_id) ? params.assignee_id : null,
       assignee_name: params.assignee_name?.trim() || 'Unassigned',
       assignee_avatar: params.assignee_avatar || null,
       due_date: params.due_date || null,
@@ -319,7 +321,7 @@ export const WorkBoardService = {
       evidence_quote: params.evidence_quote || null,
       evidence_timestamp_ms: params.evidence_timestamp_ms || null,
       evidence_speaker: params.evidence_speaker || null,
-      created_by: params.created_by || null,
+      created_by: isUUID(params.created_by) ? params.created_by : null,
     };
 
     const { data, error } = await supabase
@@ -372,6 +374,10 @@ export const WorkBoardService = {
     userId?: string,
     userName?: string
   ): Promise<BoardActionItem> {
+    const isUUID = (val?: string | null): boolean =>
+      !!val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    const validUserId = isUUID(userId) ? userId : null;
+
     const updatePayload: Record<string, any> = {
       status: newStatus,
       updated_at: new Date().toISOString(),
@@ -379,7 +385,7 @@ export const WorkBoardService = {
 
     if (newStatus === 'done') {
       updatePayload.completed_at = new Date().toISOString();
-      updatePayload.completed_by = userId || null;
+      updatePayload.completed_by = validUserId;
     } else {
       updatePayload.completed_at = null;
       updatePayload.completed_by = null;
@@ -501,25 +507,39 @@ export const WorkBoardService = {
   /**
    * Real-time subscription for action items created in a specific meeting.
    */
-  subscribeToMeetingActionItems(meetingId: string, onUpdate: () => void) {
-    const channel = supabase
-      .channel(`meeting-actions-${meetingId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'board_action_items',
-          filter: `meeting_id=eq.${meetingId}`,
-        },
-        () => {
-          onUpdate();
-        }
-      )
-      .subscribe();
+  subscribeToMeetingActionItems(meetingIdOrCode: string, onUpdate: () => void) {
+    let channel: any = null;
+    let isCancelled = false;
+
+    const setup = async () => {
+      const resolvedUuid = await resolveMeetingUuid(meetingIdOrCode);
+      if (isCancelled) return;
+      const targetId = resolvedUuid || meetingIdOrCode;
+
+      channel = supabase
+        .channel(`meeting-actions-${targetId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'board_action_items',
+            filter: `meeting_id=eq.${targetId}`,
+          },
+          () => {
+            onUpdate();
+          }
+        )
+        .subscribe();
+    };
+
+    setup();
 
     return () => {
-      supabase.removeChannel(channel);
+      isCancelled = true;
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   },
 };

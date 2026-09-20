@@ -95,8 +95,13 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
               setAllowScreenShare(meeting.settings.allow_screen_share);
             }
             
-            // Check if local participant is host
-            const isLocalHost = room?.localParticipant?.identity === meeting.host_id;
+            // Check if local participant is host.
+            // NOTE: room.localParticipant.identity is the display name (e.g. "mrlogic"),
+            // while meeting.host_id is a Supabase auth UUID. They will almost never match
+            // directly. The primary check is user.id === host_id; the identity fallback
+            // handles the rare edge case where the token was minted with the UUID as identity.
+            const isLocalHost = (user?.id != null && user.id === meeting.host_id)
+              || room?.localParticipant?.identity === meeting.host_id;
             const initialStatus: ParticipantStatus = (isLocalHost || isAppAdmin || !reqApproval) ? 'admitted' : 'waiting';
             
             if (!isLocalHost && !isAppAdmin && reqApproval) {
@@ -545,6 +550,19 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             alert('The host has ended this meeting.');
             room.disconnect();
             if (handlersRef.current.onLeave) handlersRef.current.onLeave();
+          }
+        } else if (msg.type === 'board_switch') {
+          // Host/admin switched active board — update every participant's view
+          if (msg.board_id && typeof msg.board_id === 'string') {
+            const isSenderAdmin =
+              msg.sender_id === handlersRef.current.meetingHostId ||
+              !!handlersRef.current.cohosts[msg.sender_id as string];
+            if (isSenderAdmin) {
+              // Dispatch a custom DOM event so RoomContent can update activeBoardId state
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('t2_board_switch', { detail: { boardId: msg.board_id } }));
+              }
+            }
           }
         }
       } catch (e) {
@@ -1106,6 +1124,23 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     setTimeout(() => setHighlightedMs(null), 5000);
   }, []);
 
+  /**
+   * Broadcast an active board change to all remote participants so their
+   * sidebar automatically switches to the same work board.
+   */
+  const broadcastBoardSwitch = useCallback((boardId: string) => {
+    if (!room?.localParticipant) return;
+    try {
+      publishRoomData(
+        room.localParticipant,
+        { type: 'board_switch', board_id: boardId, sender_id: room.localParticipant.identity },
+        { reliable: true },
+      );
+    } catch (e) {
+      console.error('[useMeeting] Failed to broadcast board_switch:', e);
+    }
+  }, [room]);
+
   return {
     roomCode,
     micOn,
@@ -1160,6 +1195,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     updateSettings,
     changeParticipantRole,
     stopParticipantScreenShare,
+    broadcastBoardSwitch,
   };
 }
 

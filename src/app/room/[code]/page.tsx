@@ -642,12 +642,14 @@ function LeftMeetingScreen({
   didEndMeeting,
   onRejoin,
   onReopen,
+  workspaceId: workspaceIdProp,
 }: {
   code: string;
   isHost: boolean;
   didEndMeeting: boolean;
   onRejoin: () => void;
   onReopen: () => void;
+  workspaceId?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -656,14 +658,16 @@ function LeftMeetingScreen({
   const [randomParticipants] = useState(() => Math.floor(Math.random() * 5) + 2);
 
   const returnUrl = useMemo(() => {
-    const wsId = searchParams.get('workspaceId') || searchParams.get('ws') || (() => {
-      try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
-    })();
+    const wsId = searchParams.get('workspaceId') || searchParams.get('ws')
+      || workspaceIdProp
+      || (() => {
+        try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
+      })();
     const tab = searchParams.get('tab') || (() => {
       try { return sessionStorage.getItem('t2_return_tab') || localStorage.getItem('t2_active_tab_v1') || 'home'; } catch { return 'home'; }
     })();
     return wsId ? `/dashboard?ws=${wsId}&tab=${tab}` : (user ? `/dashboard?tab=${tab}` : '/');
-  }, [searchParams, user]);
+  }, [searchParams, user, workspaceIdProp]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 gap-8 font-sans">
@@ -939,6 +943,7 @@ function RoomContent({
   accessLevel?: 'members_only' | 'open';
   onToggleAccessLevel?: () => void;
 }) {
+  const { user: authedUser } = useAuth();
   const {
     micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
     captions, canonicalTranscripts, activeInterims, highlightedMs,
@@ -947,7 +952,8 @@ function RoomContent({
     raisedHands, reactions, toggleRaiseHand, sendReaction, requestKick,
 
     isAdmitted, joinRequests, isEphemeral, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
-    approveJoinRequest, denyJoinRequest, admitAllJoinRequests, muteAllParticipants, updateSettings, changeParticipantRole, stopParticipantScreenShare
+    approveJoinRequest, denyJoinRequest, admitAllJoinRequests, muteAllParticipants, updateSettings, changeParticipantRole, stopParticipantScreenShare,
+    broadcastBoardSwitch,
   } = useMeeting(code, hostIdentity, () => onLeave(false), isAppAdmin);
 
   const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
@@ -1026,6 +1032,16 @@ function RoomContent({
     };
   }, [code]);
 
+  // Listen for board switch events broadcast by host/admin via LiveKit data channel
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const boardId = (e as CustomEvent<{ boardId: string }>).detail?.boardId;
+      if (boardId) setActiveBoardId(boardId);
+    };
+    window.addEventListener('t2_board_switch', handler);
+    return () => window.removeEventListener('t2_board_switch', handler);
+  }, []);
+
   // Real-time Action & Milestone Detection from Canonical Transcripts
   useEffect(() => {
     if (!canonicalTranscripts || canonicalTranscripts.length === 0) return;
@@ -1062,7 +1078,7 @@ function RoomContent({
         evidence_quote: cand.evidence_quote,
         evidence_timestamp_ms: cand.evidence_timestamp_ms,
         evidence_speaker: cand.evidence_speaker,
-        created_by: localParticipant?.identity,
+        created_by: authedUser?.id || undefined,
       });
 
       setMeetingActionItems((prev) => [...prev, created]);
@@ -1099,7 +1115,7 @@ function RoomContent({
         title,
         assignee_name: assigneeName,
         category,
-        created_by: localParticipant?.identity,
+        created_by: authedUser?.id || undefined,
       });
       setMeetingActionItems((prev) => [...prev, created]);
     } catch (err) {
@@ -1109,6 +1125,8 @@ function RoomContent({
 
   const handleSwitchMeetingBoard = async (boardId: string) => {
     setActiveBoardId(boardId);
+    // Broadcast the new active board to all remote participants
+    broadcastBoardSwitch(boardId);
     if (meetingRecord?.id) {
       await MeetingService.updateMeetingBoard(meetingRecord.id, boardId);
     }
@@ -1808,7 +1826,7 @@ function RoomContent({
             noiseReductionLevel={noiseReductionLevel}
             onToggleAiNoise={toggleAiNoiseShield}
             accessLevel={accessLevel}
-            onToggleAccessLevel={isHost || meetingRecord?.workspace_id ? onToggleAccessLevel : undefined}
+            onToggleAccessLevel={isHost || isAdmin ? onToggleAccessLevel : undefined}
             isWorkspaceMeeting={!!meetingRecord?.workspace_id}
           />
         }
@@ -1996,8 +2014,10 @@ function RoomPageInner() {
     }
   }, [meetingRecord, meetingAccessLevel]);
 
-  // A user is a host if they're signed in
-  const isHost = !!user;
+  // A user is the host only if their auth ID matches the meeting's host_id.
+  // Using !!user here would be a privilege-escalation bug: every signed-in
+  // participant would get host controls.
+  const isHost = !!(user && meetingRecord && user.id === meetingRecord.host_id);
 
   const roomOptions = useMemo<RoomOptions>(() => ({
     adaptiveStream: true,
@@ -2032,7 +2052,7 @@ function RoomPageInner() {
       setShowPreJoin(false);
     } catch (e) {
       console.error('Failed to generate LiveKit token:', e);
-      setError('Could not connect to the room. Please check your connection.');
+      setError(e instanceof Error && e.message ? e.message : 'Could not connect to the room. Please check your connection.');
     }
   }, [code, user, SESSION_KEY, targetRoomCode]);
 
@@ -2207,6 +2227,7 @@ function RoomPageInner() {
         didEndMeeting={isHost && endOptionSelected}
         onRejoin={handleRejoin}
         onReopen={handleReopen}
+        workspaceId={meetingRecord?.workspace_id || undefined}
       />
     );
   }

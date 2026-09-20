@@ -32,8 +32,10 @@ export const generateToken = async (
     body: JSON.stringify({ roomName, participantName }),
   });
 
-  if (!response.ok) throw new Error('Failed to fetch token');
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || `Failed to fetch token (${response.status})`);
+  }
 
-  const data = await response.json();
   return data.token;
 };

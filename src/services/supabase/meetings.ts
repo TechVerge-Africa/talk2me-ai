@@ -283,17 +283,20 @@ export const MeetingService = {
    */
   async getActiveWorkspaceMeetings(workspaceIds: string[]): Promise<Meeting[]> {
     if (!workspaceIds || !workspaceIds.length) return [];
+    const nowIso = new Date().toISOString();
     const { data, error } = await supabase
       .from('meetings')
       .select('*')
       .in('workspace_id', workspaceIds)
-      .or('is_active.eq.true,scheduled_at.not.is.null');
+      .or(`is_active.eq.true,and(scheduled_at.gte.${nowIso},ended_at.is.null)`);
 
     if (error) return [];
-    return (data || []).map(row => ({
-      ...toMeeting(row as Record<string, unknown>),
-      ended_at: (row as any).ended_at ?? null,
-    }));
+    return (data || [])
+      .filter((row: any) => row.is_active || (!row.ended_at && row.scheduled_at && new Date(row.scheduled_at).getTime() > Date.now()))
+      .map(row => ({
+        ...toMeeting(row as Record<string, unknown>),
+        ended_at: (row as any).ended_at ?? null,
+      }));
   },
 
   /**
