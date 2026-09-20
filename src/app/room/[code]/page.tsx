@@ -16,7 +16,6 @@ import { ControlDock } from '@/features/meetings/room/controls';
 import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { AiSignerView } from '@/features/accessibility/sign-language';
 import { CaptionList } from '@/features/captions/caption-list';
-import { CanonicalTranscriptView } from '@/features/transcript/components/canonical-transcript-view';
 
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
@@ -34,6 +33,8 @@ import { Meeting } from '@/types/meeting';
 import { ActionDetectorService, DetectedActionCandidate } from '@/services/ai/action-detector';
 import { ActionConfirmationToast } from '@/features/meetings/room/action-confirmation-toast';
 import { MeetingWorkBoardPanel } from '@/features/meetings/room/meeting-work-board-panel';
+import { AiScribeIndicator } from '@/features/meetings/room/ai-scribe-indicator';
+import { AiNotesPanel } from '@/features/meetings/room/ai-notes-panel';
 import { WorkBoardService } from '@/services/supabase/work-boards';
 import { WorkspaceBoard, BoardActionItem, BoardActionStatus } from '@/types/work-board';
 
@@ -972,7 +973,7 @@ function RoomContent({
 
 
   const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'transcript' | 'chat' | 'board'>('transcript');
+  const [activeTab, setActiveTab] = useState<'notes' | 'chat' | 'board'>('chat');
 
   const roomSearchParams = useSearchParams();
   const currentWorkspaceId = meetingRecord?.workspace_id || roomSearchParams.get('workspaceId') || roomSearchParams.get('ws') || '';
@@ -1406,7 +1407,7 @@ function RoomContent({
             {formatDuration(secondsElapsed)}
           </div>
 
-          {/* Privacy & Retention Badge */}
+          {/* Privacy & Retention Badge / Ambient AI Scribe */}
           {isEphemeral ? (
             <div
               className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 rounded-full text-[10px] font-bold text-amber-300 shadow-sm"
@@ -1416,13 +1417,15 @@ function RoomContent({
               <span>Off-the-Record</span>
             </div>
           ) : (
-            <div
-              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/15 border border-indigo-500/30 rounded-full text-[10px] font-bold text-indigo-300 shadow-sm"
-              title="Smart AI Sync: Transcripts and AI meeting notes will be preserved."
-            >
-              <Sparkles className="size-3 text-indigo-400" />
-              <span>AI Sync Active</span>
-            </div>
+            <AiScribeIndicator
+              capturedCount={meetingActionItems.length}
+              isEphemeral={false}
+              workspaceMeetingHref={currentWorkspaceId ? `/dashboard?ws=${currentWorkspaceId}&tab=meetings` : undefined}
+              onOpenNotes={() => {
+                setActiveTab('notes');
+                setSidebarOpen(true);
+              }}
+            />
           )}
         </div>
 
@@ -1500,16 +1503,6 @@ function RoomContent({
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.07] flex-shrink-0">
         <div className="flex items-center gap-1 flex-1 p-1 bg-white/[0.06] border border-white/10 rounded-full">
           <button
-            onClick={() => setActiveTab('transcript')}
-            className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
-              activeTab === 'transcript'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'text-white/40 hover:text-white/70'
-            }`}
-          >
-            Transcript
-          </button>
-          <button
             onClick={() => setActiveTab('chat')}
             className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all ${
               activeTab === 'chat'
@@ -1528,6 +1521,16 @@ function RoomContent({
             }`}
           >
             <span>Board</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition-all flex items-center justify-center gap-1 ${
+              activeTab === 'notes'
+                ? 'bg-indigo-500 text-white shadow-md'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            <span>AI Notes</span>
             {meetingActionItems.length > 0 && (
               <span className="size-3.5 rounded-full bg-white/20 text-[9px] font-mono flex items-center justify-center">
                 {meetingActionItems.length}
@@ -1547,16 +1550,11 @@ function RoomContent({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto min-h-0 pb-safe">
-        {activeTab === 'transcript' ? (
-          <CanonicalTranscriptView
-            transcripts={canonicalTranscripts}
-            highlightedMs={highlightedMs || evidenceHighlightedMs}
-          />
-        ) : activeTab === 'chat' ? (
+        {activeTab === 'chat' ? (
           <div className="h-full">
             <ChatPanel messages={messages} onSendMessage={sendMessage} participants={participants} localParticipantIdentity={localParticipant?.identity} />
           </div>
-        ) : (
+        ) : activeTab === 'board' ? (
           <div className="h-full">
             <MeetingWorkBoardPanel
               board={workspaceBoards.find(b => b.id === activeBoardId) || workspaceBoards[0] || null}
@@ -1567,8 +1565,20 @@ function RoomContent({
               onUpdateStatus={handleUpdateMeetingActionStatus}
               onEvidenceClick={(timestampMs) => {
                 setEvidenceHighlightedMs(timestampMs);
-                setActiveTab('transcript');
+                setActiveTab('notes');
               }}
+            />
+          </div>
+        ) : (
+          <div className="h-full">
+            <AiNotesPanel
+              actionItems={meetingActionItems}
+              isEphemeral={isEphemeral}
+              roomCode={code}
+              workspaceId={currentWorkspaceId}
+              onUpdateStatus={handleUpdateMeetingActionStatus}
+              onCreateItem={handleCreateMeetingActionManual}
+              onEvidenceClick={(timestampMs) => setEvidenceHighlightedMs(timestampMs)}
             />
           </div>
         )}

@@ -133,8 +133,8 @@ export function ControlDock({
           {/* Captions */}
           <button
             onClick={onToggleCaptions ?? onCaptionSize}
-            title={captionsOn ? "Hide Captions" : "Show Captions"}
-            aria-label={captionsOn ? "Hide Captions" : "Show Captions"}
+            title={captionsOn ? "Hide Live Captions (CC)" : "Show Live Captions (CC)"}
+            aria-label={captionsOn ? "Hide Live Captions (CC)" : "Show Live Captions (CC)"}
             className={captionsOn ? activeBtn("bg-[#2563eb] hover:bg-[#1d4ed8]") : idleBtn}
           >
             <Type className="size-4" />
@@ -393,8 +393,8 @@ export function ControlDock({
             className={screenShareOn ? activeBtn("bg-[#2563eb] hover:bg-[#1d4ed8]") : idleBtn}>
             <MonitorUp className="size-5" />
           </button>
-          <button onClick={onToggleCaptions ?? onCaptionSize} title={captionsOn ? "Hide Captions" : "Show Captions"}
-            aria-label={captionsOn ? "Hide Captions" : "Show Captions"}
+          <button onClick={onToggleCaptions ?? onCaptionSize} title={captionsOn ? "Hide Live Captions (CC)" : "Show Live Captions (CC)"}
+            aria-label={captionsOn ? "Hide Live Captions (CC)" : "Show Live Captions (CC)"}
             className={captionsOn ? activeBtn("bg-[#2563eb] hover:bg-[#1d4ed8]") : idleBtn}>
             <Type className="size-5" />
           </button>

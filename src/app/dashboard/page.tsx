@@ -3059,7 +3059,7 @@ function DashboardContent() {
                             <div className="flex items-center gap-2">
                               <Sparkles className="size-4 text-sky-600 dark:text-sky-400" />
                               <span className="text-xs font-extrabold text-sky-900 dark:text-sky-200 uppercase tracking-wide">
-                                AI Summary
+                                Talk2Me AI Scribe · Executive Summary
                               </span>
                             </div>
                             {detail.summary && (
