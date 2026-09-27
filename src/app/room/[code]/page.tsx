@@ -23,7 +23,7 @@ import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/vide
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
 import { CameraPreview } from '@/features/meetings/room/camera-preview';
-import { MeetingDoorPortal } from '@/features/meetings/room/door-portal';
+import { NetworkDoorScene } from '@/features/meetings/room/network-door-scene';
 import { useAuth } from '@/features/auth/use-auth';
 import { generateToken } from '@/services/livekit/room';
 import { supabase } from '@/services/supabase/client';
@@ -641,6 +641,7 @@ function LeftMeetingScreen({
   code,
   isHost,
   didEndMeeting,
+  wasEndedByHost = false,
   onRejoin,
   onReopen,
   workspaceId: workspaceIdProp,
@@ -648,6 +649,7 @@ function LeftMeetingScreen({
   code: string;
   isHost: boolean;
   didEndMeeting: boolean;
+  wasEndedByHost?: boolean;
   onRejoin: () => void;
   onReopen: () => void;
   workspaceId?: string;
@@ -682,17 +684,23 @@ function LeftMeetingScreen({
       >
         {/* Icon */}
         <div className="size-20 rounded-3xl bg-blue-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 grid place-items-center mx-auto mb-6">
-          <span className="text-4xl">{isHost ? '👑' : '👋'}</span>
+          <span className="text-4xl">{isHost ? '👑' : (didEndMeeting || wasEndedByHost ? '🏁' : '👋')}</span>
         </div>
 
         <h1 className="text-3xl font-bold tracking-tight mb-2 font-heading">
-          {didEndMeeting ? 'You ended the session' : 'You left the meeting'}
+          {didEndMeeting
+            ? 'You ended the session'
+            : wasEndedByHost
+            ? 'This meeting has ended'
+            : 'You left the meeting'}
         </h1>
         <p className="text-muted-foreground text-sm">
           {didEndMeeting
             ? 'The meeting has been ended. You can reopen it or return to your workspace.'
+            : wasEndedByHost
+            ? 'The host has ended this meeting session for all participants.'
             : `Meeting code: `}
-          {!didEndMeeting && <span className="font-mono font-bold text-foreground">{code}</span>}
+          {!didEndMeeting && !wasEndedByHost && <span className="font-mono font-bold text-foreground">{code}</span>}
         </p>
 
         {/* Stats row for host */}
@@ -711,33 +719,42 @@ function LeftMeetingScreen({
 
         {/* Actions */}
         <div className="mt-8 flex flex-col gap-3 font-sans">
+          {/* Summary / Notes link */}
+          <Link
+            href={`/room/${code}/summary`}
+            className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-sm hover:bg-blue-700 transition bg-blue-600"
+          >
+            <Sparkles className="size-5" />
+            View Meeting Summary &amp; Notes
+          </Link>
+
           {/* Primary Return to Workspace / Dashboard Button */}
           <button
             onClick={() => router.push(returnUrl)}
-            className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-sm hover:bg-blue-700 transition bg-blue-600"
+            className="w-full h-12 rounded-2xl border border-slate-300 dark:border-slate-700 font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
           >
             <Building2 className="size-5" />
             {user ? 'Return to Workspace' : 'Back to Home'}
           </button>
 
-          {/* Host who ended: offer Reopen. Host who left / participant: offer Rejoin */}
+          {/* Host who ended: offer Reopen. Host who left / participant (if meeting not ended): offer Rejoin */}
           {didEndMeeting ? (
             <button
               onClick={onReopen}
-              className="w-full h-12 rounded-2xl border border-slate-300 dark:border-slate-700 font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              className="w-full h-12 rounded-2xl bg-card border border-border font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-muted transition text-xs"
             >
               <RotateCcw className="size-4" />
               Reopen &amp; Rejoin
             </button>
-          ) : (
+          ) : !wasEndedByHost ? (
             <button
               onClick={onRejoin}
-              className="w-full h-12 rounded-2xl border border-slate-300 dark:border-slate-700 font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+              className="w-full h-12 rounded-2xl bg-card border border-border font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-muted transition text-xs"
             >
               <RotateCcw className="size-4" />
               Rejoin Meeting
             </button>
-          )}
+          ) : null}
 
           {isHost && (
             <button
@@ -746,6 +763,96 @@ function LeftMeetingScreen({
             >
               <Crown className="size-4 text-amber-500" />
               Start New Meeting
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── Meeting Ended Screen (for visitors / rejoiners to concluded rooms) ─
+function MeetingEndedScreen({
+  code,
+  meeting,
+  onReopen,
+  isHost = false,
+}: {
+  code: string;
+  meeting: Meeting;
+  onReopen?: () => void;
+  isHost?: boolean;
+}) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
+
+  const returnUrl = useMemo(() => {
+    const wsId = searchParams.get('workspaceId') || searchParams.get('ws')
+      || meeting.workspace_id
+      || (() => {
+        try { return sessionStorage.getItem('t2_return_workspace_id') || localStorage.getItem('t2_active_workspace_v1') || null; } catch { return null; }
+      })();
+    const tab = searchParams.get('tab') || (() => {
+      try { return sessionStorage.getItem('t2_return_tab') || localStorage.getItem('t2_active_tab_v1') || 'home'; } catch { return 'home'; }
+    })();
+    return wsId ? `/dashboard?ws=${wsId}&tab=${tab}` : (user ? `/dashboard?tab=${tab}` : '/');
+  }, [searchParams, user, meeting.workspace_id]);
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-6 gap-8 font-sans">
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-cyan-500/5 pointer-events-none" />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative w-full max-w-md text-center"
+      >
+        <div className="size-20 rounded-3xl bg-indigo-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 grid place-items-center mx-auto mb-6 shadow-sm">
+          <span className="text-4xl">🏁</span>
+        </div>
+
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-3">
+          <span className="size-1.5 rounded-full bg-slate-400" />
+          Session Concluded
+        </div>
+
+        <h1 className="text-3xl font-extrabold tracking-tight mb-2 font-heading text-slate-900 dark:text-white">
+          This meeting has ended
+        </h1>
+        <p className="text-muted-foreground text-sm leading-relaxed max-w-sm mx-auto">
+          The host has concluded this session. All transcripts and notes captured by Talk2Me AI have been preserved.
+        </p>
+
+        <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs text-muted-foreground flex items-center justify-between">
+          <span className="font-semibold text-foreground truncate max-w-[200px]">{meeting.title || `Room ${code}`}</span>
+          <span className="font-mono font-bold text-[11px] px-2 py-0.5 rounded-md bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600">{code}</span>
+        </div>
+
+        <div className="mt-8 flex flex-col gap-3 font-sans">
+          <Link
+            href={`/room/${code}/summary`}
+            className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-500 transition bg-indigo-600 text-sm"
+          >
+            <Sparkles className="size-4" />
+            View Meeting Summary &amp; Notes
+          </Link>
+
+          <button
+            onClick={() => router.push(returnUrl)}
+            className="w-full h-12 rounded-2xl border border-slate-300 dark:border-slate-700 font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition text-sm"
+          >
+            <Building2 className="size-4" />
+            {user ? 'Return to Workspace' : 'Back to Home'}
+          </button>
+
+          {isHost && onReopen && (
+            <button
+              onClick={onReopen}
+              className="w-full h-12 rounded-2xl bg-card border border-border font-semibold text-slate-900 dark:text-white flex items-center justify-center gap-2 hover:bg-muted transition text-xs"
+            >
+              <RotateCcw className="size-3.5" />
+              Reopen This Meeting (Host Only)
             </button>
           )}
         </div>
@@ -936,7 +1043,7 @@ function RoomContent({
 }: {
   code: string;
   isHost: boolean;
-  onLeave: (endForAll?: boolean) => void;
+  onLeave: (endForAll?: boolean, wasEndedByHost?: boolean) => void;
   hostIdentity?: string;
   meetingId?: string;
   isAppAdmin?: boolean;
@@ -955,7 +1062,16 @@ function RoomContent({
     isAdmitted, joinRequests, isEphemeral, cohosts, meetingHostId, allowScreenShare, isAdmin, requireApproval,
     approveJoinRequest, denyJoinRequest, admitAllJoinRequests, muteAllParticipants, updateSettings, changeParticipantRole, stopParticipantScreenShare,
     broadcastBoardSwitch,
-  } = useMeeting(code, hostIdentity, () => onLeave(false), isAppAdmin);
+    endMeetingForAll,
+    connectionState,
+    isNetworkOffline,
+  } = useMeeting(
+    code,
+    hostIdentity,
+    () => onLeave(false, false),
+    isAppAdmin,
+    () => onLeave(false, true)
+  );
 
   const selfViewConstraintsRef = useRef<HTMLDivElement>(null);
   const [captionsOn, setCaptionsOn] = useState(() => {
@@ -1146,6 +1262,21 @@ function RoomContent({
     }
     prevAdmittedRef.current = isAdmitted;
   }, [isAdmitted]);
+
+  const [networkPortalPhase, setNetworkPortalPhase] = useState<'idle' | 'waiting' | 'entering'>('idle');
+  const wasReconnectingRef = useRef(false);
+
+  const isDisconnectedOrReconnecting = connectionState === 'reconnecting' || connectionState === 'disconnected' || isNetworkOffline;
+
+  useEffect(() => {
+    if (isDisconnectedOrReconnecting) {
+      wasReconnectingRef.current = true;
+      setNetworkPortalPhase('waiting');
+    } else if (wasReconnectingRef.current && connectionState === 'connected' && !isNetworkOffline) {
+      wasReconnectingRef.current = false;
+      setNetworkPortalPhase('entering');
+    }
+  }, [isDisconnectedOrReconnecting, connectionState, isNetworkOffline]);
 
   const screenTracks = useTracks([Track.Source.ScreenShare]);
   const hasScreenShare = screenTracks.length > 0;
@@ -1689,12 +1820,28 @@ function RoomContent({
             </motion.div>
           );
         })}
-        {participants.length === 0 && (
-          <div className="flex flex-col items-center gap-3 text-white/30">
-            <div className="size-16 rounded-full bg-white/5 ring-1 ring-white/5 flex items-center justify-center text-3xl">🎙️</div>
-            <p className="text-xs font-semibold tracking-wide">Waiting for others...</p>
+        {/* Talk2Me AI Always-Present Audio Avatar */}
+        <motion.div
+          animate={activeSpeaker?.isSpeaking ? { scale: [1, 1.05, 1], transition: { repeat: Infinity, duration: 1.5 } } : { scale: 1 }}
+          className="flex flex-col items-center gap-2"
+        >
+          <div className="relative size-14 rounded-full flex items-center justify-center font-bold text-lg bg-gradient-to-tr from-indigo-600 via-purple-600 to-cyan-400 text-white shadow-xl shadow-indigo-500/25 ring-2 ring-indigo-400/40">
+            <Sparkles className="size-6 text-white animate-pulse" />
+            <div className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-indigo-500 text-[8px] font-black uppercase tracking-wider text-white shadow">
+              AGI
+            </div>
+            {/* Listening pulse ring */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0.7 }}
+              animate={{ scale: 1.6, opacity: 0 }}
+              transition={{ repeat: Infinity, duration: 2, ease: "easeOut" }}
+              className="absolute inset-0 rounded-full bg-indigo-500/30 -z-10"
+            />
           </div>
-        )}
+          <span className="text-[10px] font-bold text-indigo-300 max-w-[64px] truncate text-center flex items-center gap-0.5">
+            Talk2Me AI
+          </span>
+        </motion.div>
       </div>
 
       {/* Live transcript bubble */}
@@ -1789,12 +1936,10 @@ function RoomContent({
 
   if (!isAdmitted) {
     return (
-      <MeetingDoorPortal
-        isWaiting={true}
-        isEntering={false}
-        onCancel={() => onLeave(false)}
-        displayName={localParticipant?.identity || hostIdentity || 'Communicator'}
-        roomCode={code}
+      <NetworkDoorScene
+        status="reconnecting"
+        title="Standing at Door"
+        subtitle={`Please wait, the host will open the door for room #${code} soon...`}
       />
     );
   }
@@ -1802,12 +1947,23 @@ function RoomContent({
   return (
     <>
       {isEnteringDoor && (
-        <MeetingDoorPortal
-          isWaiting={false}
-          isEntering={true}
-          onCompleteOpening={() => setIsEnteringDoor(false)}
-          displayName={localParticipant?.identity || hostIdentity || 'Communicator'}
-          roomCode={code}
+        <NetworkDoorScene
+          status="connected"
+          title="Door Open"
+          subtitle="Welcome in! Stepping into the meeting..."
+          onEntered={() => setIsEnteringDoor(false)}
+        />
+      )}
+      {networkPortalPhase !== 'idle' && (
+        <NetworkDoorScene
+          status={networkPortalPhase === 'entering' ? 'connected' : 'disconnected'}
+          title={networkPortalPhase === 'entering' ? 'Network Connected' : 'Network Disconnected'}
+          subtitle={
+            networkPortalPhase === 'entering'
+              ? 'Opening the door, stepping back into the meeting...'
+              : `Holding your spot outside room #${code} while reconnecting...`
+          }
+          onEntered={() => setNetworkPortalPhase('idle')}
         />
       )}
       <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar} controlsVisible={controlsVisible}
@@ -1816,7 +1972,7 @@ function RoomContent({
             code={code}
             micOn={micOn} camOn={camOn} screenShareOn={screenShareOn}
             transcriptOn={!!raisedHands[localParticipant?.identity || '']} deafOn={isDeafMode}
-            participantsOpen={participantsOpen} participantCount={participants.length}
+            participantsOpen={participantsOpen} participantCount={participants.length + 1}
             onToggleMic={toggleMic} onToggleCam={toggleCam}
             onToggleScreenShare={toggleScreenShare}
             onToggleTranscript={() => toggleRaiseHand()}
@@ -1829,7 +1985,12 @@ function RoomContent({
             onCaptionSize={() => setCaptionSize(s => s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm')}
             captionsOn={captionsOn} onToggleCaptions={handleToggleCaptions}
             onShare={shareRoom}
-            onLeave={(endForAll) => onLeave(endForAll)}
+            onLeave={(endForAll) => {
+              if (endForAll) {
+                endMeetingForAll();
+              }
+              onLeave(endForAll, false);
+            }}
             isHost={isHost}
             unreadCount={unreadCount}
             aiNoiseOn={aiNoiseShieldOn}
@@ -1944,6 +2105,14 @@ function RoomContent({
         onStopParticipantScreenShare={stopParticipantScreenShare}
         onAdmitAllRequests={admitAllJoinRequests}
         onMuteAllParticipants={muteAllParticipants}
+        actionItemsCount={meetingActionItems.length}
+        isSomeoneSpeaking={!!activeSpeaker?.isSpeaking}
+        isEphemeral={isEphemeral}
+        onOpenNotes={() => {
+          setActiveTab('notes');
+          setSidebarOpen(true);
+          setParticipantsOpen(false);
+        }}
       />
 
       {/* Emoji picker popover (simple) */}
@@ -1985,6 +2154,8 @@ function RoomPageInner() {
   const [endOptionSelected, setEndOptionSelected] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
   const [meetingAccessLevel, setMeetingAccessLevel] = useState<'members_only' | 'open'>('members_only');
+  const [endedMeetingRecord, setEndedMeetingRecord] = useState<Meeting | null>(null);
+  const [meetingEndedByHost, setMeetingEndedByHost] = useState(false);
 
   useEffect(() => {
     if (meetingRecord?.settings?.access_level) {
@@ -2117,8 +2288,8 @@ function RoomPageInner() {
             await MeetingService.reactivateMeeting(any.id);
             targetMeeting = { ...any, status: 'active' as const };
           } else {
-            // Everyone else is blocked
-            setError('This meeting has ended. Only the host can reopen it.');
+            // Meeting was concluded by host — NOT an invalid room!
+            setEndedMeetingRecord(any);
             return null;
           }
         }
@@ -2151,7 +2322,7 @@ function RoomPageInner() {
       .finally(() => setIsValidating(false));
   }, [code, user, authLoading]);
 
-  const handleLeave = useCallback((endForAll: boolean = false) => {
+  const handleLeave = useCallback((endForAll: boolean = false, wasEndedByHost: boolean = false) => {
     if (endForAll && meetingRecord) {
       MeetingService.endMeeting(meetingRecord.id).catch(console.error);
     }
@@ -2160,6 +2331,7 @@ function RoomPageInner() {
     hasFetchedToken.current = false;
     setHasLeft(true);
     setEndOptionSelected(endForAll);
+    setMeetingEndedByHost(wasEndedByHost);
   }, [meetingRecord, SESSION_KEY]);
 
   const handleRejoin = useCallback(() => {
@@ -2168,14 +2340,17 @@ function RoomPageInner() {
     setShowPreJoin(true);
     setHasLeft(false);
     setEndOptionSelected(false);
+    setMeetingEndedByHost(false);
   }, [SESSION_KEY]);
 
   // Host-only: reactivate the ended meeting then go to pre-join
   const handleReopen = useCallback(async () => {
-    if (meetingRecord) {
+    const target = meetingRecord || endedMeetingRecord;
+    if (target) {
       try {
-        await MeetingService.reactivateMeeting(meetingRecord.id);
-        setMeetingRecord(prev => prev ? { ...prev, status: 'active' } : prev);
+        await MeetingService.reactivateMeeting(target.id);
+        setMeetingRecord(prev => prev ? { ...prev, status: 'active' } : { ...target, status: 'active' });
+        setEndedMeetingRecord(null);
       } catch (e) {
         console.error('Failed to reactivate meeting:', e);
       }
@@ -2185,7 +2360,20 @@ function RoomPageInner() {
     setShowPreJoin(true);
     setHasLeft(false);
     setEndOptionSelected(false);
-  }, [meetingRecord, SESSION_KEY]);
+    setMeetingEndedByHost(false);
+  }, [meetingRecord, endedMeetingRecord, SESSION_KEY]);
+
+  // If the meeting was concluded, show dedicated MeetingEndedScreen (NOT "Invalid Meeting Room")
+  if (endedMeetingRecord) {
+    return (
+      <MeetingEndedScreen
+        code={code}
+        meeting={endedMeetingRecord}
+        onReopen={handleReopen}
+        isHost={!!(user && endedMeetingRecord.host_id === user.id)}
+      />
+    );
+  }
 
   if (error) {
     return (
@@ -2207,10 +2395,11 @@ function RoomPageInner() {
 
   if (isValidating || authLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <Loader2 className="size-10 animate-spin text-bridge-indigo" />
-        <p className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Verifying meeting code...</p>
-      </div>
+      <NetworkDoorScene
+        status="verifying"
+        title="Joining meeting..."
+        subtitle="Connecting to room..."
+      />
     );
   }
 
@@ -2235,6 +2424,7 @@ function RoomPageInner() {
         code={code}
         isHost={isHost}
         didEndMeeting={isHost && endOptionSelected}
+        wasEndedByHost={meetingEndedByHost}
         onRejoin={handleRejoin}
         onReopen={handleReopen}
         workspaceId={meetingRecord?.workspace_id || undefined}
@@ -2244,10 +2434,11 @@ function RoomPageInner() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <Loader2 className="size-10 animate-spin text-bridge-indigo" />
-        <p className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Connecting to room...</p>
-      </div>
+      <NetworkDoorScene
+        status="verifying"
+        title="Joining room..."
+        subtitle={`Entering room #${code}...`}
+      />
     );
   }
 
@@ -2281,10 +2472,11 @@ export default function RoomPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-          <Loader2 className="size-10 animate-spin text-bridge-indigo" />
-          <p className="text-sm text-muted-foreground uppercase tracking-widest font-bold">Verifying meeting code...</p>
-        </div>
+        <NetworkDoorScene
+          status="verifying"
+          title="Joining meeting..."
+          subtitle="Connecting to room..."
+        />
       }
     >
       <RoomPageInner />

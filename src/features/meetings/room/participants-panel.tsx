@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { LocalParticipant, RemoteParticipant, Track } from 'livekit-client';
-import { X, Mic, MicOff, Video, VideoOff, Users, UserX, MonitorOff, ShieldAlert, CheckCircle2, VolumeX, Copy, Check, UserPlus } from 'lucide-react';
+import { X, Mic, MicOff, Video, VideoOff, Users, UserX, MonitorOff, ShieldAlert, CheckCircle2, VolumeX, Copy, Check, UserPlus, Sparkles, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ParticipantVideo } from './video-track';
 import { ParticipantRole } from '@/types/meeting';
@@ -31,6 +31,12 @@ interface ParticipantsPanelProps {
   onStopParticipantScreenShare?: (targetId: string) => void;
   onAdmitAllRequests?: () => void;
   onMuteAllParticipants?: () => void;
+
+  // AI Assistant in Participants
+  actionItemsCount?: number;
+  isSomeoneSpeaking?: boolean;
+  onOpenNotes?: () => void;
+  isEphemeral?: boolean;
 }
 
 function getRoleBadge(p: LocalParticipant | RemoteParticipant, hostId?: string, cohosts?: Record<string, boolean>) {
@@ -208,6 +214,10 @@ export function ParticipantsPanel({
   onStopParticipantScreenShare,
   onAdmitAllRequests,
   onMuteAllParticipants,
+  actionItemsCount,
+  isSomeoneSpeaking,
+  onOpenNotes,
+  isEphemeral = false,
 }: ParticipantsPanelProps) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -264,7 +274,9 @@ export function ParticipantsPanel({
                 </div>
                 <div>
                   <div className="text-sm font-bold text-white">Participants</div>
-                  <div className="text-[10px] text-white/40 uppercase tracking-wide">{participants.length} in call</div>
+                  <div className="text-[10px] text-white/40 uppercase tracking-wide">
+                    {participants.length + (isEphemeral ? 0 : 1)} in call
+                  </div>
                 </div>
               </div>
               <button
@@ -391,8 +403,53 @@ export function ParticipantsPanel({
             )}
 
             {/* Participant list */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-1 no-scrollbar">
-              {participants.length === 0 ? (
+            <div className="flex-1 overflow-y-auto p-3 space-y-1.5 no-scrollbar">
+              {/* Talk2Me AI Assistant Pinned Row */}
+              {!isEphemeral && (
+                <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-indigo-500/10 via-purple-500/5 to-transparent border border-indigo-500/15 hover:border-indigo-500/30 transition-all group mb-1">
+                  {/* AI Avatar */}
+                  <div className="size-12 rounded-xl flex-shrink-0 bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 flex items-center justify-center relative shadow-lg shadow-indigo-600/20 ring-1 ring-indigo-400/30">
+                    <Sparkles className="size-5 text-indigo-100 animate-pulse" />
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-500 border-2 border-[#181b20]"
+                      title="Active & Listening"
+                    />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-bold text-white tracking-tight">Talk2Me AI</span>
+                      <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                        AI
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+                        Note Taker
+                      </span>
+                      <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" title="Active" />
+                      <span className="text-[10px] text-white/50 truncate">
+                        {isSomeoneSpeaking ? 'Transcribing...' : (actionItemsCount && actionItemsCount > 0 ? `${actionItemsCount} notes taken` : 'Listening')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Open Notes Button */}
+                  {onOpenNotes && (
+                    <button
+                      onClick={onOpenNotes}
+                      className="px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 text-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer group-hover:scale-105 active:scale-95 shadow-sm"
+                      title="View AI Notes & Action Items"
+                    >
+                      <FileText className="size-3 text-indigo-300" />
+                      <span>Notes</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {participants.length === 0 && isEphemeral ? (
                 <div className="h-full flex flex-col items-center justify-center text-center gap-3 text-white/30 py-16">
                   <Users className="size-8 opacity-30" />
                   <p className="text-sm">No participants yet</p>

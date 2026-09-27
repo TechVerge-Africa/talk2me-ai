@@ -15,7 +15,13 @@ import { CanonicalTranscriptEntry, TranscriptService } from '@/services/supabase
 import { TranscriptAnalysisService, ExtractedDecisionItem } from '@/services/ai/transcript-analysis';
 import { cleanRepeatedPhrases } from '@/lib/audio/stt-hallucination-filter';
 
-export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => void, isAppAdmin?: boolean) {
+export function useMeeting(
+  roomCode: string,
+  hostId?: string,
+  onLeave?: () => void,
+  isAppAdmin?: boolean,
+  onMeetingEnded?: () => void
+) {
   const room = useRoomContext();
   const { user } = useAuth();
 
@@ -42,6 +48,8 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
   const [messages, setMessages] = useState<Message[]>([]);
   const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
+  const [connectionState, setConnectionState] = useState<'connected' | 'reconnecting' | 'disconnected'>('connected');
+  const [isNetworkOffline, setIsNetworkOffline] = useState(false);
 
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const isEphemeralFromUrl = searchParams?.get('ephemeral') === 'true';
@@ -366,6 +374,7 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     meetingHostId,
     cohosts,
     onLeave,
+    onMeetingEnded,
     roomCode,
   });
 
@@ -375,9 +384,10 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       meetingHostId,
       cohosts,
       onLeave,
+      onMeetingEnded,
       roomCode,
     };
-  }, [addReaction, meetingHostId, cohosts, onLeave, roomCode]);
+  }, [addReaction, meetingHostId, cohosts, onLeave, onMeetingEnded, roomCode]);
 
   useEffect(() => {
     if (!room) return;
@@ -550,6 +560,11 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
             alert('The host has ended this meeting.');
             room.disconnect();
             if (handlersRef.current.onLeave) handlersRef.current.onLeave();
+            if (handlersRef.current.onMeetingEnded) {
+              handlersRef.current.onMeetingEnded();
+            } else if (handlersRef.current.onLeave) {
+              handlersRef.current.onLeave();
+            }
           }
         } else if (msg.type === 'board_switch') {
           // Host/admin switched active board — update every participant's view
@@ -579,19 +594,41 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
 
     const handleDisconnected = (reason?: unknown) => {
       console.warn('LiveKit room disconnected', reason);
+      setConnectionState('disconnected');
     };
     const handleReconnecting = () => {
       console.warn('LiveKit reconnecting');
+      setConnectionState('reconnecting');
+    };
+    const handleReconnected = () => {
+      console.info('LiveKit reconnected');
+      setConnectionState('connected');
     };
     const handleConnected = () => {
       console.info('LiveKit connected');
+      setConnectionState('connected');
     };
+
+    const handleOnline = () => {
+      setIsNetworkOffline(false);
+    };
+    const handleOffline = () => {
+      setIsNetworkOffline(true);
+      setConnectionState('reconnecting');
+    };
+
     try {
       room.on(RoomEvent.Disconnected, handleDisconnected);
       room.on(RoomEvent.Reconnecting, handleReconnecting);
+      room.on(RoomEvent.Reconnected, handleReconnected);
       room.on(RoomEvent.Connected, handleConnected);
     } catch {
       // ignore
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
     }
 
     updateParticipants();
@@ -606,9 +643,14 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
       try {
         room.off(RoomEvent.Disconnected, handleDisconnected);
         room.off(RoomEvent.Reconnecting, handleReconnecting);
+        room.off(RoomEvent.Reconnected, handleReconnected);
         room.off(RoomEvent.Connected, handleConnected);
       } catch (e) {
         console.warn('Error removing room event listeners:', e);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
       }
     };
   }, [room]);
@@ -1141,6 +1183,22 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     }
   }, [room]);
 
+  /**
+   * Broadcasts to all connected participants that the host has ended the meeting
+   */
+  const endMeetingForAll = useCallback(() => {
+    if (!room?.localParticipant) return;
+    try {
+      publishRoomData(
+        room.localParticipant,
+        { type: 'meeting_ended', sender_id: room.localParticipant.identity },
+        { reliable: true },
+      );
+    } catch (e) {
+      console.error('[useMeeting] Failed to broadcast meeting_ended:', e);
+    }
+  }, [room]);
+
   return {
     roomCode,
     micOn,
@@ -1196,6 +1254,9 @@ export function useMeeting(roomCode: string, hostId?: string, onLeave?: () => vo
     changeParticipantRole,
     stopParticipantScreenShare,
     broadcastBoardSwitch,
+    endMeetingForAll,
+    connectionState,
+    isNetworkOffline,
   };
 }
 
