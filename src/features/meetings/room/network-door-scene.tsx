@@ -18,6 +18,8 @@ interface NetworkDoorSceneProps {
   onRetry?: () => void;
   /** Whether a reconnection attempt is currently active */
   isRetrying?: boolean;
+  /** Optional callback to leave the meeting if user desires */
+  onLeave?: () => void;
 }
 
 export function NetworkDoorScene({
@@ -28,6 +30,7 @@ export function NetworkDoorScene({
   fullscreen = true,
   onRetry,
   isRetrying = false,
+  onLeave,
 }: NetworkDoorSceneProps) {
   const isConnected = status === 'connected';
   const isVerifying = status === 'verifying';
@@ -258,6 +261,14 @@ export function NetworkDoorScene({
           <span className="text-[10px] text-white/40">
             Automatically retrying when connection returns
           </span>
+          {onLeave && (
+            <button
+              onClick={onLeave}
+              className="mt-2 text-xs text-rose-400/80 hover:text-rose-300 underline underline-offset-4 cursor-pointer transition-colors"
+            >
+              Leave meeting instead
+            </button>
+          )}
         </div>
       )}
     </div>
