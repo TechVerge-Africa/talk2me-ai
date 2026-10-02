@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '@/lib/motion';
 import { GradientBackground } from '@/components/ui/gradient-background';
+import { SessionVerifyingLoader, useDebouncedLoader } from '@/packages/ui/workspace-loader';
 
 // ━━━ 1. HERO SECTION & LIVE PRODUCT PREVIEW ━━━━━━━━━━━━━━━━━━━━
 export function HeroSection() {
@@ -353,15 +354,14 @@ export default function LandingPage() {
     }
   }, [user, loading, router]);
 
+  const isRedirecting = loading || Boolean(user);
+  const showSessionLoader = useDebouncedLoader(isRedirecting, 180);
+
   if (loading || user) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-white font-sans">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" />
-          <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Verifying Session...</p>
-        </div>
-      </div>
-    );
+    if (showSessionLoader) {
+      return <SessionVerifyingLoader />;
+    }
+    return <div className="min-h-screen w-full bg-slate-950" />;
   }
 
   return (
