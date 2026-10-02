@@ -20,6 +20,7 @@ import { CaptionList } from '@/features/captions/caption-list';
 
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
+import { useBackgroundResilience } from '@/features/meetings/hooks/useBackgroundResilience';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
@@ -1350,6 +1351,30 @@ function RoomContent({
   const localParticipant = participants.find(p => p instanceof LocalParticipant) as LocalParticipant | undefined;
   const _stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
 
+  // Background Meeting Resilience & Continuity (iOS, Android, Windows, Mac, Linux)
+  const { reentryToast, dismissReentryToast } = useBackgroundResilience({
+    room,
+    code,
+    localCamOn: camOn,
+    localMicOn: micOn,
+    activeSpeakerName: activeSpeaker?.name || activeSpeaker?.identity,
+    participantCount: participants.length,
+    toggleMic,
+    toggleCam,
+    onLeave: () => onLeave(false, false),
+  });
+
+  // Gracefully disconnect room on explicit tab close / browser exit
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (room) {
+        room.disconnect();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [room]);
+
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeNotification, setActiveNotification] = useState<{
     id: string;
@@ -2153,6 +2178,25 @@ function RoomContent({
                 onDismiss={() => setActiveNotification(null)}
               />
             )}
+
+            {/* Ambient Background Re-entry Toast */}
+            {reentryToast && (
+              <motion.div
+                initial={{ opacity: 0, y: -16, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -16, scale: 0.95 }}
+                className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-full bg-slate-900/90 border border-emerald-500/40 text-emerald-300 text-xs font-semibold backdrop-blur-xl shadow-2xl pointer-events-auto"
+              >
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{reentryToast}</span>
+                <button
+                  onClick={dismissReentryToast}
+                  className="ml-1 text-white/40 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           {/* Real-Time Action Confirmation Toast */}
@@ -2351,6 +2395,10 @@ function RoomPageInner() {
   const roomOptions = useMemo<RoomOptions>(() => ({
     adaptiveStream: true,
     dynacast: true,
+    // Do NOT disconnect WebRTC on tab switch, app minimize, or mobile backgrounding (preserves the conversation)
+    disconnectOnPageLeave: false,
+    // Route audio via Web Audio context to ensure background audio keepalive on iOS Safari & Android
+    webAudioMix: true,
     publishDefaults: {
       videoSimulcastLayers: [
         VideoPresets.h720,

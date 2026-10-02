@@ -66,11 +66,19 @@ export class NetworkMonitor {
     this.collector.reset();
   }
 
+  private handleVisibilityChange = (): void => {
+    this.tick();
+  };
+
   public start(): void {
     if (this.pollTimer) return;
     this.pollTimer = setInterval(() => {
       this.tick();
     }, this.config.pollIntervalMs);
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
 
     // Initial tick immediately
     this.tick();
@@ -80,6 +88,9 @@ export class NetworkMonitor {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
   }
 
@@ -145,22 +156,25 @@ export class NetworkMonitor {
     } else {
       // Evaluate based on smoothed telemetry thresholds
       const t = this.config.thresholds;
+      const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
+      // When tab is hidden, LiveKit adaptiveStream pauses incoming video, reducing downlink to audio-only (~20kbps).
+      // We must not falsely penalize this as a network degradation.
       const isCriticalLoss = effectiveLossRate >= t.poorToCritical.maxPacketLoss;
       const isCriticalRtt = effectiveRtt !== undefined && effectiveRtt >= t.poorToCritical.maxRttMs;
-      const isCriticalBw = effectiveDownlink !== undefined && effectiveDownlink < t.poorToCritical.minDownlinkKbps;
+      const isCriticalBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.poorToCritical.minDownlinkKbps;
 
       const isPoorLoss = effectiveLossRate >= t.fairToPoor.maxPacketLoss;
       const isPoorRtt = effectiveRtt !== undefined && effectiveRtt >= t.fairToPoor.maxRttMs;
-      const isPoorBw = effectiveDownlink !== undefined && effectiveDownlink < t.fairToPoor.minDownlinkKbps;
+      const isPoorBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.fairToPoor.minDownlinkKbps;
 
       const isFairLoss = effectiveLossRate >= t.goodToFair.maxPacketLoss;
       const isFairRtt = effectiveRtt !== undefined && effectiveRtt >= t.goodToFair.maxRttMs;
-      const isFairBw = effectiveDownlink !== undefined && effectiveDownlink < t.goodToFair.minDownlinkKbps;
+      const isFairBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.goodToFair.minDownlinkKbps;
 
       const isGoodLoss = effectiveLossRate >= t.excellentToGood.maxPacketLoss;
       const isGoodRtt = effectiveRtt !== undefined && effectiveRtt >= t.excellentToGood.maxRttMs;
-      const isGoodBw = effectiveDownlink !== undefined && effectiveDownlink < t.excellentToGood.minDownlinkKbps;
+      const isGoodBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.excellentToGood.minDownlinkKbps;
 
       if (isCriticalLoss || isCriticalRtt || isCriticalBw) {
         quality = 'critical';

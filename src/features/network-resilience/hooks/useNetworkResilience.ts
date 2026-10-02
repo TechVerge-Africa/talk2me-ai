@@ -81,6 +81,10 @@ export function useNetworkResilience({
     )
   );
 
+  const [isBackgrounded, setIsBackgrounded] = useState<boolean>(() => {
+    return typeof document !== 'undefined' ? document.visibilityState === 'hidden' : false;
+  });
+
   const [missedContextNotice, setMissedContextNotice] = useState<string | null>(null);
   const wasCriticalRef = useRef(false);
   const criticalTimestampRef = useRef<number | null>(null);
@@ -92,10 +96,27 @@ export function useNetworkResilience({
     visibleParticipantIds,
     totalParticipants,
     meetingMode,
+    isBackgrounded,
   });
   const mediaStateRef = useRef<Partial<CurrentMediaState> | undefined>(currentMediaState);
   const captionsRecCallbackRef = useRef(onCaptionsRecommended);
   const onSendChatMessageRef = useRef(onSendChatMessage);
+
+  // Listen to tab visibility changes
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibility = () => {
+      const hidden = document.visibilityState === 'hidden';
+      setIsBackgrounded(hidden);
+      contextRef.current.isBackgrounded = hidden;
+      const newPolicy = controller.evaluate(monitor.getLatestMetrics(), contextRef.current, mediaStateRef.current);
+      setPolicy(newPolicy);
+      adapter.applyPolicy(room, newPolicy);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [controller, monitor, adapter, room]);
 
   // Keep refs synchronized on every render without triggering effect loops
   useEffect(() => {
@@ -106,6 +127,7 @@ export function useNetworkResilience({
       visibleParticipantIds,
       totalParticipants,
       meetingMode,
+      isBackgrounded,
     };
     mediaStateRef.current = currentMediaState;
     captionsRecCallbackRef.current = onCaptionsRecommended;

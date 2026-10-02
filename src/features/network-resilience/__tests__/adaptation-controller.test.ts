@@ -425,4 +425,66 @@ describe('Talk2Me Adaptive Network Resilience Engine', () => {
     assert.ok(alicePolicy);
     assert.equal(alicePolicy?.priority, 'normal');
   });
+
+  it('Scenario I: Background tab switching -> Preserves audio and disables video overhead without error', () => {
+    const controller = new AdaptationController();
+    controller.reset('excellent', 0);
+
+    const backgroundContext: MeetingContext = {
+      activeSpeakerId: 'speaker-bob',
+      screenShareActive: false,
+      visibleParticipantIds: ['speaker-bob', 'participant-alice'],
+      totalParticipants: 2,
+      isBackgrounded: true,
+    };
+
+    // Low downlink (~25kbps for audio only), but healthy RTT and loss
+    const policy = controller.evaluate({
+      timestamp: 1000,
+      quality: 'excellent',
+      connectionState: 'connected',
+      estimatedDownlinkKbps: 25,
+      rttMs: 40,
+      packetLossRate: 0,
+      stabilityScore: 98,
+    }, backgroundContext);
+
+    // Audio priority is protected, video is paused to conserve battery/CPU
+    assert.equal(policy.videoEnabled, false);
+    assert.equal(policy.preferredVideoQuality, 'off');
+    assert.equal(policy.audioPriority, 'high');
+    assert.equal(policy.captionsRecommended, false);
+
+    const bobPolicy = policy.participantPolicies?.get('speaker-bob');
+    assert.ok(bobPolicy);
+    assert.equal(bobPolicy?.videoEnabled, false);
+    assert.equal(bobPolicy?.reason, 'background');
+  });
+
+  it('Scenario J: Foreground return -> Restores target video smoothly without oscillation', () => {
+    const controller = new AdaptationController();
+    controller.reset('excellent', 0);
+
+    const foregroundContext: MeetingContext = {
+      activeSpeakerId: 'speaker-bob',
+      screenShareActive: false,
+      visibleParticipantIds: ['speaker-bob', 'participant-alice'],
+      totalParticipants: 2,
+      isBackgrounded: false,
+    };
+
+    const policy = controller.evaluate({
+      timestamp: 3000,
+      quality: 'excellent',
+      connectionState: 'connected',
+      estimatedDownlinkKbps: 1800,
+      rttMs: 42,
+      packetLossRate: 0,
+      stabilityScore: 97,
+    }, foregroundContext);
+
+    assert.equal(policy.videoEnabled, true);
+    assert.equal(policy.preferredVideoQuality, 'high');
+    assert.equal(policy.audioPriority, 'normal');
+  });
 });

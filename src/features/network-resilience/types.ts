@@ -102,6 +102,8 @@ export interface MeetingContext {
   totalParticipants: number;
   meetingMode?: 'normal' | 'presentation' | 'onthego';
   userQualityPreference?: 'auto' | 'conserve_data' | 'high_quality';
+  /** Whether the user has switched tabs, minimized window, or backgrounded the app */
+  isBackgrounded?: boolean;
 }
 
 export interface CurrentMediaState {

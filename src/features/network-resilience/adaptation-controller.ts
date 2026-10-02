@@ -202,6 +202,20 @@ export class AdaptationController {
     quality: NetworkQuality,
     context: MeetingContext
   ): Omit<MediaPolicy, 'participantPolicies'> {
+    // When tab/app is backgrounded, actively conserve battery and bandwidth while protecting conversation audio
+    if (context.isBackgrounded) {
+      return {
+        videoEnabled: false,
+        preferredVideoQuality: 'off',
+        preferredResolution: { width: 320, height: 180 },
+        preferredFps: 15,
+        audioPriority: 'high',
+        screenShareEnabled: false,
+        captionsRecommended: false,
+        semanticFallbackRecommended: false,
+      };
+    }
+
     const isPresentation = context.meetingMode === 'presentation' || context.screenShareActive;
 
     switch (quality) {
@@ -295,6 +309,22 @@ export class AdaptationController {
     _mediaState?: Partial<CurrentMediaState>
   ): Map<string, ParticipantMediaPolicy> {
     const policies = new Map<string, ParticipantMediaPolicy>();
+
+    if (context.isBackgrounded) {
+      if (context.visibleParticipantIds) {
+        for (const id of context.visibleParticipantIds) {
+          policies.set(id, {
+            participantId: id,
+            videoQuality: 'off',
+            videoEnabled: false,
+            priority: id === context.activeSpeakerId ? 'high' : 'low',
+            reason: 'background',
+          });
+        }
+      }
+      return policies;
+    }
+
     const visibleSet = new Set(context.visibleParticipantIds ?? []);
 
     const isConstrained = quality === 'poor' || quality === 'critical';
