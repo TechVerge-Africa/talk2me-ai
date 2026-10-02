@@ -14,6 +14,10 @@ interface NetworkDoorSceneProps {
   onEntered?: () => void;
   /** Fullscreen overlay or inline card */
   fullscreen?: boolean;
+  /** Optional retry callback for manual or auto reconnection */
+  onRetry?: () => void;
+  /** Whether a reconnection attempt is currently active */
+  isRetrying?: boolean;
 }
 
 export function NetworkDoorScene({
@@ -22,6 +26,8 @@ export function NetworkDoorScene({
   subtitle,
   onEntered,
   fullscreen = true,
+  onRetry,
+  isRetrying = false,
 }: NetworkDoorSceneProps) {
   const isConnected = status === 'connected';
   const isVerifying = status === 'verifying';
@@ -237,6 +243,23 @@ export function NetworkDoorScene({
       <p className="text-xs text-white/60 font-medium leading-relaxed max-w-xs">
         {subtitle || defaultSubtitle}
       </p>
+
+      {/* Interactive Reconnect Button */}
+      {onRetry && !isConnected && (
+        <div className="mt-5 flex flex-col items-center gap-2">
+          <button
+            onClick={onRetry}
+            disabled={isRetrying}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white text-xs font-bold shadow-lg shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+          >
+            <RefreshCw className={`size-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+            <span>{isRetrying ? 'Reconnecting to room...' : 'Reconnect Now'}</span>
+          </button>
+          <span className="text-[10px] text-white/40">
+            Automatically retrying when connection returns
+          </span>
+        </div>
+      )}
     </div>
   );
 
