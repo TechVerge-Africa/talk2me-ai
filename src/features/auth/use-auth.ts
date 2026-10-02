@@ -5,28 +5,61 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/services/supabase/client';
 import { ProfileService, UserProfile } from '@/services/supabase/profiles';
 
+const AUTH_CACHE_KEY = 't2_cached_auth_user_v1';
+const PROFILE_CACHE_KEY = 't2_cached_auth_profile_v1';
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Check active sessions and subscribe to auth changes
+    // 1. Immediately hydrate from localStorage cache on client mount (safe from SSR hydration mismatch)
+    try {
+      const rawUser = localStorage.getItem(AUTH_CACHE_KEY);
+      if (rawUser) {
+        setUser(JSON.parse(rawUser));
+        setLoading(false);
+      }
+      const rawProfile = localStorage.getItem(PROFILE_CACHE_KEY);
+      if (rawProfile) {
+        setProfile(JSON.parse(rawProfile));
+      }
+    } catch {}
+
+    // 2. Check active sessions and subscribe to auth changes
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(currentUser));
+        } catch {}
+        fetchProfile(currentUser.id);
       } else {
+        setProfile(null);
+        try {
+          localStorage.removeItem(AUTH_CACHE_KEY);
+          localStorage.removeItem(PROFILE_CACHE_KEY);
+        } catch {}
         setLoading(false);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(currentUser));
+        } catch {}
+        fetchProfile(currentUser.id);
       } else {
         setProfile(null);
+        try {
+          localStorage.removeItem(AUTH_CACHE_KEY);
+          localStorage.removeItem(PROFILE_CACHE_KEY);
+        } catch {}
         setLoading(false);
       }
     });
@@ -35,9 +68,19 @@ export function useAuth() {
   }, []);
 
   async function fetchProfile(userId: string) {
-    const p = await ProfileService.getProfile(userId);
-    setProfile(p);
-    setLoading(false);
+    try {
+      const p = await ProfileService.getProfile(userId);
+      setProfile(p);
+      if (p) {
+        try {
+          localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p));
+        } catch {}
+      }
+    } catch (err) {
+      console.warn('[useAuth] Profile fetch notice:', err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const signInWithGoogle = async () => {
@@ -53,6 +96,14 @@ export function useAuth() {
   };
 
   const signOut = async () => {
+    try {
+      localStorage.removeItem(AUTH_CACHE_KEY);
+      localStorage.removeItem(PROFILE_CACHE_KEY);
+      localStorage.removeItem('t2_cached_workspaces_v2');
+      localStorage.removeItem('t2_active_workspace_v1');
+    } catch {}
+    setUser(null);
+    setProfile(null);
     const { error } = await supabase.auth.signOut();
     if (error) {
       throw new Error(error.message);

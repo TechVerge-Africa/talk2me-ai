@@ -3,8 +3,9 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { LiveKitRoom, useTracks, RoomAudioRenderer } from '@livekit/components-react';
+import { LiveKitRoom, useTracks, RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
+import { useNetworkResilience, NetworkStatusIndicator, NetworkDebugPanel } from '@/features/network-resilience';
 import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -19,6 +20,7 @@ import { CaptionList } from '@/features/captions/caption-list';
 
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
+import { useBackgroundResilience } from '@/features/meetings/hooks/useBackgroundResilience';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
@@ -1040,6 +1042,7 @@ function RoomContent({
   meetingRecord,
   accessLevel,
   onToggleAccessLevel,
+  onReconnect,
 }: {
   code: string;
   isHost: boolean;
@@ -1050,7 +1053,9 @@ function RoomContent({
   meetingRecord?: Meeting | null;
   accessLevel?: 'members_only' | 'open';
   onToggleAccessLevel?: () => void;
+  onReconnect?: () => Promise<void> | void;
 }) {
+  const room = useRoomContext();
   const { user: authedUser } = useAuth();
   const {
     micOn, camOn, screenShareOn, isDeafMode, aiNoiseShieldOn, noiseReductionLevel, toggleAiNoiseShield,
@@ -1265,8 +1270,30 @@ function RoomContent({
 
   const [networkPortalPhase, setNetworkPortalPhase] = useState<'idle' | 'waiting' | 'entering'>('idle');
   const wasReconnectingRef = useRef(false);
+  const [isAttemptingReconnect, setIsAttemptingReconnect] = useState(false);
+  const reconnectPollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isDisconnectedOrReconnecting = connectionState === 'reconnecting' || connectionState === 'disconnected' || isNetworkOffline;
+
+  const triggerReconnect = useCallback(async () => {
+    if (isAttemptingReconnect) return;
+    setIsAttemptingReconnect(true);
+    console.info('[Talk2Me] Auto-reconnecting LiveKit session...');
+    try {
+      if (onReconnect) {
+        await onReconnect();
+      } else if (room) {
+        const token = sessionStorage.getItem(`t2_session_${code}`);
+        if (token && LIVEKIT_URL) {
+          await room.connect(LIVEKIT_URL, token);
+        }
+      }
+    } catch (err) {
+      console.warn('[Talk2Me] Reconnect attempt error:', err);
+    } finally {
+      setIsAttemptingReconnect(false);
+    }
+  }, [isAttemptingReconnect, onReconnect, room, code]);
 
   useEffect(() => {
     if (isDisconnectedOrReconnecting) {
@@ -1278,11 +1305,75 @@ function RoomContent({
     }
   }, [isDisconnectedOrReconnecting, connectionState, isNetworkOffline]);
 
+  // When browser signals network is restored, immediately trigger reconnect
+  useEffect(() => {
+    const handleOnline = () => {
+      console.info('[Talk2Me] Browser came back online! Proactively reconnecting...');
+      if (isDisconnectedOrReconnecting) {
+        triggerReconnect();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      return () => window.removeEventListener('online', handleOnline);
+    }
+  }, [isDisconnectedOrReconnecting, triggerReconnect]);
+
+  // Periodic retry poll while disconnected and network is online
+  useEffect(() => {
+    if (!isDisconnectedOrReconnecting) {
+      if (reconnectPollTimerRef.current) {
+        clearInterval(reconnectPollTimerRef.current);
+        reconnectPollTimerRef.current = null;
+      }
+      return;
+    }
+
+    reconnectPollTimerRef.current = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        console.info('[Talk2Me] Polling reconnect while disconnected...');
+        triggerReconnect();
+      }
+    }, 3000);
+
+    return () => {
+      if (reconnectPollTimerRef.current) {
+        clearInterval(reconnectPollTimerRef.current);
+        reconnectPollTimerRef.current = null;
+      }
+    };
+  }, [isDisconnectedOrReconnecting, triggerReconnect]);
+
   const screenTracks = useTracks([Track.Source.ScreenShare]);
   const hasScreenShare = screenTracks.length > 0;
   const activeSpeaker = useActiveSpeaker(participants);
   const localParticipant = participants.find(p => p instanceof LocalParticipant) as LocalParticipant | undefined;
   const _stripParticipants = hasScreenShare ? participants : participants.filter(p => p.identity !== activeSpeaker?.identity);
+
+  // Background Meeting Resilience & Continuity (iOS, Android, Windows, Mac, Linux)
+  const { reentryToast, dismissReentryToast } = useBackgroundResilience({
+    room,
+    code,
+    localCamOn: camOn,
+    localMicOn: micOn,
+    activeSpeakerName: activeSpeaker?.name || activeSpeaker?.identity,
+    participantCount: participants.length,
+    toggleMic,
+    toggleCam,
+    onLeave: () => onLeave(false, false),
+  });
+
+  // Gracefully disconnect room on explicit tab close / browser exit
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (room) {
+        room.disconnect();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [room]);
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeNotification, setActiveNotification] = useState<{
@@ -1402,6 +1493,46 @@ function RoomContent({
   const [showTopbar, setShowTopbar] = useState(true);
   const [_mobileMenuOpen, _setMobileMenuOpen] = useState(false);
   const [roomMode, setRoomMode] = useState<'call' | 'onthego'>('call');
+
+  const visibleParticipantIds = useMemo(() => participants.map(p => p.identity), [participants]);
+
+  const currentMediaState = useMemo(() => ({
+    localCamOn: camOn,
+    localMicOn: micOn,
+    localScreenShareOn: screenShareOn,
+    activeRemoteVideoCount: participants.length > 0 ? participants.length - 1 : 0,
+  }), [camOn, micOn, screenShareOn, participants.length]);
+
+  const handleCaptionsRecommended = useCallback((recommended: boolean) => {
+    if (recommended && !captionsOn) {
+      setCaptionsOn(true);
+    }
+  }, [captionsOn]);
+
+  const handleSendChatMessage = useCallback(async (text: string) => {
+    try {
+      await sendMessage(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [sendMessage]);
+
+  // Adaptive Network Resilience Engine
+  const resilience = useNetworkResilience({
+    room,
+    roomCode: code,
+    meetingId: meetingRecord?.id,
+    activeSpeakerId: activeSpeaker?.identity,
+    screenShareActive: hasScreenShare,
+    screenShareOwnerId: screenTracks[0]?.participant?.identity,
+    visibleParticipantIds,
+    totalParticipants: participants.length,
+    meetingMode: roomMode === 'onthego' ? 'onthego' : (hasScreenShare ? 'presentation' : 'normal'),
+    currentMediaState,
+    onCaptionsRecommended: handleCaptionsRecommended,
+    onSendChatMessage: handleSendChatMessage,
+  });
 
   // Auto-hide controls, topbar, dock, and padding when user is focused & inactive (no movement/touch/scroll for 3.5s)
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -1578,9 +1709,19 @@ function RoomContent({
             <span className="hidden sm:inline">{roomMode === 'onthego' ? 'On the Go' : 'Call Mode'}</span>
           </button>
 
-          {/* Network dot + REC — hidden on tiny screens */}
-          <div className="hidden xs:flex items-center gap-1.5 text-xs">
-            <div className={`w-2 h-2 rounded-full ${networkQuality === 'good' ? 'bg-emerald-400 animate-pulse' : networkQuality === 'ok' ? 'bg-amber-400' : 'bg-red-500'}`} title={`Network: ${networkQuality}`} />
+          {/* Mobile-Style Network Signal Strength Meter */}
+          <NetworkStatusIndicator
+            quality={resilience.effectiveQuality}
+            connectionState={connectionState}
+            isAudioPriority={resilience.isAudioPriority}
+            metrics={resilience.metrics}
+            policy={resilience.policy}
+            missedContextNotice={resilience.missedContextNotice}
+            onDismissMissedNotice={resilience.clearMissedContext}
+          />
+
+          {/* REC / LIVE status badge */}
+          <div className="hidden xs:flex items-center text-xs">
             <span className={`hidden sm:inline px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${recordingOn ? 'bg-red-600 text-white' : 'bg-[#1e2227] text-white/40 border border-white/5'}`}>
               {recordingOn ? 'REC' : 'LIVE'}
             </span>
@@ -1956,14 +2097,25 @@ function RoomContent({
       )}
       {networkPortalPhase !== 'idle' && (
         <NetworkDoorScene
-          status={networkPortalPhase === 'entering' ? 'connected' : 'disconnected'}
-          title={networkPortalPhase === 'entering' ? 'Network Connected' : 'Network Disconnected'}
+          status={networkPortalPhase === 'entering' ? 'connected' : (isAttemptingReconnect ? 'reconnecting' : 'disconnected')}
+          title={
+            networkPortalPhase === 'entering'
+              ? 'Network Connected'
+              : isAttemptingReconnect
+              ? 'Reconnecting...'
+              : 'Network Disconnected'
+          }
           subtitle={
             networkPortalPhase === 'entering'
               ? 'Opening the door, stepping back into the meeting...'
+              : isAttemptingReconnect
+              ? 'Connecting back to room, please hold on...'
               : `Holding your spot outside room #${code} while reconnecting...`
           }
           onEntered={() => setNetworkPortalPhase('idle')}
+          onRetry={triggerReconnect}
+          isRetrying={isAttemptingReconnect}
+          onLeave={() => onLeave(false)}
         />
       )}
       <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar} controlsVisible={controlsVisible}
@@ -2025,6 +2177,25 @@ function RoomContent({
                 }}
                 onDismiss={() => setActiveNotification(null)}
               />
+            )}
+
+            {/* Ambient Background Re-entry Toast */}
+            {reentryToast && (
+              <motion.div
+                initial={{ opacity: 0, y: -16, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -16, scale: 0.95 }}
+                className="fixed top-16 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-full bg-slate-900/90 border border-emerald-500/40 text-emerald-300 text-xs font-semibold backdrop-blur-xl shadow-2xl pointer-events-auto"
+              >
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{reentryToast}</span>
+                <button
+                  onClick={dismissReentryToast}
+                  className="ml-1 text-white/40 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </motion.div>
             )}
           </AnimatePresence>
 
@@ -2125,7 +2296,12 @@ function RoomContent({
       {/* Floating reactions animation overlay */}
       <FloatingReactionsOverlay reactions={reactions} />
 
-
+      {/* Development Network Diagnostics & Simulation HUD */}
+      <NetworkDebugPanel
+        metrics={resilience.metrics}
+        policy={resilience.policy}
+        simulator={resilience.simulator}
+      />
     </>
   );
 }
@@ -2149,8 +2325,24 @@ function RoomPageInner() {
   const [showPreJoin, setShowPreJoin] = useState(false);
   const hasFetchedToken = useRef(false);
 
+  // HCI Refs to protect in-call context from transient network / auth drops
+  const tokenRef = useRef<string | null>(token);
+  const hasEnteredRoomRef = useRef<boolean>(!!token);
+
+  useEffect(() => {
+    tokenRef.current = token;
+    if (token) {
+      hasEnteredRoomRef.current = true;
+    }
+  }, [token]);
+
   // NEW STATES
   const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
+  const meetingRecordRef = useRef<Meeting | null>(meetingRecord);
+  useEffect(() => {
+    meetingRecordRef.current = meetingRecord;
+  }, [meetingRecord]);
+
   const [endOptionSelected, setEndOptionSelected] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
   const [meetingAccessLevel, setMeetingAccessLevel] = useState<'members_only' | 'open'>('members_only');
@@ -2203,6 +2395,10 @@ function RoomPageInner() {
   const roomOptions = useMemo<RoomOptions>(() => ({
     adaptiveStream: true,
     dynacast: true,
+    // Do NOT disconnect WebRTC on tab switch, app minimize, or mobile backgrounding (preserves the conversation)
+    disconnectOnPageLeave: false,
+    // Route audio via Web Audio context to ensure background audio keepalive on iOS Safari & Android
+    webAudioMix: true,
     publishDefaults: {
       videoSimulcastLayers: [
         VideoPresets.h720,
@@ -2233,9 +2429,27 @@ function RoomPageInner() {
       setShowPreJoin(false);
     } catch (e) {
       console.error('Failed to generate LiveKit token:', e);
-      setError(e instanceof Error && e.message ? e.message : 'Could not connect to the room. Please check your connection.');
+      // HCI: Never eject an active caller to the error page during reconnection!
+      // If the caller already has a token or already entered the room, preserve the session
+      // and let the reconnecting door scene / in-meeting loader continue waiting.
+      if (!tokenRef.current && !hasEnteredRoomRef.current) {
+        setError(e instanceof Error && e.message ? e.message : 'Could not connect to the room. Please check your connection.');
+      }
     }
   }, [code, user, SESSION_KEY, targetRoomCode]);
+
+  const [roomSessionKey, setRoomSessionKey] = useState(0);
+
+  const handleReconnect = useCallback(async () => {
+    console.info('[Talk2Me] Auto-reconnecting LiveKit room session in RoomPageInner...');
+    try {
+      await fetchToken();
+    } catch (e) {
+      console.warn('[Talk2Me] Token refresh fallback, reusing current token:', e);
+    } finally {
+      setRoomSessionKey(k => k + 1);
+    }
+  }, [fetchToken]);
 
   
 
@@ -2263,10 +2477,18 @@ function RoomPageInner() {
     if (authLoading) return;
     if (!code) return;
 
+    const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
+
+    // HCI: If the meeting has already been verified and loaded, NEVER re-verify
+    // across temporary network dropouts or auth token refreshes!
+    if (meetingRecordRef.current && (meetingRecordRef.current.room_code === code || meetingRecordRef.current.room_code === formattedCode)) {
+      setIsValidating(false);
+      return;
+    }
+
     queueMicrotask(() => {
       setIsValidating(true);
     });
-    const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
 
     // Fast path: look for an active meeting (works for everyone)
     MeetingService.getMeetingByCode(formattedCode)
@@ -2317,7 +2539,14 @@ function RoomPageInner() {
       .then(m => { if (m) setMeetingRecord(m); })
       .catch(e => {
         console.error('Failed to load meeting details:', e);
-        setError('Unable to verify meeting code. Please check your internet connection.');
+        // HCI: Never eject an active participant to the Invalid Meeting Room error page.
+        // Only set error if the user has no token, has never joined, and is not already in the room.
+        if (!hasEnteredRoomRef.current && !tokenRef.current && !meetingRecordRef.current) {
+          const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (!isOffline) {
+            setError('Unable to verify meeting code. Please check your internet connection.');
+          }
+        }
       })
       .finally(() => setIsValidating(false));
   }, [code, user, authLoading]);
@@ -2375,7 +2604,10 @@ function RoomPageInner() {
     );
   }
 
-  if (error) {
+  // HCI: Fatal "Invalid Meeting Room" screen is ONLY displayed if the user NEVER
+  // entered the room and does NOT have a valid token or active session.
+  // During an active meeting, network loss must NEVER kick the user out of the meeting room!
+  if (error && !token && !hasEnteredRoomRef.current && !meetingRecord) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6 bg-background">
         <div className="size-16 rounded-2xl bg-red-500/10 grid place-items-center text-3xl">⚠️</div>
@@ -2394,11 +2626,13 @@ function RoomPageInner() {
   }
 
   if (isValidating || authLoading) {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     return (
       <NetworkDoorScene
-        status="verifying"
-        title="Joining meeting..."
-        subtitle="Connecting to room..."
+        status={isOffline ? "disconnected" : "verifying"}
+        title={isOffline ? "Network Disconnected" : "Joining meeting..."}
+        subtitle={isOffline ? `Holding your spot outside room #${code} while connecting...` : "Connecting to room..."}
+        onRetry={handleReconnect}
       />
     );
   }
@@ -2433,11 +2667,13 @@ function RoomPageInner() {
   }
 
   if (!token) {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     return (
       <NetworkDoorScene
-        status="verifying"
-        title="Joining room..."
-        subtitle={`Entering room #${code}...`}
+        status={isOffline ? "disconnected" : "verifying"}
+        title={isOffline ? "Network Disconnected" : "Connecting to room..."}
+        subtitle={isOffline ? `Holding your spot outside room #${code} while reconnecting...` : `Entering room #${code}...`}
+        onRetry={handleReconnect}
       />
     );
   }
@@ -2445,6 +2681,7 @@ function RoomPageInner() {
 
   return (
     <LiveKitRoom 
+      key={`lk_room_${code}_${roomSessionKey}`}
       token={token} 
       serverUrl={LIVEKIT_URL} 
       connect={true} 
@@ -2463,6 +2700,7 @@ function RoomPageInner() {
         meetingRecord={meetingRecord}
         accessLevel={meetingAccessLevel}
         onToggleAccessLevel={handleToggleAccessLevel}
+        onReconnect={handleReconnect}
       />
     </LiveKitRoom>
   );

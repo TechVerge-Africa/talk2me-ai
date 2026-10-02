@@ -90,6 +90,9 @@ import { generateRoomCode, roomShareUrl } from '@/packages/shared/rooms';
 import { GradientBackground } from '@/components/ui/gradient-background';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getTimeGreetingPrefix } from '@/lib/greetings';
+import { WorkspaceLoadingShell, useDebouncedLoader } from '@/packages/ui/workspace-loader';
+
+const WORKSPACES_CACHE_KEY = 't2_cached_workspaces_v2';
 
 // ── ICON HELPER ──────────────────────────────────────────────────────
 const renderWorkspaceIcon = (iconStr: string) => {
@@ -217,10 +220,29 @@ function DashboardContent() {
   const [copiedTranscript, setCopiedTranscript] = useState<boolean>(false);
   const [decisionCategoryFilter, setDecisionCategoryFilter] = useState<string>('all');
 
-  // Workspaces from Supabase DB
+  // Workspaces from Supabase DB (with Stale-While-Revalidate Instant Cache)
   const [workspacesData, setWorkspacesData] = useState<FullWorkspaceData[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('');
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState<boolean>(true);
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const raw = localStorage.getItem(WORKSPACES_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.data) && parsed.data.length > 0) {
+          setWorkspacesData(parsed.data);
+          setIsLoadingWorkspaces(false);
+        }
+      }
+      const savedActiveWs = localStorage.getItem('t2_active_workspace_v1');
+      if (savedActiveWs) {
+        setActiveWorkspaceId(savedActiveWs);
+      }
+    } catch {}
+  }, []);
   const [selectedChannel, setSelectedChannel] = useState<string>('# General');
   const [copiedCodeWsId, setCopiedCodeWsId] = useState<string | null>(null);
 
@@ -722,13 +744,19 @@ function DashboardContent() {
 
   const [hubActiveMeetingsMap, setHubActiveMeetingsMap] = useState<Record<string, Meeting>>({});
 
-  // Load User Workspaces from Supabase
+  // Load User Workspaces from Supabase (Stale-While-Revalidate)
   const fetchWorkspaces = async () => {
     if (!user) return;
-    setIsLoadingWorkspaces(true);
+    // Only block if we have zero cached workspaces
+    if (workspacesData.length === 0) {
+      setIsLoadingWorkspaces(true);
+    }
     try {
       const data = await WorkspaceService.getUserWorkspaces(user.id);
       setWorkspacesData(data);
+      try {
+        localStorage.setItem(WORKSPACES_CACHE_KEY, JSON.stringify({ uid: user.id, data }));
+      } catch {}
 
       const wsIds = data.map((w) => w.workspace.id);
       if (wsIds.length > 0) {
@@ -753,7 +781,13 @@ function DashboardContent() {
       if (wsParam && data.some((w) => w.workspace.id === wsParam)) {
         setActiveWorkspaceId(wsParam);
       } else if (!wsParam) {
-        setActiveWorkspaceId('');
+        // Check if there is a saved active workspace in localStorage
+        const savedWs = typeof window !== 'undefined' ? localStorage.getItem('t2_active_workspace_v1') : null;
+        if (savedWs && data.some((w) => w.workspace.id === savedWs)) {
+          setActiveWorkspaceId(savedWs);
+        } else {
+          setActiveWorkspaceId('');
+        }
       }
     } catch (err) {
       console.error('[Dashboard] Error fetching workspaces:', err);
@@ -1473,17 +1507,13 @@ function DashboardContent() {
 
   const timeGreeting = useMemo(() => getTimeGreetingPrefix(), []);
 
-  if (authLoading || isLoadingWorkspaces) {
-    return (
-      <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white font-sans">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="size-10 animate-spin text-indigo-600 dark:text-indigo-400" />
-          <p className="text-xs font-bold tracking-widest text-slate-500 dark:text-slate-400 uppercase">
-            Loading Talk2Me Workspace...
-          </p>
-        </div>
-      </div>
-    );
+  // Only block the UI if we have zero cached workspaces AND are waiting on auth/workspaces
+  const isBlockingLoading = (authLoading || isLoadingWorkspaces) && workspacesData.length === 0;
+  const showLoader = useDebouncedLoader(isBlockingLoading, 200);
+
+  // During SSR and initial client hydration, or while blocking loader is active, render skeleton shell
+  if (!mounted || showLoader) {
+    return <WorkspaceLoadingShell />;
   }
 
   // ── No workspaces: show onboarding screen ──────────────────────────────
@@ -1851,6 +1881,7 @@ function DashboardContent() {
               title="Profile"
               aria-haspopup="true"
               aria-expanded={showProfileDropdown}
+              suppressHydrationWarning
             >
               {userDisplayName.slice(0, 2)}
             </button>
@@ -1868,14 +1899,14 @@ function DashboardContent() {
                   {/* User info header */}
                   <div className="px-4 py-3.5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border-b border-slate-200 dark:border-slate-700/60">
                     <div className="flex items-center gap-3">
-                      <div className="size-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-sm font-black uppercase shadow-md flex-shrink-0">
+                      <div className="size-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 grid place-items-center text-white text-sm font-black uppercase shadow-md flex-shrink-0" suppressHydrationWarning>
                         {userDisplayName.slice(0, 2)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate" suppressHydrationWarning>
                           {userDisplayName}
                         </p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate" suppressHydrationWarning>
                           {user?.email || ''}
                         </p>
                       </div>
@@ -2110,7 +2141,7 @@ function DashboardContent() {
           <main className="relative z-10 flex-1 max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10 w-full flex flex-col gap-8 sm:gap-10 font-sans overflow-y-auto h-full min-h-0 custom-scrollbar">
             {/* Greeting Section */}
             <div className="flex flex-col gap-2">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 dark:text-white" suppressHydrationWarning>
                 {timeGreeting}, {userDisplayName.split(' ')[0]}
               </h1>
               <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 font-medium">
@@ -5086,18 +5117,7 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white font-sans">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="size-10 animate-spin text-indigo-600 dark:text-indigo-400" />
-            <p className="text-xs font-bold tracking-widest text-slate-500 dark:text-slate-400 uppercase">
-              Loading Workspace...
-            </p>
-          </div>
-        </div>
-      }
-    >
+    <Suspense fallback={<WorkspaceLoadingShell />}>
       <DashboardContent />
     </Suspense>
   );
