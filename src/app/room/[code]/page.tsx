@@ -1684,27 +1684,19 @@ function RoomContent({
             <span className="hidden sm:inline">{roomMode === 'onthego' ? 'On the Go' : 'Call Mode'}</span>
           </button>
 
-          {/* Network Resilience Status Pill */}
+          {/* Mobile-Style Network Signal Strength Meter */}
           <NetworkStatusIndicator
             quality={resilience.effectiveQuality}
             connectionState={connectionState}
             isAudioPriority={resilience.isAudioPriority}
+            metrics={resilience.metrics}
+            policy={resilience.policy}
             missedContextNotice={resilience.missedContextNotice}
             onDismissMissedNotice={resilience.clearMissedContext}
           />
 
-          {/* Network dot + REC — hidden on tiny screens */}
-          <div className="hidden xs:flex items-center gap-1.5 text-xs">
-            <div
-              className={`w-2 h-2 rounded-full ${
-                resilience.effectiveQuality === 'excellent' || resilience.effectiveQuality === 'good'
-                  ? 'bg-emerald-400 animate-pulse'
-                  : resilience.effectiveQuality === 'fair'
-                  ? 'bg-amber-400'
-                  : 'bg-red-500'
-              }`}
-              title={`Network: ${resilience.effectiveQuality} (${resilience.metrics.stabilityScore}% stable)`}
-            />
+          {/* REC / LIVE status badge */}
+          <div className="hidden xs:flex items-center text-xs">
             <span className={`hidden sm:inline px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${recordingOn ? 'bg-red-600 text-white' : 'bg-[#1e2227] text-white/40 border border-white/5'}`}>
               {recordingOn ? 'REC' : 'LIVE'}
             </span>
@@ -2098,6 +2090,7 @@ function RoomContent({
           onEntered={() => setNetworkPortalPhase('idle')}
           onRetry={triggerReconnect}
           isRetrying={isAttemptingReconnect}
+          onLeave={() => onLeave(false)}
         />
       )}
       <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar} controlsVisible={controlsVisible}
@@ -2288,8 +2281,24 @@ function RoomPageInner() {
   const [showPreJoin, setShowPreJoin] = useState(false);
   const hasFetchedToken = useRef(false);
 
+  // HCI Refs to protect in-call context from transient network / auth drops
+  const tokenRef = useRef<string | null>(token);
+  const hasEnteredRoomRef = useRef<boolean>(!!token);
+
+  useEffect(() => {
+    tokenRef.current = token;
+    if (token) {
+      hasEnteredRoomRef.current = true;
+    }
+  }, [token]);
+
   // NEW STATES
   const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
+  const meetingRecordRef = useRef<Meeting | null>(meetingRecord);
+  useEffect(() => {
+    meetingRecordRef.current = meetingRecord;
+  }, [meetingRecord]);
+
   const [endOptionSelected, setEndOptionSelected] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
   const [meetingAccessLevel, setMeetingAccessLevel] = useState<'members_only' | 'open'>('members_only');
@@ -2372,7 +2381,12 @@ function RoomPageInner() {
       setShowPreJoin(false);
     } catch (e) {
       console.error('Failed to generate LiveKit token:', e);
-      setError(e instanceof Error && e.message ? e.message : 'Could not connect to the room. Please check your connection.');
+      // HCI: Never eject an active caller to the error page during reconnection!
+      // If the caller already has a token or already entered the room, preserve the session
+      // and let the reconnecting door scene / in-meeting loader continue waiting.
+      if (!tokenRef.current && !hasEnteredRoomRef.current) {
+        setError(e instanceof Error && e.message ? e.message : 'Could not connect to the room. Please check your connection.');
+      }
     }
   }, [code, user, SESSION_KEY, targetRoomCode]);
 
@@ -2415,10 +2429,18 @@ function RoomPageInner() {
     if (authLoading) return;
     if (!code) return;
 
+    const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
+
+    // HCI: If the meeting has already been verified and loaded, NEVER re-verify
+    // across temporary network dropouts or auth token refreshes!
+    if (meetingRecordRef.current && (meetingRecordRef.current.room_code === code || meetingRecordRef.current.room_code === formattedCode)) {
+      setIsValidating(false);
+      return;
+    }
+
     queueMicrotask(() => {
       setIsValidating(true);
     });
-    const formattedCode = code.includes('-') ? code : (code.length === 7 ? `${code[0]}-${code.slice(1,4)}-${code.slice(4)}` : code);
 
     // Fast path: look for an active meeting (works for everyone)
     MeetingService.getMeetingByCode(formattedCode)
@@ -2469,7 +2491,14 @@ function RoomPageInner() {
       .then(m => { if (m) setMeetingRecord(m); })
       .catch(e => {
         console.error('Failed to load meeting details:', e);
-        setError('Unable to verify meeting code. Please check your internet connection.');
+        // HCI: Never eject an active participant to the Invalid Meeting Room error page.
+        // Only set error if the user has no token, has never joined, and is not already in the room.
+        if (!hasEnteredRoomRef.current && !tokenRef.current && !meetingRecordRef.current) {
+          const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (!isOffline) {
+            setError('Unable to verify meeting code. Please check your internet connection.');
+          }
+        }
       })
       .finally(() => setIsValidating(false));
   }, [code, user, authLoading]);
@@ -2527,7 +2556,10 @@ function RoomPageInner() {
     );
   }
 
-  if (error) {
+  // HCI: Fatal "Invalid Meeting Room" screen is ONLY displayed if the user NEVER
+  // entered the room and does NOT have a valid token or active session.
+  // During an active meeting, network loss must NEVER kick the user out of the meeting room!
+  if (error && !token && !hasEnteredRoomRef.current && !meetingRecord) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6 bg-background">
         <div className="size-16 rounded-2xl bg-red-500/10 grid place-items-center text-3xl">⚠️</div>
@@ -2546,11 +2578,13 @@ function RoomPageInner() {
   }
 
   if (isValidating || authLoading) {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     return (
       <NetworkDoorScene
-        status="verifying"
-        title="Joining meeting..."
-        subtitle="Connecting to room..."
+        status={isOffline ? "disconnected" : "verifying"}
+        title={isOffline ? "Network Disconnected" : "Joining meeting..."}
+        subtitle={isOffline ? `Holding your spot outside room #${code} while connecting...` : "Connecting to room..."}
+        onRetry={handleReconnect}
       />
     );
   }
@@ -2585,11 +2619,13 @@ function RoomPageInner() {
   }
 
   if (!token) {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
     return (
       <NetworkDoorScene
-        status="verifying"
-        title="Joining room..."
-        subtitle={`Entering room #${code}...`}
+        status={isOffline ? "disconnected" : "verifying"}
+        title={isOffline ? "Network Disconnected" : "Connecting to room..."}
+        subtitle={isOffline ? `Holding your spot outside room #${code} while reconnecting...` : `Entering room #${code}...`}
+        onRetry={handleReconnect}
       />
     );
   }
