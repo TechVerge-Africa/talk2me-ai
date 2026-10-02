@@ -1507,16 +1507,12 @@ function DashboardContent() {
 
   const timeGreeting = useMemo(() => getTimeGreetingPrefix(), []);
 
-  // During SSR and initial client hydration, render the skeleton shell to prevent hydration mismatch
-  if (!mounted) {
-    return <WorkspaceLoadingShell />;
-  }
-
   // Only block the UI if we have zero cached workspaces AND are waiting on auth/workspaces
   const isBlockingLoading = (authLoading || isLoadingWorkspaces) && workspacesData.length === 0;
   const showLoader = useDebouncedLoader(isBlockingLoading, 200);
 
-  if (showLoader) {
+  // During SSR and initial client hydration, or while blocking loader is active, render skeleton shell
+  if (!mounted || showLoader) {
     return <WorkspaceLoadingShell />;
   }
 
