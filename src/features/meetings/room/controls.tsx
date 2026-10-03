@@ -6,7 +6,7 @@ import {
   Smile, PhoneOff, Hand, Ear, EarOff,
   MonitorUp, Users, MessageSquare,
   Copy, Check, MoreHorizontal, X, Shield, ShieldOff,
-  Lock, Globe
+  Lock, Globe, PictureInPicture2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -42,6 +42,8 @@ interface ControlDockProps {
   accessLevel?: 'members_only' | 'open';
   onToggleAccessLevel?: () => void;
   isWorkspaceMeeting?: boolean;
+  onTogglePip?: () => void;
+  isPipActive?: boolean;
 }
 
 export function ControlDock({
@@ -62,6 +64,8 @@ export function ControlDock({
   accessLevel = 'members_only',
   onToggleAccessLevel,
   isWorkspaceMeeting = false,
+  onTogglePip,
+  isPipActive = false,
 }: ControlDockProps) {
   const [copied, setCopied] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -222,6 +226,23 @@ export function ControlDock({
                   </div>
                   <span className="text-[11px] text-white/70 font-medium">Share Screen</span>
                 </button>
+
+                {/* Mini View / Picture-in-Picture */}
+                {onTogglePip && (
+                  <button
+                    onClick={() => {
+                      onTogglePip();
+                      setMoreMenuOpen(false);
+                    }}
+                    aria-label="Mini Meeting"
+                    className="flex flex-col items-center gap-2 text-center group cursor-pointer"
+                  >
+                    <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${isPipActive ? 'bg-indigo-600 text-white' : 'bg-[#2d3139]/80 text-white/95 group-active:scale-95'}`}>
+                      <PictureInPicture2 className="size-5 text-indigo-300" />
+                    </div>
+                    <span className="text-[11px] text-white/70 font-medium">Mini View</span>
+                  </button>
+                )}
 
 
                 {/* Chat */}
@@ -427,6 +448,18 @@ export function ControlDock({
               </span>
             )}
           </button>
+
+          {/* Mini View / Picture-in-Picture */}
+          {onTogglePip && (
+            <button
+              onClick={onTogglePip}
+              title={isPipActive ? "Close Mini View" : "Mini Meeting (Picture-in-Picture)"}
+              aria-label="Toggle Picture-in-Picture Mini View"
+              className={isPipActive ? activeBtn("bg-indigo-600 hover:bg-indigo-700") : idleBtn}
+            >
+              <PictureInPicture2 className="size-5" />
+            </button>
+          )}
 
         </div>
 

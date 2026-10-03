@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
 import { useNetworkResilience, NetworkStatusIndicator, NetworkDebugPanel } from '@/features/network-resilience';
-import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles } from 'lucide-react';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles, PictureInPicture2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
@@ -18,9 +18,12 @@ import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { AiSignerView } from '@/features/accessibility/sign-language';
 import { CaptionList } from '@/features/captions/caption-list';
 
+import { createPortal } from 'react-dom';
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
 import { useBackgroundResilience } from '@/features/meetings/hooks/useBackgroundResilience';
+import { usePictureInPicture } from '@/features/meetings/hooks/usePictureInPicture';
+import { Talk2MeMiniView } from '@/features/meetings/room/mini-meeting-pip';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
@@ -1364,6 +1367,16 @@ function RoomContent({
     onLeave: () => onLeave(false, false),
   });
 
+  // Talk2Me Mini View / Document Picture-in-Picture
+  const {
+    isPipActive,
+    pipWindow,
+    togglePip,
+    returnToMeeting,
+    isFloatingFallback,
+    setIsFloatingFallback,
+  } = usePictureInPicture(code);
+
   // Gracefully disconnect room on explicit tab close / browser exit
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -1707,6 +1720,21 @@ function RoomContent({
           >
             <Phone className="size-3.5" />
             <span className="hidden sm:inline">{roomMode === 'onthego' ? 'On the Go' : 'Call Mode'}</span>
+          </button>
+
+          {/* Picture-in-Picture Mini View button */}
+          <button
+            onClick={togglePip}
+            title={isPipActive ? "Close Mini View" : "Mini Meeting (Picture-in-Picture)"}
+            aria-label="Toggle Picture-in-Picture Mini View"
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] font-bold tracking-wide border transition-all duration-300 shadow-md touch-manipulation cursor-pointer ${
+              isPipActive
+                ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300'
+                : 'bg-[#1e2227] border-white/5 text-white/60 hover:text-white'
+            }`}
+          >
+            <PictureInPicture2 className="size-3.5" />
+            <span className="hidden sm:inline">Mini View</span>
           </button>
 
           {/* Mobile-Style Network Signal Strength Meter */}
@@ -2151,6 +2179,8 @@ function RoomContent({
             accessLevel={accessLevel}
             onToggleAccessLevel={isHost || isAdmin ? onToggleAccessLevel : undefined}
             isWorkspaceMeeting={!!meetingRecord?.workspace_id}
+            onTogglePip={togglePip}
+            isPipActive={isPipActive}
           />
         }
       >
@@ -2209,6 +2239,48 @@ function RoomContent({
           />
         </div>
       </MeetingLayout>
+
+      {/* ══ Native Document Picture-in-Picture Portal (Chrome / Edge / Brave / Opera) ══ */}
+      {isPipActive && pipWindow && createPortal(
+        <Talk2MeMiniView
+          code={code}
+          activeSpeaker={activeSpeaker}
+          localParticipant={localParticipant}
+          participants={participants}
+          micOn={micOn}
+          camOn={camOn}
+          onToggleMic={toggleMic}
+          onToggleCam={toggleCam}
+          onReturnToMeeting={returnToMeeting}
+          onLeave={() => onLeave(false, false)}
+          quality={resilience.effectiveQuality}
+          connectionState={connectionState}
+          isAudioPriority={resilience.isAudioPriority}
+        />,
+        pipWindow.document.body
+      )}
+
+      {/* ══ In-App Floating Mini Meeting Tile Fallback ══════════════════════ */}
+      {isFloatingFallback && (
+        <div className="fixed bottom-24 right-6 z-50 w-80 h-52 rounded-2xl overflow-hidden shadow-2xl border border-white/20 bg-black/95 pointer-events-auto animate-in zoom-in-95 duration-200">
+          <Talk2MeMiniView
+            code={code}
+            activeSpeaker={activeSpeaker}
+            localParticipant={localParticipant}
+            participants={participants}
+            micOn={micOn}
+            camOn={camOn}
+            onToggleMic={toggleMic}
+            onToggleCam={toggleCam}
+            onReturnToMeeting={() => setIsFloatingFallback(false)}
+            onLeave={() => onLeave(false, false)}
+            isFloatingOverlay={true}
+            quality={resilience.effectiveQuality}
+            connectionState={connectionState}
+            isAudioPriority={resilience.isAudioPriority}
+          />
+        </div>
+      )}
 
       {/* Floating Admission Request list (real admission flow) */}
       <div className={`fixed left-6 top-20 z-50 flex flex-col gap-3 pointer-events-auto transition-all duration-300 ${
