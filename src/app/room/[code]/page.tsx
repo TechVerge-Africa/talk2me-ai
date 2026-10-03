@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { useNetworkResilience, NetworkStatusIndicator, NetworkDebugPanel } from '@/features/network-resilience';
+import { useNetworkResilience, NetworkStatusIndicator } from '@/features/network-resilience';
 import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles, PictureInPicture2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -2335,12 +2335,6 @@ function RoomContent({
       {/* Floating reactions animation overlay */}
       <FloatingReactionsOverlay reactions={reactions} />
 
-      {/* Development Network Diagnostics & Simulation HUD */}
-      <NetworkDebugPanel
-        metrics={resilience.metrics}
-        policy={resilience.policy}
-        simulator={resilience.simulator}
-      />
     </>
   );
 }
