@@ -51,16 +51,16 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
       try {
         const storedConsent = localStorage.getItem('talk2me_auto_pip_consent') as AutoPipConsent | null;
-        if (storedConsent === 'granted' || storedConsent === 'denied') {
-          setAutoPipConsent(storedConsent);
+        if (storedConsent === 'denied') {
+          setAutoPipConsent('denied');
         } else if (isMobileDevice) {
-          // On mobile devices, default to denied (no Document PiP support)
           setAutoPipConsent('denied');
         } else {
-          setAutoPipConsent('prompt');
+          // Default to granted on desktop so PiP triggers seamlessly on tab switch
+          setAutoPipConsent('granted');
         }
       } catch {
-        setAutoPipConsent('prompt');
+        setAutoPipConsent('granted');
       }
     }
   }, []);
@@ -126,7 +126,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     targetWindow.document.documentElement.style.backgroundColor = '#080a0f';
     targetWindow.document.documentElement.style.overflow = 'hidden';
 
-    targetWindow.document.body.className = `${document.body.className} bg-[#080a0f] text-white m-0 p-0 overflow-hidden font-sans select-none`;
+    targetWindow.document.body.className = 'dark bg-[#080a0f] text-white m-0 p-0 overflow-hidden font-sans select-none w-full h-full';
     targetWindow.document.body.style.height = '100%';
     targetWindow.document.body.style.width = '100%';
     targetWindow.document.body.style.margin = '0';
@@ -142,10 +142,10 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     // A. Native Document Picture-in-Picture (Chromium: Chrome, Edge, Brave, Opera)
     if ('documentPictureInPicture' in window) {
       try {
-        // Close existing window if any
-        if (pipWindowRef.current) {
-          pipWindowRef.current.close();
-          pipWindowRef.current = null;
+        // If window already exists and is not closed, bring to front
+        if (pipWindowRef.current && !pipWindowRef.current.closed) {
+          pipWindowRef.current.focus();
+          return true;
         }
 
         const win = await (window as any).documentPictureInPicture.requestWindow({
@@ -154,28 +154,44 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
           disallowReturnToOpener: false,
         });
 
-        copyStylesToPipWindow(win);
-
-        win.addEventListener('pagehide', () => {
-          setIsPipActive(false);
-          setPipWindow(null);
-          pipWindowRef.current = null;
-        });
-
+        // Set state immediately so React portal mounts without delay
         pipWindowRef.current = win;
         setPipWindow(win);
         setIsPipActive(true);
         setIsFloatingFallback(false);
+
+        const handleClose = () => {
+          setIsPipActive(false);
+          setPipWindow(null);
+          pipWindowRef.current = null;
+          setIsFloatingFallback(false);
+          autoOpenedRef.current = false;
+        };
+
+        win.addEventListener('pagehide', handleClose);
+        win.addEventListener('unload', handleClose);
+        win.addEventListener('beforeunload', handleClose);
+
+        try {
+          copyStylesToPipWindow(win);
+        } catch (styleErr) {
+          console.warn('[Talk2Me] Failed copying styles to PiP window:', styleErr);
+        }
+
         return true;
       } catch (err) {
-        console.warn('[Talk2Me] Document PiP failed or denied, using in-app floating mode:', err);
+        console.warn('[Talk2Me] Document PiP failed or denied:', err);
       }
     }
 
-    // B. Fallback: In-app floating mini meeting tile
-    setIsFloatingFallback(true);
-    setIsPipActive(true);
-    return true;
+    // B. Fallback: Only open in-app floating mini meeting tile if document is visible
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      setIsFloatingFallback(true);
+      setIsPipActive(true);
+      return true;
+    }
+
+    return false;
   }, [copyStylesToPipWindow]);
 
   const closePip = useCallback(() => {
@@ -188,6 +204,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     setPipWindow(null);
     setIsPipActive(false);
     setIsFloatingFallback(false);
+    autoOpenedRef.current = false;
   }, []);
 
   const returnToMeeting = useCallback(() => {
@@ -199,7 +216,13 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
   const togglePip = useCallback(async () => {
     if (isPipActive) {
-      closePip();
+      // If window was closed externally by the user, pipWindowRef.current.closed might be true
+      if (pipWindowRef.current && pipWindowRef.current.closed) {
+        closePip();
+        await openPip();
+      } else {
+        closePip();
+      }
     } else {
       await openPip();
     }
@@ -210,29 +233,38 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
   // 1. Browser-native MediaSession automatic Picture-in-Picture trigger (Chrome 120+)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    if (!isDesktop || autoPipConsent !== 'granted') return;
+    if (!isDesktop || autoPipConsent === 'denied') return;
 
     try {
       navigator.mediaSession.setActionHandler('enterpictureinpicture' as any, async () => {
+        console.info('[Talk2Me] MediaSession auto PiP triggered by browser');
         autoOpenedRef.current = true;
         await openPip();
       });
+      return () => {
+        try {
+          navigator.mediaSession.setActionHandler('enterpictureinpicture' as any, null);
+        } catch {}
+      };
     } catch {
       // not supported in all browsers
     }
   }, [openPip, isDesktop, autoPipConsent]);
 
   // 2. Automatic Picture-in-Picture on tab switch / window blur / backgrounding
-  // Only activates on desktop when the user has explicitly granted permission
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'hidden') {
-        // Only automatically pop open Mini View if on Desktop and permission was explicitly granted
-        if (isDesktop && autoPipConsent === 'granted' && !pipWindowRef.current) {
+        // Attempt auto PiP if on Desktop and not explicitly denied
+        if (isDesktop && autoPipConsent !== 'denied' && !pipWindowRef.current) {
           autoOpenedRef.current = true;
-          await openPip();
+          try {
+            await openPip();
+          } catch {
+            // Ignored if browser blocks background requestWindow without gesture
+          }
         }
       } else if (document.visibilityState === 'visible') {
         // User returned to the meeting tab

@@ -2239,7 +2239,7 @@ function RoomContent({
             camOn={camOn}
             onToggleMic={toggleMic}
             onToggleCam={toggleCam}
-            onReturnToMeeting={() => setIsFloatingFallback(false)}
+            onReturnToMeeting={returnToMeeting}
             onLeave={() => onLeave(false, false)}
             isFloatingOverlay={true}
             quality={resilience.effectiveQuality}
