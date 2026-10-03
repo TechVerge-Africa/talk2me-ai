@@ -1328,17 +1328,12 @@ function RoomContent({
     onLeave: () => onLeave(false, false),
   });
 
-  // Talk2Me Mini View / Document Picture-in-Picture
+  // Talk2Me Mini View / Document Picture-in-Picture (100% ambient, triggers on tab switch like Zoom & Google Meet)
   const {
     isPipActive,
     pipWindow,
-    togglePip,
     returnToMeeting,
     isFloatingFallback,
-    setIsFloatingFallback,
-    isDesktop,
-    autoPipEnabled,
-    toggleAutoPip,
   } = usePictureInPicture(code, { isScreenSharing: screenShareOn });
 
   // Gracefully disconnect room on explicit tab close / browser exit
@@ -2135,10 +2130,6 @@ function RoomContent({
             accessLevel={accessLevel}
             onToggleAccessLevel={isHost || isAdmin ? onToggleAccessLevel : undefined}
             isWorkspaceMeeting={!!meetingRecord?.workspace_id}
-            onTogglePip={togglePip}
-            isPipActive={isPipActive}
-            autoPipEnabled={autoPipEnabled}
-            onToggleAutoPip={toggleAutoPip}
           />
         }
       >
