@@ -24,6 +24,7 @@ import { useMeeting } from '@/features/meetings/hooks/useMeeting';
 import { useBackgroundResilience } from '@/features/meetings/hooks/useBackgroundResilience';
 import { usePictureInPicture } from '@/features/meetings/hooks/usePictureInPicture';
 import { Talk2MeMiniView } from '@/features/meetings/room/mini-meeting-pip';
+import { MiniPipConsentBanner } from '@/features/meetings/room/mini-pip-consent-banner';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
@@ -1375,6 +1376,10 @@ function RoomContent({
     returnToMeeting,
     isFloatingFallback,
     setIsFloatingFallback,
+    isDesktop,
+    autoPipConsent,
+    grantAutoPipConsent,
+    denyAutoPipConsent,
   } = usePictureInPicture(code);
 
   // Gracefully disconnect room on explicit tab close / browser exit
@@ -2221,6 +2226,13 @@ function RoomContent({
             selectedBoardId={activeBoardId}
             onConfirm={handleConfirmCandidate}
             onDismiss={() => setDetectedCandidate(null)}
+          />
+
+          {/* ══ Desktop Auto Mini View Progressive Consent Banner ══ */}
+          <MiniPipConsentBanner
+            isVisible={isDesktop && autoPipConsent === 'prompt' && !isPipActive}
+            onEnable={grantAutoPipConsent}
+            onDismiss={denyAutoPipConsent}
           />
         </div>
       </MeetingLayout>

@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+export type AutoPipConsent = 'prompt' | 'granted' | 'denied';
+
 export interface UsePictureInPictureReturn {
   isDocumentPipSupported: boolean;
+  isDesktop: boolean;
   isPipActive: boolean;
   pipWindow: Window | null;
   openPip: () => Promise<boolean>;
@@ -12,6 +15,9 @@ export interface UsePictureInPictureReturn {
   returnToMeeting: () => void;
   isFloatingFallback: boolean;
   setIsFloatingFallback: (val: boolean) => void;
+  autoPipConsent: AutoPipConsent;
+  grantAutoPipConsent: () => void;
+  denyAutoPipConsent: () => void;
 }
 
 /**
@@ -21,21 +27,56 @@ export interface UsePictureInPictureReturn {
  * allowing users to multitask across Google Docs, VS Code, Slack, etc., while keeping the
  * Talk2Me Mini View always-on-top with active speaker video and interactive controls.
  * 
- * If Document PiP is unsupported (Safari, Firefox), gracefully falls back to an in-app
- * floating mini meeting tile.
+ * Includes smart progressive consent: only auto-opens on desktop when the user has
+ * explicitly granted permission, preventing unexpected popups and prompt fatigue.
  */
 export function usePictureInPicture(code: string): UsePictureInPictureReturn {
   const [isDocumentPipSupported, setIsDocumentPipSupported] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const [isPipActive, setIsPipActive] = useState(false);
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [isFloatingFallback, setIsFloatingFallback] = useState(false);
+  const [autoPipConsent, setAutoPipConsent] = useState<AutoPipConsent>('prompt');
 
   const pipWindowRef = useRef<Window | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setIsDocumentPipSupported('documentPictureInPicture' in window);
+      const isDocPip = 'documentPictureInPicture' in window;
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isDesktopEnvironment = isDocPip && !isMobileDevice;
+      
+      setIsDocumentPipSupported(isDocPip);
+      setIsDesktop(isDesktopEnvironment);
+
+      try {
+        const storedConsent = localStorage.getItem('talk2me_auto_pip_consent') as AutoPipConsent | null;
+        if (storedConsent === 'granted' || storedConsent === 'denied') {
+          setAutoPipConsent(storedConsent);
+        } else if (isMobileDevice) {
+          // On mobile devices, default to denied (no Document PiP support)
+          setAutoPipConsent('denied');
+        } else {
+          setAutoPipConsent('prompt');
+        }
+      } catch {
+        setAutoPipConsent('prompt');
+      }
     }
+  }, []);
+
+  const grantAutoPipConsent = useCallback(() => {
+    setAutoPipConsent('granted');
+    try {
+      localStorage.setItem('talk2me_auto_pip_consent', 'granted');
+    } catch {}
+  }, []);
+
+  const denyAutoPipConsent = useCallback(() => {
+    setAutoPipConsent('denied');
+    try {
+      localStorage.setItem('talk2me_auto_pip_consent', 'denied');
+    } catch {}
   }, []);
 
   const copyStylesToPipWindow = useCallback((targetWindow: Window) => {
@@ -139,6 +180,8 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
   // 1. Browser-native MediaSession automatic Picture-in-Picture trigger (Chrome 120+)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    if (!isDesktop || autoPipConsent !== 'granted') return;
+
     try {
       navigator.mediaSession.setActionHandler('enterpictureinpicture' as any, async () => {
         autoOpenedRef.current = true;
@@ -147,17 +190,17 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     } catch {
       // not supported in all browsers
     }
-  }, [openPip]);
+  }, [openPip, isDesktop, autoPipConsent]);
 
   // 2. Automatic Picture-in-Picture on tab switch / window blur / backgrounding
+  // Only activates on desktop when the user has explicitly granted permission
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'hidden') {
-        // User switched tabs (e.g. to Google Docs, Slack, VS Code)
-        // Automatically pop open Mini View without requiring any manual button press!
-        if (!pipWindowRef.current) {
+        // Only automatically pop open Mini View if on Desktop and permission was explicitly granted
+        if (isDesktop && autoPipConsent === 'granted' && !pipWindowRef.current) {
           autoOpenedRef.current = true;
           await openPip();
         }
@@ -173,7 +216,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [openPip, closePip]);
+  }, [openPip, closePip, isDesktop, autoPipConsent]);
 
   // Clean up on component unmount
   useEffect(() => {
@@ -188,6 +231,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
   return {
     isDocumentPipSupported,
+    isDesktop,
     isPipActive,
     pipWindow,
     openPip,
@@ -196,5 +240,8 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     returnToMeeting,
     isFloatingFallback,
     setIsFloatingFallback,
+    autoPipConsent,
+    grantAutoPipConsent,
+    denyAutoPipConsent,
   };
 }
