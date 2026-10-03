@@ -1722,21 +1722,6 @@ function RoomContent({
             <span className="hidden sm:inline">{roomMode === 'onthego' ? 'On the Go' : 'Call Mode'}</span>
           </button>
 
-          {/* Picture-in-Picture Mini View button */}
-          <button
-            onClick={togglePip}
-            title={isPipActive ? "Close Mini View" : "Mini Meeting (Picture-in-Picture)"}
-            aria-label="Toggle Picture-in-Picture Mini View"
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] font-bold tracking-wide border transition-all duration-300 shadow-md touch-manipulation cursor-pointer ${
-              isPipActive
-                ? 'bg-indigo-600/30 border-indigo-500/50 text-indigo-300'
-                : 'bg-[#1e2227] border-white/5 text-white/60 hover:text-white'
-            }`}
-          >
-            <PictureInPicture2 className="size-3.5" />
-            <span className="hidden sm:inline">Mini View</span>
-          </button>
-
           {/* Mobile-Style Network Signal Strength Meter */}
           <NetworkStatusIndicator
             quality={resilience.effectiveQuality}

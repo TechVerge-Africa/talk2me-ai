@@ -134,6 +134,47 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     }
   }, [isPipActive, closePip, openPip]);
 
+  const autoOpenedRef = useRef(false);
+
+  // 1. Browser-native MediaSession automatic Picture-in-Picture trigger (Chrome 120+)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler('enterpictureinpicture' as any, async () => {
+        autoOpenedRef.current = true;
+        await openPip();
+      });
+    } catch {
+      // not supported in all browsers
+    }
+  }, [openPip]);
+
+  // 2. Automatic Picture-in-Picture on tab switch / window blur / backgrounding
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'hidden') {
+        // User switched tabs (e.g. to Google Docs, Slack, VS Code)
+        // Automatically pop open Mini View without requiring any manual button press!
+        if (!pipWindowRef.current) {
+          autoOpenedRef.current = true;
+          await openPip();
+        }
+      } else if (document.visibilityState === 'visible') {
+        // User returned to the meeting tab
+        // Automatically restore full room view and close the mini floating window!
+        if (autoOpenedRef.current && pipWindowRef.current) {
+          autoOpenedRef.current = false;
+          closePip();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [openPip, closePip]);
+
   // Clean up on component unmount
   useEffect(() => {
     return () => {
