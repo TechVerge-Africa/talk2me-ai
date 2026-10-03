@@ -622,6 +622,14 @@ export function useMeeting(
       room.on(RoomEvent.Reconnecting, handleReconnecting);
       room.on(RoomEvent.Reconnected, handleReconnected);
       room.on(RoomEvent.Connected, handleConnected);
+
+      if (room.state === 'connected') {
+        setConnectionState('connected');
+      } else if (room.state === 'reconnecting') {
+        setConnectionState('reconnecting');
+      } else if (room.state === 'disconnected') {
+        setConnectionState('disconnected');
+      }
     } catch {
       // ignore
     }
