@@ -224,6 +224,7 @@ export function ControlDock({
                 </button>
 
 
+
                 {/* Chat */}
                 <button
                   onClick={() => {
@@ -427,6 +428,8 @@ export function ControlDock({
               </span>
             )}
           </button>
+
+
 
         </div>
 

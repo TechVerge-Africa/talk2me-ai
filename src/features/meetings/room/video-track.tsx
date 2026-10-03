@@ -14,6 +14,7 @@ interface ParticipantVideoProps {
   reactions?: { id: string; sender_id: string; emoji: string; timestamp: string }[];
   isMain?: boolean;
   trackRef?: TrackReferenceOrPlaceholder;
+  hideBadge?: boolean;
 }
 
 // Renders a single video tile for a participant
@@ -26,6 +27,7 @@ export function ParticipantVideo({
   reactions,
   isMain = false,
   trackRef: externalTrackRef,
+  hideBadge = false,
 }: ParticipantVideoProps) {
   // Only query all tracks if externalTrackRef was not provided by parent
   const internalTracks = useTracks(externalTrackRef ? [] : [source]);
@@ -91,15 +93,17 @@ export function ParticipantVideo({
       )}
 
       {/* Name badge */}
-      <div 
-        className={`absolute z-30 bg-[#2d3139]/70 backdrop-blur-md text-white font-semibold border border-white/5 shadow-md truncate ${
-          isMain 
-            ? 'top-4 right-4 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide' 
-            : 'bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg text-[9px]'
-        }`}
-      >
-        {participant.identity}{participant instanceof LocalParticipant ? ' (You)' : ''}
-      </div>
+      {!hideBadge && (
+        <div 
+          className={`absolute z-30 bg-[#2d3139]/70 backdrop-blur-md text-white font-semibold border border-white/5 shadow-md truncate ${
+            isMain 
+              ? 'top-4 right-4 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide' 
+              : 'bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg text-[9px]'
+          }`}
+        >
+          {participant.identity}{participant instanceof LocalParticipant ? ' (You)' : ''}
+        </div>
+      )}
     </div>
   );
 }

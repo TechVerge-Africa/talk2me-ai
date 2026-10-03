@@ -79,8 +79,10 @@ export function NetworkStatusIndicator({
   }, [popoverOpen]);
 
   // Determine signal bar level (0 to 4)
-  const isOffline = quality === 'offline' || connectionState === 'disconnected';
-  const isReconnecting = connectionState === 'reconnecting';
+  // A user is ONLY truly offline if their device has no internet connection
+  const isBrowserOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+  const isOffline = isBrowserOffline || (quality === 'offline' && isBrowserOffline);
+  const isReconnecting = !isOffline && (connectionState === 'reconnecting' || connectionState === 'disconnected');
 
   let barCount = 4;
   if (isOffline) {
@@ -136,8 +138,10 @@ export function NetworkStatusIndicator({
         glow: isCrit ? 'shadow-[0_0_8px_rgba(244,63,94,0.6)]' : 'shadow-[0_0_6px_rgba(251,146,60,0.4)]',
         textColor: isCrit ? 'text-rose-400' : 'text-orange-400',
         badgeBg: isCrit ? 'bg-rose-500/15 border-rose-500/30 text-rose-300' : 'bg-orange-500/10 border-orange-500/20 text-orange-300',
-        label: isCrit ? 'Critical' : 'Poor',
-        summary: 'Audio priority active — video paused to protect call',
+        label: isReconnecting ? 'Reconnecting' : (isCrit ? 'Low Network' : 'Poor'),
+        summary: isReconnecting
+          ? 'Connecting to room — holding your spot'
+          : 'Low bandwidth mode active — voice prioritized',
       };
     }
     return {
@@ -146,7 +150,7 @@ export function NetworkStatusIndicator({
       textColor: 'text-rose-400',
       badgeBg: 'bg-rose-500/10 border-rose-500/20 text-rose-300',
       label: 'Offline',
-      summary: 'Connection lost — holding your spot in room',
+      summary: 'No internet connection — waiting for network',
     };
   };
 
@@ -155,13 +159,13 @@ export function NetworkStatusIndicator({
   // Status pill configuration for degraded states
   let statusBadge: { text: string; icon: React.ReactNode } | null = null;
   if (isOffline) {
-    statusBadge = { text: 'Offline', icon: <WifiOff className="size-3" /> };
+    statusBadge = { text: 'No Internet', icon: <WifiOff className="size-3" /> };
   } else if (isReconnecting) {
     statusBadge = { text: 'Reconnecting...', icon: <RefreshCw className="size-3 animate-spin" /> };
   } else if (quality === 'critical' || isAudioPriority) {
     statusBadge = { text: 'Audio priority', icon: <Mic className="size-3" /> };
   } else if (quality === 'fair' || quality === 'poor') {
-    statusBadge = { text: 'Optimized', icon: <Activity className="size-3" /> };
+    statusBadge = { text: 'Low bandwidth', icon: <Activity className="size-3" /> };
   }
 
   // Stepped bar heights matching mobile signal convention

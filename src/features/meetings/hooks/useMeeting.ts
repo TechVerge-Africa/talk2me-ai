@@ -49,7 +49,7 @@ export function useMeeting(
   const [raisedHands, setRaisedHands] = useState<Record<string, boolean>>({});
   const [reactions, setReactions] = useState<{ id: string; sender_id: string; emoji: string; timestamp: string }[]>([]);
   const [connectionState, setConnectionState] = useState<'connected' | 'reconnecting' | 'disconnected'>('connected');
-  const [isNetworkOffline, setIsNetworkOffline] = useState(false);
+  const [isNetworkOffline, setIsNetworkOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
 
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const isEphemeralFromUrl = searchParams?.get('ephemeral') === 'true';
@@ -614,7 +614,16 @@ export function useMeeting(
     };
     const handleOffline = () => {
       setIsNetworkOffline(true);
-      setConnectionState('reconnecting');
+    };
+
+    const handleConnectionStateChanged = (state: string) => {
+      if (state === 'connected') {
+        setConnectionState('connected');
+      } else if (state === 'reconnecting') {
+        setConnectionState('reconnecting');
+      } else if (state === 'disconnected') {
+        setConnectionState('disconnected');
+      }
     };
 
     try {
@@ -622,6 +631,15 @@ export function useMeeting(
       room.on(RoomEvent.Reconnecting, handleReconnecting);
       room.on(RoomEvent.Reconnected, handleReconnected);
       room.on(RoomEvent.Connected, handleConnected);
+      room.on(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
+
+      if (room.state === 'connected') {
+        setConnectionState('connected');
+      } else if (room.state === 'reconnecting') {
+        setConnectionState('reconnecting');
+      } else if (room.state === 'disconnected') {
+        setConnectionState('disconnected');
+      }
     } catch {
       // ignore
     }
@@ -645,6 +663,7 @@ export function useMeeting(
         room.off(RoomEvent.Reconnecting, handleReconnecting);
         room.off(RoomEvent.Reconnected, handleReconnected);
         room.off(RoomEvent.Connected, handleConnected);
+        room.off(RoomEvent.ConnectionStateChanged, handleConnectionStateChanged);
       } catch (e) {
         console.warn('Error removing room event listeners:', e);
       }

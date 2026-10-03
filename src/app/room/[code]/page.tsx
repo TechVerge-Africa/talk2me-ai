@@ -5,8 +5,8 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { LiveKitRoom, useTracks, RoomAudioRenderer, useRoomContext } from '@livekit/components-react';
 import { Track, LocalParticipant, RemoteParticipant, VideoPresets, RoomOptions } from 'livekit-client';
-import { useNetworkResilience, NetworkStatusIndicator, NetworkDebugPanel } from '@/features/network-resilience';
-import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles } from 'lucide-react';
+import { useNetworkResilience, NetworkStatusIndicator } from '@/features/network-resilience';
+import { Loader2, Copy, Crown, LogIn, RotateCcw, Home, Video, VideoOff, Mic, MicOff, Eye, EyeOff, X, ChevronDown, Phone, MessageSquare, Shield, ShieldOff, Play, Square, RefreshCw, Building2, Sparkles, PictureInPicture2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { RNNoiseTrackProcessor } from '@/lib/audio/rnnoise-processor';
@@ -18,9 +18,12 @@ import { EmojiPicker } from '@/components/ui/emoji-picker';
 import { AiSignerView } from '@/features/accessibility/sign-language';
 import { CaptionList } from '@/features/captions/caption-list';
 
+import { createPortal } from 'react-dom';
 import { ChatPanel } from '@/features/chat/chat-panel';
 import { useMeeting } from '@/features/meetings/hooks/useMeeting';
 import { useBackgroundResilience } from '@/features/meetings/hooks/useBackgroundResilience';
+import { usePictureInPicture } from '@/features/meetings/hooks/usePictureInPicture';
+import { Talk2MeMiniView } from '@/features/meetings/room/mini-meeting-pip';
 import { ParticipantVideo, ScreenShareView } from '@/features/meetings/room/video-track';
 import { RealTimeCaptionOverlay } from '@/features/meetings/room/real-time-caption-overlay';
 import { ParticipantsPanel } from '@/features/meetings/room/participants-panel';
@@ -1268,49 +1271,35 @@ function RoomContent({
     prevAdmittedRef.current = isAdmitted;
   }, [isAdmitted]);
 
-  const [networkPortalPhase, setNetworkPortalPhase] = useState<'idle' | 'waiting' | 'entering'>('idle');
-  const wasReconnectingRef = useRef(false);
-  const [isAttemptingReconnect, setIsAttemptingReconnect] = useState(false);
-  const reconnectPollTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   const isDisconnectedOrReconnecting = connectionState === 'reconnecting' || connectionState === 'disconnected' || isNetworkOffline;
+  const [showReconnectingBanner, setShowReconnectingBanner] = useState(false);
 
-  const triggerReconnect = useCallback(async () => {
-    if (isAttemptingReconnect) return;
-    setIsAttemptingReconnect(true);
-    console.info('[Talk2Me] Auto-reconnecting LiveKit session...');
-    try {
-      if (onReconnect) {
-        await onReconnect();
-      } else if (room) {
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isDisconnectedOrReconnecting) {
+      // 2.5s grace period: avoid flashing warning toast during brief WebRTC renegotiations or 2G/3G packet jitter
+      timer = setTimeout(() => {
+        setShowReconnectingBanner(true);
+      }, 2500);
+    } else {
+      setShowReconnectingBanner(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isDisconnectedOrReconnecting]);
+
+  // When browser signals network is restored, if LiveKit was disconnected, gracefully trigger room connection
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.info('[Talk2Me] Browser came back online! Proactively verifying connection...');
+      if (room && room.state === 'disconnected') {
         const token = sessionStorage.getItem(`t2_session_${code}`);
         if (token && LIVEKIT_URL) {
-          await room.connect(LIVEKIT_URL, token);
+          try {
+            await room.connect(LIVEKIT_URL, token);
+          } catch (err) {
+            console.warn('[Talk2Me] Online reconnect attempt error:', err);
+          }
         }
-      }
-    } catch (err) {
-      console.warn('[Talk2Me] Reconnect attempt error:', err);
-    } finally {
-      setIsAttemptingReconnect(false);
-    }
-  }, [isAttemptingReconnect, onReconnect, room, code]);
-
-  useEffect(() => {
-    if (isDisconnectedOrReconnecting) {
-      wasReconnectingRef.current = true;
-      setNetworkPortalPhase('waiting');
-    } else if (wasReconnectingRef.current && connectionState === 'connected' && !isNetworkOffline) {
-      wasReconnectingRef.current = false;
-      setNetworkPortalPhase('entering');
-    }
-  }, [isDisconnectedOrReconnecting, connectionState, isNetworkOffline]);
-
-  // When browser signals network is restored, immediately trigger reconnect
-  useEffect(() => {
-    const handleOnline = () => {
-      console.info('[Talk2Me] Browser came back online! Proactively reconnecting...');
-      if (isDisconnectedOrReconnecting) {
-        triggerReconnect();
       }
     };
 
@@ -1318,32 +1307,7 @@ function RoomContent({
       window.addEventListener('online', handleOnline);
       return () => window.removeEventListener('online', handleOnline);
     }
-  }, [isDisconnectedOrReconnecting, triggerReconnect]);
-
-  // Periodic retry poll while disconnected and network is online
-  useEffect(() => {
-    if (!isDisconnectedOrReconnecting) {
-      if (reconnectPollTimerRef.current) {
-        clearInterval(reconnectPollTimerRef.current);
-        reconnectPollTimerRef.current = null;
-      }
-      return;
-    }
-
-    reconnectPollTimerRef.current = setInterval(() => {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        console.info('[Talk2Me] Polling reconnect while disconnected...');
-        triggerReconnect();
-      }
-    }, 3000);
-
-    return () => {
-      if (reconnectPollTimerRef.current) {
-        clearInterval(reconnectPollTimerRef.current);
-        reconnectPollTimerRef.current = null;
-      }
-    };
-  }, [isDisconnectedOrReconnecting, triggerReconnect]);
+  }, [room, code]);
 
   const screenTracks = useTracks([Track.Source.ScreenShare]);
   const hasScreenShare = screenTracks.length > 0;
@@ -1363,6 +1327,14 @@ function RoomContent({
     toggleCam,
     onLeave: () => onLeave(false, false),
   });
+
+  // Talk2Me Mini View / Document Picture-in-Picture (100% ambient, triggers on tab switch like Zoom & Google Meet)
+  const {
+    isPipActive,
+    pipWindow,
+    returnToMeeting,
+    isFloatingFallback,
+  } = usePictureInPicture(code, { isScreenSharing: screenShareOn });
 
   // Gracefully disconnect room on explicit tab close / browser exit
   useEffect(() => {
@@ -2095,29 +2067,36 @@ function RoomContent({
           onEntered={() => setIsEnteringDoor(false)}
         />
       )}
-      {networkPortalPhase !== 'idle' && (
-        <NetworkDoorScene
-          status={networkPortalPhase === 'entering' ? 'connected' : (isAttemptingReconnect ? 'reconnecting' : 'disconnected')}
-          title={
-            networkPortalPhase === 'entering'
-              ? 'Network Connected'
-              : isAttemptingReconnect
-              ? 'Reconnecting...'
-              : 'Network Disconnected'
-          }
-          subtitle={
-            networkPortalPhase === 'entering'
-              ? 'Opening the door, stepping back into the meeting...'
-              : isAttemptingReconnect
-              ? 'Connecting back to room, please hold on...'
-              : `Holding your spot outside room #${code} while reconnecting...`
-          }
-          onEntered={() => setNetworkPortalPhase('idle')}
-          onRetry={triggerReconnect}
-          isRetrying={isAttemptingReconnect}
-          onLeave={() => onLeave(false)}
-        />
-      )}
+      {/* ══ In-Meeting Reconnecting Loader (HCI: Never leaves meeting room layout) ══ */}
+      <AnimatePresence>
+        {showReconnectingBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
+          >
+            <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#161a22]/95 backdrop-blur-xl border border-amber-500/40 text-white shadow-2xl shadow-black/80 text-xs font-semibold">
+              <Loader2 className="size-3.5 text-amber-400 animate-spin shrink-0" />
+              <span className="text-white/90">
+                {isNetworkOffline
+                  ? 'No internet connection — waiting to reconnect...'
+                  : (connectionState === 'reconnecting'
+                    ? 'Reconnecting to meeting... holding your spot'
+                    : 'Weak connection — holding your spot...')}
+              </span>
+              <button
+                type="button"
+                onClick={() => onLeave(false, false)}
+                className="ml-2 text-white/50 hover:text-rose-400 text-[11px] underline underline-offset-2 transition-colors cursor-pointer"
+              >
+                Leave
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <MeetingLayout isDeafMode={isDeafMode} topbar={topbar} sidebar={sidebar} fullBleed={viewMode !== 'grid'} topbarVisible={showTopbar} controlsVisible={controlsVisible}
         dock={
           <ControlDock
@@ -2156,7 +2135,9 @@ function RoomContent({
       >
         {/* Main active speaker video frame — tap to toggle controls */}
         <div
-          className="w-full h-full min-h-0 relative"
+          className={`w-full h-full min-h-0 relative transition-opacity duration-300 ${
+            showReconnectingBanner ? 'opacity-70' : 'opacity-100'
+          }`}
           onClick={handleScreenTap}
           onTouchEnd={handleScreenTap}
         >
@@ -2207,8 +2188,51 @@ function RoomContent({
             onConfirm={handleConfirmCandidate}
             onDismiss={() => setDetectedCandidate(null)}
           />
+
         </div>
       </MeetingLayout>
+
+      {/* ══ Native Document Picture-in-Picture Portal (Chrome / Edge / Brave / Opera) ══ */}
+      {isPipActive && pipWindow && createPortal(
+        <Talk2MeMiniView
+          code={code}
+          activeSpeaker={activeSpeaker}
+          localParticipant={localParticipant}
+          participants={participants}
+          micOn={micOn}
+          camOn={camOn}
+          onToggleMic={toggleMic}
+          onToggleCam={toggleCam}
+          onReturnToMeeting={returnToMeeting}
+          onLeave={() => onLeave(false, false)}
+          quality={resilience.effectiveQuality}
+          connectionState={connectionState}
+          isAudioPriority={resilience.isAudioPriority}
+        />,
+        pipWindow.document.body
+      )}
+
+      {/* ══ In-App Floating Mini Meeting Tile Fallback ══════════════════════ */}
+      {isFloatingFallback && (
+        <div className="fixed bottom-24 right-6 z-50 w-80 h-52 rounded-2xl overflow-hidden shadow-2xl border border-white/20 bg-black/95 pointer-events-auto animate-in zoom-in-95 duration-200">
+          <Talk2MeMiniView
+            code={code}
+            activeSpeaker={activeSpeaker}
+            localParticipant={localParticipant}
+            participants={participants}
+            micOn={micOn}
+            camOn={camOn}
+            onToggleMic={toggleMic}
+            onToggleCam={toggleCam}
+            onReturnToMeeting={returnToMeeting}
+            onLeave={() => onLeave(false, false)}
+            isFloatingOverlay={true}
+            quality={resilience.effectiveQuality}
+            connectionState={connectionState}
+            isAudioPriority={resilience.isAudioPriority}
+          />
+        </div>
+      )}
 
       {/* Floating Admission Request list (real admission flow) */}
       <div className={`fixed left-6 top-20 z-50 flex flex-col gap-3 pointer-events-auto transition-all duration-300 ${
@@ -2296,12 +2320,6 @@ function RoomContent({
       {/* Floating reactions animation overlay */}
       <FloatingReactionsOverlay reactions={reactions} />
 
-      {/* Development Network Diagnostics & Simulation HUD */}
-      <NetworkDebugPanel
-        metrics={resilience.metrics}
-        policy={resilience.policy}
-        simulator={resilience.simulator}
-      />
     </>
   );
 }
@@ -2441,13 +2459,11 @@ function RoomPageInner() {
   const [roomSessionKey, setRoomSessionKey] = useState(0);
 
   const handleReconnect = useCallback(async () => {
-    console.info('[Talk2Me] Auto-reconnecting LiveKit room session in RoomPageInner...');
+    console.info('[Talk2Me] Refreshing token for LiveKit room session in RoomPageInner...');
     try {
       await fetchToken();
     } catch (e) {
       console.warn('[Talk2Me] Token refresh fallback, reusing current token:', e);
-    } finally {
-      setRoomSessionKey(k => k + 1);
     }
   }, [fetchToken]);
 

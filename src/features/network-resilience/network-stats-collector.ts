@@ -49,7 +49,8 @@ export class NetworkStatsCollector {
    */
   public async collect(room: Room | null): Promise<ComputedIntervalMetrics> {
     const now = Date.now();
-    const connectionState = room ? room.state : (typeof navigator !== 'undefined' && !navigator.onLine ? 'disconnected' : 'offline');
+    const isBrowserOnline = typeof navigator === 'undefined' || navigator.onLine;
+    const connectionState = room ? room.state : (isBrowserOnline ? 'connecting' : 'offline');
 
     // Default snapshot baseline
     const snapshot: RawTelemetrySnapshot = {
