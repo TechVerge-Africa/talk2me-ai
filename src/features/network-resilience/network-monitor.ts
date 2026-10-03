@@ -149,32 +149,40 @@ export class NetworkMonitor {
     // Synthesize quality classification
     let quality: NetworkQuality = 'excellent';
 
-    if (connState === 'disconnected' || connState === 'offline' || isBrowserOffline) {
+    if (isBrowserOffline || connState === 'offline') {
       quality = 'offline';
-    } else if (connState === 'reconnecting') {
+    } else if (connState === 'disconnected' || connState === 'reconnecting') {
       quality = 'critical';
     } else {
       // Evaluate based on smoothed telemetry thresholds
       const t = this.config.thresholds;
       const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
-      // When tab is hidden, LiveKit adaptiveStream pauses incoming video, reducing downlink to audio-only (~20kbps).
-      // We must not falsely penalize this as a network degradation.
+      // Low network / 2G / 3G accommodation:
+      // When audio-only or when no remote video is actively subscribed, low bitrate (~20-40kbps)
+      // is completely normal. Only flag low bandwidth if remote video is expected OR packet loss > 5%.
+      const hasRemoteVideo = this.room?.remoteParticipants
+        ? Array.from(this.room.remoteParticipants.values()).some(p =>
+            Array.from(p.videoTrackPublications.values()).some(pub => pub.isSubscribed && !pub.isMuted)
+          )
+        : false;
+      const shouldCheckBw = !isTabHidden && (hasRemoteVideo || effectiveLossRate > 0.05);
+
       const isCriticalLoss = effectiveLossRate >= t.poorToCritical.maxPacketLoss;
       const isCriticalRtt = effectiveRtt !== undefined && effectiveRtt >= t.poorToCritical.maxRttMs;
-      const isCriticalBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.poorToCritical.minDownlinkKbps;
+      const isCriticalBw = shouldCheckBw && effectiveDownlink !== undefined && effectiveDownlink < t.poorToCritical.minDownlinkKbps;
 
       const isPoorLoss = effectiveLossRate >= t.fairToPoor.maxPacketLoss;
       const isPoorRtt = effectiveRtt !== undefined && effectiveRtt >= t.fairToPoor.maxRttMs;
-      const isPoorBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.fairToPoor.minDownlinkKbps;
+      const isPoorBw = shouldCheckBw && effectiveDownlink !== undefined && effectiveDownlink < t.fairToPoor.minDownlinkKbps;
 
       const isFairLoss = effectiveLossRate >= t.goodToFair.maxPacketLoss;
       const isFairRtt = effectiveRtt !== undefined && effectiveRtt >= t.goodToFair.maxRttMs;
-      const isFairBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.goodToFair.minDownlinkKbps;
+      const isFairBw = shouldCheckBw && effectiveDownlink !== undefined && effectiveDownlink < t.goodToFair.minDownlinkKbps;
 
       const isGoodLoss = effectiveLossRate >= t.excellentToGood.maxPacketLoss;
       const isGoodRtt = effectiveRtt !== undefined && effectiveRtt >= t.excellentToGood.maxRttMs;
-      const isGoodBw = !isTabHidden && effectiveDownlink !== undefined && effectiveDownlink < t.excellentToGood.minDownlinkKbps;
+      const isGoodBw = shouldCheckBw && effectiveDownlink !== undefined && effectiveDownlink < t.excellentToGood.minDownlinkKbps;
 
       if (isCriticalLoss || isCriticalRtt || isCriticalBw) {
         quality = 'critical';
@@ -187,7 +195,6 @@ export class NetworkMonitor {
       } else {
         quality = 'excellent';
       }
-
       // Supplementary check: if LiveKit reports connectionQuality as Lost or Poor
       if (this.room?.localParticipant?.connectionQuality === ConnectionQuality.Lost) {
         quality = 'critical';

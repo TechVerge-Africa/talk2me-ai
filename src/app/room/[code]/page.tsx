@@ -1273,6 +1273,20 @@ function RoomContent({
   }, [isAdmitted]);
 
   const isDisconnectedOrReconnecting = connectionState === 'reconnecting' || connectionState === 'disconnected' || isNetworkOffline;
+  const [showReconnectingBanner, setShowReconnectingBanner] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (isDisconnectedOrReconnecting) {
+      // 2.5s grace period: avoid flashing warning toast during brief WebRTC renegotiations or 2G/3G packet jitter
+      timer = setTimeout(() => {
+        setShowReconnectingBanner(true);
+      }, 2500);
+    } else {
+      setShowReconnectingBanner(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isDisconnectedOrReconnecting]);
 
   // When browser signals network is restored, if LiveKit was disconnected, gracefully trigger room connection
   useEffect(() => {
@@ -2062,7 +2076,7 @@ function RoomContent({
       )}
       {/* ══ In-Meeting Reconnecting Loader (HCI: Never leaves meeting room layout) ══ */}
       <AnimatePresence>
-        {isDisconnectedOrReconnecting && (
+        {showReconnectingBanner && (
           <motion.div
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2073,9 +2087,11 @@ function RoomContent({
             <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#161a22]/95 backdrop-blur-xl border border-amber-500/40 text-white shadow-2xl shadow-black/80 text-xs font-semibold">
               <Loader2 className="size-3.5 text-amber-400 animate-spin shrink-0" />
               <span className="text-white/90">
-                {connectionState === 'reconnecting'
-                  ? 'Reconnecting to meeting... holding your spot'
-                  : 'Network disconnected. Waiting for connection...'}
+                {isNetworkOffline
+                  ? 'No internet connection — waiting to reconnect...'
+                  : (connectionState === 'reconnecting'
+                    ? 'Reconnecting to meeting... holding your spot'
+                    : 'Weak connection — holding your spot...')}
               </span>
               <button
                 type="button"
@@ -2129,7 +2145,7 @@ function RoomContent({
         {/* Main active speaker video frame — tap to toggle controls */}
         <div
           className={`w-full h-full min-h-0 relative transition-opacity duration-300 ${
-            isDisconnectedOrReconnecting ? 'opacity-60' : 'opacity-100'
+            showReconnectingBanner ? 'opacity-70' : 'opacity-100'
           }`}
           onClick={handleScreenTap}
           onTouchEnd={handleScreenTap}
