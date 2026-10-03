@@ -4,17 +4,24 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type AutoPipConsent = 'prompt' | 'granted' | 'denied';
 
+export interface UsePictureInPictureOptions {
+  isScreenSharing?: boolean;
+}
+
 export interface UsePictureInPictureReturn {
   isDocumentPipSupported: boolean;
   isDesktop: boolean;
   isPipActive: boolean;
   pipWindow: Window | null;
-  openPip: () => Promise<boolean>;
+  openPip: (isManual?: boolean) => Promise<boolean>;
   closePip: () => void;
   togglePip: () => Promise<void>;
   returnToMeeting: () => void;
   isFloatingFallback: boolean;
   setIsFloatingFallback: (val: boolean) => void;
+  autoPipEnabled: boolean;
+  setAutoPipEnabled: (enabled: boolean) => void;
+  toggleAutoPip: () => void;
   autoPipConsent: AutoPipConsent;
   grantAutoPipConsent: () => void;
   denyAutoPipConsent: () => void;
@@ -27,18 +34,70 @@ export interface UsePictureInPictureReturn {
  * allowing users to multitask across Google Docs, VS Code, Slack, etc., while keeping the
  * Talk2Me Mini View always-on-top with active speaker video and interactive controls.
  * 
- * Includes smart progressive consent: only auto-opens on desktop when the user has
- * explicitly granted permission, preventing unexpected popups and prompt fatigue.
+ * HCI Principles:
+ * 1. Zero-interruption departure: Automatically pops out on tab leave if auto-PiP is enabled.
+ * 2. Ghosting return: Automatically closes itself when returning to the meeting tab.
+ * 3. User freedom & control: Can be toggled on/off in the meeting dock at any time.
  */
-export function usePictureInPicture(code: string): UsePictureInPictureReturn {
+export function usePictureInPicture(
+  code: string,
+  options?: UsePictureInPictureOptions
+): UsePictureInPictureReturn {
   const [isDocumentPipSupported, setIsDocumentPipSupported] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [isPipActive, setIsPipActive] = useState(false);
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [isFloatingFallback, setIsFloatingFallback] = useState(false);
-  const [autoPipConsent, setAutoPipConsent] = useState<AutoPipConsent>('prompt');
+
+  // Preference: auto-open on tab switch (Enabled by default on desktop)
+  const [autoPipEnabled, setAutoPipEnabledState] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = localStorage.getItem('talk2me_auto_pip_enabled');
+      if (stored !== null) return stored === 'true';
+      const consent = localStorage.getItem('talk2me_auto_pip_consent');
+      if (consent === 'denied') return false;
+      return true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [autoPipConsent, setAutoPipConsent] = useState<AutoPipConsent>(() => {
+    return autoPipEnabled ? 'granted' : 'denied';
+  });
+
+  const setAutoPipEnabled = useCallback((enabled: boolean) => {
+    setAutoPipEnabledState(enabled);
+    setAutoPipConsent(enabled ? 'granted' : 'denied');
+    try {
+      localStorage.setItem('talk2me_auto_pip_enabled', enabled ? 'true' : 'false');
+      localStorage.setItem('talk2me_auto_pip_consent', enabled ? 'granted' : 'denied');
+    } catch {}
+  }, []);
+
+  const toggleAutoPip = useCallback(() => {
+    setAutoPipEnabledState((prev) => {
+      const next = !prev;
+      setAutoPipConsent(next ? 'granted' : 'denied');
+      try {
+        localStorage.setItem('talk2me_auto_pip_enabled', next ? 'true' : 'false');
+        localStorage.setItem('talk2me_auto_pip_consent', next ? 'granted' : 'denied');
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const grantAutoPipConsent = useCallback(() => {
+    setAutoPipEnabled(true);
+  }, [setAutoPipEnabled]);
+
+  const denyAutoPipConsent = useCallback(() => {
+    setAutoPipEnabled(false);
+  }, [setAutoPipEnabled]);
 
   const pipWindowRef = useRef<Window | null>(null);
+  const autoOpenedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -48,35 +107,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
       
       setIsDocumentPipSupported(isDocPip);
       setIsDesktop(isDesktopEnvironment);
-
-      try {
-        const storedConsent = localStorage.getItem('talk2me_auto_pip_consent') as AutoPipConsent | null;
-        if (storedConsent === 'denied') {
-          setAutoPipConsent('denied');
-        } else if (isMobileDevice) {
-          setAutoPipConsent('denied');
-        } else {
-          // Default to granted on desktop so PiP triggers seamlessly on tab switch
-          setAutoPipConsent('granted');
-        }
-      } catch {
-        setAutoPipConsent('granted');
-      }
     }
-  }, []);
-
-  const grantAutoPipConsent = useCallback(() => {
-    setAutoPipConsent('granted');
-    try {
-      localStorage.setItem('talk2me_auto_pip_consent', 'granted');
-    } catch {}
-  }, []);
-
-  const denyAutoPipConsent = useCallback(() => {
-    setAutoPipConsent('denied');
-    try {
-      localStorage.setItem('talk2me_auto_pip_consent', 'denied');
-    } catch {}
   }, []);
 
   const copyStylesToPipWindow = useCallback((targetWindow: Window) => {
@@ -136,8 +167,12 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     targetWindow.document.title = `Talk2Me Mini • #${code}`;
   }, [code]);
 
-  const openPip = useCallback(async (): Promise<boolean> => {
+  const openPip = useCallback(async (isManual = false): Promise<boolean> => {
     if (typeof window === 'undefined') return false;
+
+    if (isManual) {
+      autoOpenedRef.current = false;
+    }
 
     // A. Native Document Picture-in-Picture (Chromium: Chrome, Edge, Brave, Opera)
     if ('documentPictureInPicture' in window) {
@@ -180,7 +215,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
         return true;
       } catch (err) {
-        console.warn('[Talk2Me] Document PiP failed or denied:', err);
+        console.warn('[Talk2Me] Document PiP request failed:', err);
       }
     }
 
@@ -219,27 +254,25 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
       // If window was closed externally by the user, pipWindowRef.current.closed might be true
       if (pipWindowRef.current && pipWindowRef.current.closed) {
         closePip();
-        await openPip();
+        await openPip(true);
       } else {
         closePip();
       }
     } else {
-      await openPip();
+      await openPip(true);
     }
   }, [isPipActive, closePip, openPip]);
-
-  const autoOpenedRef = useRef(false);
 
   // 1. Browser-native MediaSession automatic Picture-in-Picture trigger (Chrome 120+)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    if (!isDesktop || autoPipConsent === 'denied') return;
+    if (!isDesktop || !autoPipEnabled || options?.isScreenSharing) return;
 
     try {
       navigator.mediaSession.setActionHandler('enterpictureinpicture' as any, async () => {
         console.info('[Talk2Me] MediaSession auto PiP triggered by browser');
         autoOpenedRef.current = true;
-        await openPip();
+        await openPip(false);
       });
       return () => {
         try {
@@ -249,7 +282,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     } catch {
       // not supported in all browsers
     }
-  }, [openPip, isDesktop, autoPipConsent]);
+  }, [openPip, isDesktop, autoPipEnabled, options?.isScreenSharing]);
 
   // 2. Automatic Picture-in-Picture on tab switch / window blur / backgrounding
   useEffect(() => {
@@ -257,18 +290,18 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'hidden') {
-        // Attempt auto PiP if on Desktop and not explicitly denied
-        if (isDesktop && autoPipConsent !== 'denied' && !pipWindowRef.current) {
+        // Attempt auto PiP if on Desktop, enabled, not screen sharing, and not already open
+        if (isDesktop && autoPipEnabled && !options?.isScreenSharing && !pipWindowRef.current) {
           autoOpenedRef.current = true;
           try {
-            await openPip();
+            await openPip(false);
           } catch {
             // Ignored if browser blocks background requestWindow without gesture
           }
         }
       } else if (document.visibilityState === 'visible') {
         // User returned to the meeting tab
-        // Automatically restore full room view and close the mini floating window!
+        // If it was opened automatically upon tab departure, cleanly restore full meeting!
         if (autoOpenedRef.current && pipWindowRef.current) {
           autoOpenedRef.current = false;
           closePip();
@@ -278,7 +311,7 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [openPip, closePip, isDesktop, autoPipConsent]);
+  }, [openPip, closePip, isDesktop, autoPipEnabled, options?.isScreenSharing]);
 
   // Clean up on component unmount
   useEffect(() => {
@@ -302,6 +335,9 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
     returnToMeeting,
     isFloatingFallback,
     setIsFloatingFallback,
+    autoPipEnabled,
+    setAutoPipEnabled,
+    toggleAutoPip,
     autoPipConsent,
     grantAutoPipConsent,
     denyAutoPipConsent,

@@ -44,6 +44,8 @@ interface ControlDockProps {
   isWorkspaceMeeting?: boolean;
   onTogglePip?: () => void;
   isPipActive?: boolean;
+  autoPipEnabled?: boolean;
+  onToggleAutoPip?: () => void;
 }
 
 export function ControlDock({
@@ -66,6 +68,8 @@ export function ControlDock({
   isWorkspaceMeeting = false,
   onTogglePip,
   isPipActive = false,
+  autoPipEnabled = true,
+  onToggleAutoPip,
 }: ControlDockProps) {
   const [copied, setCopied] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -241,6 +245,24 @@ export function ControlDock({
                       <PictureInPicture2 className="size-5 text-indigo-300" />
                     </div>
                     <span className="text-[11px] text-white/70 font-medium">Mini View</span>
+                  </button>
+                )}
+
+                {/* Auto PiP Switch */}
+                {onToggleAutoPip && (
+                  <button
+                    onClick={() => {
+                      onToggleAutoPip();
+                    }}
+                    aria-label="Toggle Auto-Mini View on tab switch"
+                    className="flex flex-col items-center gap-2 text-center group cursor-pointer"
+                  >
+                    <div className={`size-12 rounded-2xl flex items-center justify-center transition-all ${autoPipEnabled ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'bg-[#2d3139]/80 text-white/95 group-active:scale-95'}`}>
+                      <PictureInPicture2 className="size-5 text-emerald-300" />
+                    </div>
+                    <span className="text-[11px] text-white/70 font-medium">
+                      {autoPipEnabled ? 'Auto-Mini: ON' : 'Auto-Mini: OFF'}
+                    </span>
                   </button>
                 )}
 
@@ -451,14 +473,35 @@ export function ControlDock({
 
           {/* Mini View / Picture-in-Picture */}
           {onTogglePip && (
-            <button
-              onClick={onTogglePip}
-              title={isPipActive ? "Close Mini View" : "Mini Meeting (Picture-in-Picture)"}
-              aria-label="Toggle Picture-in-Picture Mini View"
-              className={isPipActive ? activeBtn("bg-indigo-600 hover:bg-indigo-700") : idleBtn}
-            >
-              <PictureInPicture2 className="size-5" />
-            </button>
+            <div className="relative flex items-center">
+              <button
+                onClick={onTogglePip}
+                title={isPipActive ? "Close Mini View" : `Mini Meeting (Picture-in-Picture)${autoPipEnabled ? ' • Auto-open on tab switch is ON' : ' • Auto-open is OFF'}`}
+                aria-label="Toggle Picture-in-Picture Mini View"
+                className={isPipActive ? activeBtn("bg-indigo-600 hover:bg-indigo-700") : idleBtn}
+              >
+                <PictureInPicture2 className="size-5" />
+              </button>
+
+              {onToggleAutoPip && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleAutoPip();
+                  }}
+                  title={autoPipEnabled ? "Auto-open on tab switch: ON (Click to turn OFF)" : "Auto-open on tab switch: OFF (Click to turn ON)"}
+                  aria-label="Toggle Auto-open on tab switch"
+                  className={`absolute -top-1.5 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold tracking-tight border transition-all cursor-pointer shadow-md ${
+                    autoPipEnabled
+                      ? 'bg-emerald-500 text-white border-emerald-400/50 hover:bg-emerald-600'
+                      : 'bg-zinc-800 text-zinc-400 border-white/10 hover:text-white'
+                  }`}
+                >
+                  {autoPipEnabled ? 'AUTO' : 'OFF'}
+                </button>
+              )}
+            </div>
           )}
 
         </div>
