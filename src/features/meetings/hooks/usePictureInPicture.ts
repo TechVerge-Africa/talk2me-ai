@@ -101,8 +101,38 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
       }
     });
 
-    // 2. Mirror document body classes for theme / dark mode
-    targetWindow.document.body.className = `${document.body.className} bg-[#0a0c10] text-white m-0 p-0 overflow-hidden font-sans select-none`;
+    // 2. Inject global PiP viewport resets to guarantee dark mode and prevent white background gaps
+    const resetStyle = targetWindow.document.createElement('style');
+    resetStyle.textContent = `
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      html, body {
+        height: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #080a0f !important;
+        overflow: hidden !important;
+        color: #ffffff;
+      }
+    `;
+    targetWindow.document.head.appendChild(resetStyle);
+
+    // 3. Mirror document body classes and configure dark theme on html & body
+    targetWindow.document.documentElement.classList.add('dark');
+    targetWindow.document.documentElement.style.height = '100%';
+    targetWindow.document.documentElement.style.width = '100%';
+    targetWindow.document.documentElement.style.backgroundColor = '#080a0f';
+    targetWindow.document.documentElement.style.overflow = 'hidden';
+
+    targetWindow.document.body.className = `${document.body.className} bg-[#080a0f] text-white m-0 p-0 overflow-hidden font-sans select-none`;
+    targetWindow.document.body.style.height = '100%';
+    targetWindow.document.body.style.width = '100%';
+    targetWindow.document.body.style.margin = '0';
+    targetWindow.document.body.style.padding = '0';
+    targetWindow.document.body.style.backgroundColor = '#080a0f';
+    targetWindow.document.body.style.overflow = 'hidden';
     targetWindow.document.title = `Talk2Me Mini • #${code}`;
   }, [code]);
 
@@ -119,8 +149,8 @@ export function usePictureInPicture(code: string): UsePictureInPictureReturn {
         }
 
         const win = await (window as any).documentPictureInPicture.requestWindow({
-          width: 360,
-          height: 250,
+          width: 380,
+          height: 240,
           disallowReturnToOpener: false,
         });
 
