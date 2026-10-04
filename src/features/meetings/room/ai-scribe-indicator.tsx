@@ -125,6 +125,7 @@ export function AiScribeIndicator({
         onClick={() => setPopoverOpen((v) => !v)}
         aria-expanded={popoverOpen}
         aria-haspopup="dialog"
+        aria-label="AI Scribe"
         className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all duration-300 shadow-sm cursor-pointer select-none backdrop-blur-md ${
           popoverOpen
             ? 'bg-indigo-500/30 border-indigo-400/60 text-white shadow-indigo-500/20'
@@ -229,15 +230,12 @@ export function AiScribeIndicator({
           </AnimatePresence>
         </div>
 
-        {/* Text Label */}
-        <span className="tracking-tight font-bold">AI Scribe</span>
-
         {/* Note Counter Badge */}
         {capturedCount > 0 && (
           <motion.span
             initial={{ scale: 0.8 }}
             animate={{ scale: 1 }}
-            className="ml-0.5 px-1.5 py-0.2 rounded-full bg-indigo-600/70 border border-indigo-400/40 text-indigo-100 text-[9px] font-black tabular-nums shadow-sm"
+            className="ml-0.5 px-1.5 py-0.5 rounded-full bg-indigo-600/70 border border-indigo-400/40 text-indigo-100 text-[9px] font-black tabular-nums shadow-sm"
           >
             {capturedCount}
           </motion.span>
