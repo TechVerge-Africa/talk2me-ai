@@ -1,4 +1,4 @@
-const CACHE_NAME = 'talk2me-cache-v1';
+const CACHE_NAME = 'talk2me-cache-v2';
 const OFFLINE_URL = '/offline';
 
 const ASSETS_TO_CACHE = [
@@ -41,71 +41,94 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests and HTTP/HTTPS schemes
+  // Only handle GET requests and HTTP/HTTPS schemes from our origin
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
   const url = new URL(event.request.url);
 
-  // Bypass service worker caching for dynamic API endpoints and authentication routes
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
+  // 1. Completely bypass Service Worker for:
+  // - Next.js internal chunks, Turbopack, and build assets (/_next/)
+  // - API routes (/api/)
+  // - Auth endpoints (/auth/)
+  // - React Server Components (RSC) & Server Actions
+  if (
+    url.pathname.startsWith('/_next/') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/auth/') ||
+    url.searchParams.has('_rsc') ||
+    event.request.headers.get('RSC') === '1' ||
+    event.request.headers.has('next-action')
+  ) {
     return;
   }
 
-  // Handle navigation requests (pages)
+  // 2. Handle HTML navigation requests (pages)
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // If response is valid, clone and update cache
-          if (response.status === 200) {
+          if (response && response.status === 200) {
             const responseClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, responseClone);
-            });
+            }).catch(() => {});
           }
           return response;
         })
-        .catch(() => {
-          // If network fails, try to return the page from cache, or return offline fallback page
-          return caches.match(event.request).then((cachedResponse) => {
-            return cachedResponse || caches.match(OFFLINE_URL);
+        .catch(async () => {
+          // If offline or network fails, try cached page, otherwise return offline fallback
+          try {
+            const cachedResponse = await caches.match(event.request);
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            const offlineFallback = await caches.match(OFFLINE_URL);
+            if (offlineFallback) {
+              return offlineFallback;
+            }
+          } catch {
+            // Ignore cache errors
+          }
+          return new Response('Offline and no cached content available', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain' },
           });
         })
     );
     return;
   }
 
-  // Handle static assets (JS, CSS, images, fonts)
+  // 3. Handle static assets (logos, icons, images)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Stale-while-revalidate: return cached asset and fetch update in background
-        fetch(event.request).then((response) => {
-          if (response.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, response);
-            });
-          }
-        }).catch(() => {/* Ignore background fetch errors when offline */});
-        
         return cachedResponse;
       }
 
-      // Not in cache, fetch and cache on the fly
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== 'basic') {
+      return fetch(event.request)
+        .then((response) => {
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
+
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          }).catch(() => {});
+
           return response;
-        }
-        
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
+        })
+        .catch((error) => {
+          console.warn('[Service Worker] Asset fetch failed:', event.request.url, error);
+          // Never leave the promise rejected to prevent ERR_FAILED
+          return new Response('', {
+            status: 408,
+            statusText: 'Request Timeout',
+          });
         });
-        
-        return response;
-      });
     })
   );
 });
