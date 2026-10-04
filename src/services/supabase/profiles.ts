@@ -1,5 +1,6 @@
 import { supabase } from './client';
 import { AppError } from '@/services/errors';
+import { NotificationPreferences } from '@/services/notifications/types';
 
 export type UserRole = 'deaf_user' | 'hearing_user' | 'interpreter' | 'admin';
 
@@ -10,6 +11,9 @@ export interface UserProfile {
   preferred_language: string;
   role: UserRole;
   is_interpreter: boolean;
+  phone_number?: string | null;
+  phone_verified?: boolean;
+  notification_preferences?: NotificationPreferences;
   settings: {
     deaf_mode: boolean;
     auto_caption: boolean;
@@ -88,5 +92,40 @@ export const ProfileService = {
     }
 
     return data || [];
+  },
+
+  /**
+   * Updates phone number and multi-channel notification preferences
+   */
+  async updateNotificationPreferences(
+    userId: string,
+    params: {
+      phoneNumber?: string;
+      preferences?: Partial<NotificationPreferences>;
+    }
+  ): Promise<void> {
+    const updatePayload: Record<string, any> = {};
+
+    if (typeof params.phoneNumber === 'string') {
+      updatePayload.phone_number = params.phoneNumber.trim();
+      updatePayload.phone_verified = params.phoneNumber.trim().length >= 9;
+    }
+
+    if (params.preferences) {
+      updatePayload.notification_preferences = params.preferences;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updatePayload)
+      .eq('id', userId);
+
+    if (error) {
+      throw new AppError(
+        'Failed to update notification preferences.',
+        'PROFILE_UPDATE_FAILED',
+        { cause: error },
+      );
+    }
   }
 };

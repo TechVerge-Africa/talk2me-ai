@@ -9,7 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "test": "npx tsx --test src/features/network-resilience/__tests__/*.test.ts"
+    "test": "npx tsx --test src/**/__tests__/*.test.ts",
+    "test:notifications": "npx tsx --test src/services/notifications/__tests__/*.test.ts",
+    "test:live": "npx tsx scripts/test-notifications-live.ts"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.21",
@@ -39,6 +41,7 @@
     "eslint-config-next": "16.2.6",
     "prettier": "^3.7.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.3"
   }
 }

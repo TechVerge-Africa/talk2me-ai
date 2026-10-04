@@ -44,6 +44,8 @@ export interface DbWorkspaceMessage {
   content: string;
   is_ai: boolean;
   sources?: string[];
+  is_important?: boolean;
+  priority?: 'normal' | 'important' | 'urgent';
   created_at: string;
 }
 
@@ -649,6 +651,9 @@ export const WorkspaceService = {
   /**
    * Send a message to a channel in a workspace.
    */
+  /**
+   * Send a message to a channel in a workspace.
+   */
   async sendWorkspaceMessage(params: {
     workspaceId: string;
     channelName: string;
@@ -657,23 +662,74 @@ export const WorkspaceService = {
     content: string;
     isAi?: boolean;
     sources?: string[];
+    isImportant?: boolean;
+    priority?: 'normal' | 'important' | 'urgent';
+    workspaceName?: string;
   }): Promise<DbWorkspaceMessage> {
-    const { data: msg, error } = await supabase
+    const payload: any = {
+      workspace_id: params.workspaceId,
+      channel_name: params.channelName,
+      sender_id: params.senderId,
+      sender_name: params.senderName,
+      content: params.content,
+      is_ai: params.isAi || false,
+      sources: params.sources || [],
+      is_important: Boolean(params.isImportant),
+      priority: params.priority || (params.isImportant ? 'important' : 'normal'),
+    };
+
+    let { data: msg, error } = await supabase
       .from('workspace_messages')
-      .insert({
-        workspace_id: params.workspaceId,
-        channel_name: params.channelName,
-        sender_id: params.senderId,
-        sender_name: params.senderName,
-        content: params.content,
-        is_ai: params.isAi || false,
-        sources: params.sources || [],
-      })
+      .insert(payload)
       .select()
       .single();
 
-    if (error || !msg) {
+    // Fallback if is_important / priority columns are not yet in the DB schema
+    if (error && (error.code === '42703' || error.message?.includes('is_important') || error.message?.includes('priority'))) {
+      delete payload.is_important;
+      delete payload.priority;
+      const { data: fallbackMsg, error: fallbackErr } = await supabase
+        .from('workspace_messages')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (fallbackErr || !fallbackMsg) {
+        throw new Error(fallbackErr?.message || 'Failed to send workspace message');
+      }
+      msg = fallbackMsg;
+    } else if (error || !msg) {
       throw new Error(error?.message || 'Failed to send workspace message');
+    }
+
+    // Trigger urgent alert notifications in the background if message was flagged important
+    if (params.isImportant && msg?.id) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+
+        fetch('/api/notifications/urgent-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            messageId: msg.id,
+            workspaceId: params.workspaceId,
+            workspaceName: params.workspaceName || 'Workspace',
+            channelName: params.channelName,
+            senderId: params.senderId,
+            senderName: params.senderName,
+            content: params.content,
+            priority: params.priority || 'important',
+          }),
+        }).catch((err) => {
+          console.warn('[WorkspaceService] Failed to dispatch urgent notification:', err);
+        });
+      } catch (notifyErr) {
+        console.warn('[WorkspaceService] Urgent notification background trigger error:', notifyErr);
+      }
     }
 
     return msg as DbWorkspaceMessage;

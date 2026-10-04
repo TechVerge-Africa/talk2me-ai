@@ -23,6 +23,7 @@ function toMeeting(row: Record<string, unknown>): Meeting {
     scheduled_at: row.scheduled_at as string | undefined,
     workspace_id: workspaceId,
     board_id: row.board_id as string | undefined,
+    send_reminders: typeof row.send_reminders === 'boolean' ? row.send_reminders : true,
     status: row.is_active ? 'active' : 'ended',
     settings: settings ? {
       require_approval: !!settings.require_approval,
@@ -54,7 +55,8 @@ export const MeetingService = {
     workspaceId?: string,
     isEphemeral: boolean = false,
     accessLevel?: 'members_only' | 'open',
-    boardId?: string
+    boardId?: string,
+    sendReminders: boolean = true
   ): Promise<Meeting> {
     const roomCode = generateRoomCode();
     const resolvedAccessLevel = accessLevel ?? (workspaceId ? 'members_only' : 'open');
@@ -65,6 +67,7 @@ export const MeetingService = {
       host_id: hostId,
       is_active: true,
       scheduled_at: scheduledAt || null,
+      send_reminders: sendReminders,
       settings: {
         require_approval: requireApproval,
         allow_screen_share: allowScreenShare,
@@ -82,11 +85,23 @@ export const MeetingService = {
       insertPayload.board_id = boardId;
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('meetings')
       .insert([insertPayload])
       .select()
       .single();
+
+    // Fallback if send_reminders column doesn't exist yet
+    if (error && (error.code === '42703' || error.message?.includes('send_reminders'))) {
+      delete insertPayload.send_reminders;
+      const { data: fallbackData, error: fallbackErr } = await supabase
+        .from('meetings')
+        .insert([insertPayload])
+        .select()
+        .single();
+      data = fallbackData;
+      error = fallbackErr;
+    }
 
     if (error) {
       throw new AppError(
