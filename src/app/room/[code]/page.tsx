@@ -1655,6 +1655,7 @@ function RoomContent({
               capturedCount={meetingActionItems.length}
               isEphemeral={false}
               workspaceMeetingHref={currentWorkspaceId ? `/dashboard?ws=${currentWorkspaceId}&tab=meetings` : undefined}
+              isSpeaking={!!activeSpeaker}
               onOpenNotes={() => {
                 setActiveTab('notes');
                 setSidebarOpen(true);
