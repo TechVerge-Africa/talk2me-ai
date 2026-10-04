@@ -457,6 +457,7 @@ function DashboardContent() {
       reader.onloadend = async () => {
         const base64Audio = (reader.result as string) || "";
 
+        let transcript = "";
         try {
           const formData = new FormData();
           formData.append("file", audioBlob, "voicenote.webm");
@@ -467,54 +468,55 @@ function DashboardContent() {
             body: formData,
           });
 
-          if (!res.ok) throw new Error(`STT error: ${res.status}`);
-
-          const data = await res.json();
-          const transcript = (data.text || "").trim();
-
-          if (transcript) {
-            const mins = Math.floor(durationSec / 60);
-            const secs = String(durationSec % 60).padStart(2, "0");
-            const durationStr = `${mins}:${secs}`;
-
-            // Format message with playable inline audio + transcript quote
-            const voiceMessageText = `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`;
-
-            if (user && currentWorkspaceData) {
-              const userMsg = await WorkspaceService.sendWorkspaceMessage({
-                workspaceId: currentWorkspaceData.workspace.id,
-                channelName: selectedChannel,
-                senderId: user.id,
-                senderName: userDisplayName,
-                content: voiceMessageText,
-              });
-
-              setWorkspacesData((prev) =>
-                prev.map((item) => {
-                  if (item.workspace.id !== currentWorkspaceData.workspace.id) return item;
-                  const currentMsgs = item.messages[selectedChannel] || [];
-                  return {
-                    ...item,
-                    messages: {
-                      ...item.messages,
-                      [selectedChannel]: [...currentMsgs, userMsg],
-                    },
-                  };
-                })
-              );
-
-              setTimeout(() => {
-                chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-              }, 50);
-            }
-          } else {
-            alert("No speech was detected in your voice note.");
+          if (res.ok) {
+            const data = await res.json();
+            transcript = (data.text || "").trim();
           }
         } catch (err) {
-          console.error("Dashboard voice note transcription error:", err);
-          alert("Failed to transcribe voice note. Please try again.");
+          console.warn("Dashboard voice note transcription notice:", err);
         } finally {
           setIsVoiceTranscribing(false);
+        }
+
+        try {
+          const mins = Math.floor(durationSec / 60);
+          const secs = String(durationSec % 60).padStart(2, "0");
+          const durationStr = `${mins}:${secs}`;
+
+          // Format message with playable inline audio + optional transcript quote
+          const voiceMessageText = transcript
+            ? `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`
+            : `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]`;
+
+          if (user && currentWorkspaceData) {
+            const userMsg = await WorkspaceService.sendWorkspaceMessage({
+              workspaceId: currentWorkspaceData.workspace.id,
+              channelName: selectedChannel,
+              senderId: user.id,
+              senderName: userDisplayName,
+              content: voiceMessageText,
+            });
+
+            setWorkspacesData((prev) =>
+              prev.map((item) => {
+                if (item.workspace.id !== currentWorkspaceData.workspace.id) return item;
+                const currentMsgs = item.messages[selectedChannel] || [];
+                return {
+                  ...item,
+                  messages: {
+                    ...item.messages,
+                    [selectedChannel]: [...currentMsgs, userMsg],
+                  },
+                };
+              })
+            );
+
+            setTimeout(() => {
+              chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 50);
+          }
+        } catch (sendErr) {
+          console.error("Dashboard voice note send error:", sendErr);
         }
       };
     };
