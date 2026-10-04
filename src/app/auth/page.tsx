@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, X, CheckCircle2, Sparkles, Inbox, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, X, CheckCircle2, Sparkles, Inbox, RefreshCw, ShieldCheck, User, Phone } from 'lucide-react';
 
 // Google icon SVG as a component
 function GoogleIcon({ className }: { className?: string }) {
@@ -22,6 +22,8 @@ import { supabase } from '@/services/supabase/client';
 
 export default function AuthPage() {
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -111,25 +113,64 @@ export default function AuthPage() {
       return;
     }
 
-    if (isSignUp && password !== confirmPassword) {
-      setError("Passwords do not match");
-      setLoading(false);
-      return;
+    if (isSignUp) {
+      if (!username.trim()) {
+        setError("Please enter a username.");
+        setLoading(false);
+        return;
+      }
+      if (!contact.trim()) {
+        setError("Please enter your contact phone number for SMS reminders.");
+        setLoading(false);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        setLoading(false);
+        return;
+      }
     }
 
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ 
-          email, 
+        const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+        const cleanContact = contact.trim();
+
+        const { data: signUpData, error } = await supabase.auth.signUp({ 
+          email: email.trim(), 
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+            data: {
+              username: cleanUsername,
+              contact: cleanContact,
+              phone_number: cleanContact,
+              full_name: cleanUsername,
+            }
           }
         });
         if (error) throw error;
+
+        // Proactive direct upsert to profiles table in case user session is created immediately
+        if (signUpData?.user?.id) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: signUpData.user.id,
+              email: email.trim(),
+              username: cleanUsername,
+              contact: cleanContact,
+              phone_number: cleanContact,
+              full_name: cleanUsername,
+              updated_at: new Date().toISOString(),
+            });
+          } catch (syncErr) {
+            console.warn('[SignUp] Profile direct upsert note:', syncErr);
+          }
+        }
+
         setSignUpSuccess(true);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
         router.push('/dashboard');
       }
@@ -329,8 +370,8 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              {/* Google Sign-In */}
-              {!isForgotPassword && (
+              {/* Google Sign-In (Commented out for now to keep authentication simple) */}
+              {/* {!isForgotPassword && (
                 <div className="mb-4 sm:mb-6">
                   <button
                     type="button"
@@ -352,10 +393,30 @@ export default function AuthPage() {
                     <div className="flex-1 h-px bg-white/10" />
                   </div>
                 </div>
-              )}
+              )} */}
 
               {/* Form */}
               <form onSubmit={handleAuth} className="space-y-3.5 sm:space-y-5">
+                {/* Username (Sign Up Only) */}
+                {isSignUp && !isForgotPassword && (
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-[11px] font-bold uppercase tracking-widest ml-3 sm:ml-4 opacity-70">Username</label>
+                    <div className="relative">
+                      <User className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 size-4 sm:size-5 text-muted-foreground" />
+                      <input
+                        type="text"
+                        required
+                        autoComplete="username"
+                        placeholder="e.g. alex_dev"
+                        className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-4 sm:pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base font-sans"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Email Address */}
                 <div className="space-y-1.5 sm:space-y-2">
                   <label className="text-[11px] font-bold uppercase tracking-widest ml-3 sm:ml-4 opacity-70">Email Address</label>
                   <div className="relative">
@@ -366,12 +427,35 @@ export default function AuthPage() {
                       autoComplete="email"
                       inputMode="email"
                       placeholder="name@email.com"
-                      className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-4 sm:pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base"
+                      className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-4 sm:pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base font-sans"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                     />
                   </div>
                 </div>
+
+                {/* Contact Phone Number (Sign Up Only) */}
+                {isSignUp && !isForgotPassword && (
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <div className="flex items-center justify-between ml-3 sm:ml-4">
+                      <label className="text-[11px] font-bold uppercase tracking-widest opacity-70">Contact Number</label>
+                      <span className="text-[10px] text-muted-foreground font-medium">For meeting SMS & alerts</span>
+                    </div>
+                    <div className="relative">
+                      <Phone className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 size-4 sm:size-5 text-muted-foreground" />
+                      <input
+                        type="tel"
+                        required
+                        autoComplete="tel"
+                        inputMode="tel"
+                        placeholder="e.g. 024 123 4567 or +233..."
+                        className="w-full h-12 sm:h-14 pl-11 sm:pl-14 pr-4 sm:pr-6 rounded-2xl bg-foreground/5 border-transparent focus:bg-background focus:ring-2 focus:ring-bridge-cyan transition-all outline-none text-base sm:text-base font-sans"
+                        value={contact}
+                        onChange={(e) => setContact(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {!isForgotPassword && (
                   <div className="space-y-1.5 sm:space-y-2">

@@ -6,6 +6,9 @@ export type UserRole = 'deaf_user' | 'hearing_user' | 'interpreter' | 'admin';
 
 export interface UserProfile {
   id: string;
+  email?: string | null;
+  username?: string | null;
+  contact?: string | null;
   full_name: string | null;
   avatar_url: string | null;
   preferred_language: string;
@@ -107,8 +110,10 @@ export const ProfileService = {
     const updatePayload: Record<string, any> = {};
 
     if (typeof params.phoneNumber === 'string') {
-      updatePayload.phone_number = params.phoneNumber.trim();
-      updatePayload.phone_verified = params.phoneNumber.trim().length >= 9;
+      const cleanPhone = params.phoneNumber.trim();
+      updatePayload.phone_number = cleanPhone;
+      updatePayload.contact = cleanPhone;
+      updatePayload.phone_verified = cleanPhone.length >= 9;
     }
 
     if (params.preferences) {

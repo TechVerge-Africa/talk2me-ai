@@ -20,7 +20,7 @@ export const NotificationDispatcher = {
     // 1. Get all approved workspace members with their profiles
     const { data: members, error: memErr } = await admin
       .from('workspace_members')
-      .select('user_id, status, profiles(id, full_name, phone_number, phone_verified, notification_preferences)')
+      .select('user_id, status, profiles(id, full_name, username, contact, phone_number, email, phone_verified, notification_preferences)')
       .eq('workspace_id', workspaceId)
       .or('status.eq.approved,status.is.null');
 
@@ -29,20 +29,27 @@ export const NotificationDispatcher = {
       return [];
     }
 
-    // 2. Fetch user emails from auth
+    // 2. Resolve recipient email, contact phone, and preferences
     const recipients: RecipientInfo[] = [];
 
     for (const row of members) {
       const p = (row as any).profiles;
       const userId = row.user_id;
 
-      let email: string | null = null;
-      try {
-        const { data: authUser } = await admin.auth.admin.getUserById(userId);
-        email = authUser?.user?.email || null;
-      } catch (e) {
-        console.warn(`[NotificationDispatcher] Could not fetch auth email for user ${userId}:`, e);
+      // Prioritize email stored directly on the profiles table
+      let email: string | null = p?.email || null;
+      if (!email) {
+        try {
+          const { data: authUser } = await admin.auth.admin.getUserById(userId);
+          email = authUser?.user?.email || null;
+        } catch (e) {
+          console.warn(`[NotificationDispatcher] Could not fetch auth email for user ${userId}:`, e);
+        }
       }
+
+      // Prioritize contact / phone_number stored in profiles table
+      const phoneNumber: string | null = p?.contact || p?.phone_number || null;
+      const fullName: string = p?.full_name || p?.username || email?.split('@')[0] || 'Team Member';
 
       const prefs: NotificationPreferences = {
         ...DEFAULT_NOTIFICATION_PREFERENCES,
@@ -59,10 +66,10 @@ export const NotificationDispatcher = {
 
       recipients.push({
         userId,
-        fullName: p?.full_name || null,
+        fullName,
         email,
-        phoneNumber: p?.phone_number || null,
-        phoneVerified: p?.phone_verified ?? false,
+        phoneNumber,
+        phoneVerified: p?.phone_verified ?? (phoneNumber ? phoneNumber.length >= 9 : false),
         preferences: prefs,
       });
     }
