@@ -202,20 +202,6 @@ export class AdaptationController {
     quality: NetworkQuality,
     context: MeetingContext
   ): Omit<MediaPolicy, 'participantPolicies'> {
-    // When tab/app is backgrounded, actively conserve battery and bandwidth while protecting conversation audio
-    if (context.isBackgrounded) {
-      return {
-        videoEnabled: false,
-        preferredVideoQuality: 'off',
-        preferredResolution: { width: 320, height: 180 },
-        preferredFps: 15,
-        audioPriority: 'high',
-        screenShareEnabled: false,
-        captionsRecommended: false,
-        semanticFallbackRecommended: false,
-      };
-    }
-
     const isPresentation = context.meetingMode === 'presentation' || context.screenShareActive;
 
     switch (quality) {
@@ -225,7 +211,7 @@ export class AdaptationController {
           preferredVideoQuality: 'high',
           preferredResolution: { width: 1280, height: 720 },
           preferredFps: 30,
-          audioPriority: 'normal',
+          audioPriority: context.isBackgrounded ? 'high' : 'normal',
           screenShareEnabled: true,
           captionsRecommended: false,
           semanticFallbackRecommended: false,
@@ -237,7 +223,7 @@ export class AdaptationController {
           preferredVideoQuality: 'medium',
           preferredResolution: { width: 640, height: 360 },
           preferredFps: 24,
-          audioPriority: 'normal',
+          audioPriority: context.isBackgrounded ? 'high' : 'normal',
           screenShareEnabled: true,
           captionsRecommended: false,
           semanticFallbackRecommended: false,
@@ -310,21 +296,6 @@ export class AdaptationController {
   ): Map<string, ParticipantMediaPolicy> {
     const policies = new Map<string, ParticipantMediaPolicy>();
 
-    if (context.isBackgrounded) {
-      if (context.visibleParticipantIds) {
-        for (const id of context.visibleParticipantIds) {
-          policies.set(id, {
-            participantId: id,
-            videoQuality: 'off',
-            videoEnabled: false,
-            priority: id === context.activeSpeakerId ? 'high' : 'low',
-            reason: 'background',
-          });
-        }
-      }
-      return policies;
-    }
-
     const visibleSet = new Set(context.visibleParticipantIds ?? []);
 
     const isConstrained = quality === 'poor' || quality === 'critical';
@@ -351,6 +322,22 @@ export class AdaptationController {
         policies.set(context.activeSpeakerId, {
           participantId: context.activeSpeakerId,
           videoQuality: 'medium',
+          videoEnabled: true,
+          priority: 'high',
+          reason: 'active_speaker',
+        });
+      } else if (quality === 'good') {
+        policies.set(context.activeSpeakerId, {
+          participantId: context.activeSpeakerId,
+          videoQuality: 'medium',
+          videoEnabled: true,
+          priority: 'high',
+          reason: 'active_speaker',
+        });
+      } else if (quality === 'excellent') {
+        policies.set(context.activeSpeakerId, {
+          participantId: context.activeSpeakerId,
+          videoQuality: 'high',
           videoEnabled: true,
           priority: 'high',
           reason: 'active_speaker',
