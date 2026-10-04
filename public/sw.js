@@ -1,4 +1,4 @@
-const CACHE_NAME = 'talk2me-cache-v2';
+const CACHE_NAME = 'talk2me-cache-v3';
 const OFFLINE_URL = '/offline';
 
 const ASSETS_TO_CACHE = [
@@ -17,10 +17,11 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Pre-caching offline page and assets');
+      console.log('[Service Worker v3] Pre-caching offline page and assets');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
+  // Force immediate activation, displacing any older buggy service worker
   self.skipWaiting();
 });
 
@@ -30,29 +31,27 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('[Service Worker] Deleting old cache:', cacheName);
+            console.log('[Service Worker v3] Purging obsolete cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     })
   );
+  // Take control of all open clients immediately
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only handle GET requests and HTTP/HTTPS schemes from our origin
+  // 1. Only handle GET requests from our origin
   if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
   const url = new URL(event.request.url);
 
-  // 1. Completely bypass Service Worker for:
-  // - Next.js internal chunks, Turbopack, and build assets (/_next/)
-  // - API routes (/api/)
-  // - Auth endpoints (/auth/)
-  // - React Server Components (RSC) & Server Actions
+  // 2. CRITICAL: Never intercept Next.js internals, API, Auth, or RSC requests.
+  // Allowing the browser to handle these natively prevents chunk/RSC load errors.
   if (
     url.pathname.startsWith('/_next/') ||
     url.pathname.startsWith('/api/') ||
@@ -64,71 +63,48 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Handle HTML navigation requests (pages)
+  // 3. For page navigation requests: Network-First with offline fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            }).catch(() => {});
+      fetch(event.request).catch(async () => {
+        try {
+          const offlineFallback = await caches.match(OFFLINE_URL);
+          if (offlineFallback) {
+            return offlineFallback;
           }
-          return response;
-        })
-        .catch(async () => {
-          // If offline or network fails, try cached page, otherwise return offline fallback
-          try {
-            const cachedResponse = await caches.match(event.request);
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            const offlineFallback = await caches.match(OFFLINE_URL);
-            if (offlineFallback) {
-              return offlineFallback;
-            }
-          } catch {
-            // Ignore cache errors
-          }
-          return new Response('Offline and no cached content available', {
-            status: 503,
-            statusText: 'Service Unavailable',
-            headers: { 'Content-Type': 'text/plain' },
-          });
-        })
+        } catch {
+          // ignore cache lookup errors
+        }
+        return new Response('You are currently offline. Please reconnect and reload the page.', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      })
     );
     return;
   }
 
-  // 3. Handle static assets (logos, icons, images)
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(event.request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
+  // 4. For static public branding assets: Cache-First
+  if (ASSETS_TO_CACHE.includes(url.pathname)) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
           }
-
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          }).catch(() => {});
-
-          return response;
-        })
-        .catch((error) => {
-          console.warn('[Service Worker] Asset fetch failed:', event.request.url, error);
-          // Never leave the promise rejected to prevent ERR_FAILED
-          return new Response('', {
-            status: 408,
-            statusText: 'Request Timeout',
-          });
+          return networkResponse;
+        }).catch(() => {
+          return new Response('', { status: 404, statusText: 'Not Found' });
         });
-    })
-  );
+      })
+    );
+    return;
+  }
+
+  // 5. For all other requests: DO NOT intercept. Let the browser execute native fetch.
 });

@@ -4,23 +4,48 @@ import { useEffect } from "react";
 
 export function PwaRegister() {
   useEffect(() => {
-    // ── 1. Global ChunkLoadError Auto-Recovery ──────────────────────────────
-    // When a new deployment occurs, older browser tabs may request chunk hashes
-    // that no longer exist on the server. Auto-reloading once seamlessly upgrades
-    // the tab to the latest deployment.
-    const handleChunkError = (message?: string, errorName?: string) => {
-      const isChunkError =
+    // ── 1. Global ChunkLoadError & Service Worker Auto-Recovery ─────────────
+    // When a new deployment occurs or an older Service Worker rejects chunk/RSC
+    // requests, this listener purges old caches, force-updates the worker, and
+    // reloads the page to seamlessly recover the user session.
+    const handleChunkError = async (message?: string, errorName?: string) => {
+      const isChunkOrFetchError =
         message?.includes("ChunkLoadError") ||
         message?.includes("Failed to load chunk") ||
+        message?.includes("Failed to fetch") ||
         errorName === "ChunkLoadError";
 
-      if (isChunkError) {
+      if (isChunkOrFetchError) {
         const now = Date.now();
         const lastReload = Number(sessionStorage.getItem("chunk_reload_ts") || 0);
-        // Throttle auto-reload to at most once per 15 seconds to prevent loops
-        if (now - lastReload > 15000) {
+
+        // Throttle auto-reload to at most once per 10 seconds to avoid infinite loops
+        if (now - lastReload > 10000) {
           sessionStorage.setItem("chunk_reload_ts", String(now));
-          console.warn("[PwaRegister] ChunkLoadError detected. Reloading page to load latest version...");
+          console.warn("[PwaRegister] Chunk / Fetch error detected. Purging old cache and refreshing...");
+
+          try {
+            // Delete old caches
+            if ("caches" in window) {
+              const keys = await caches.keys();
+              await Promise.all(
+                keys.map((key) => {
+                  if (key !== "talk2me-cache-v3") {
+                    return caches.delete(key);
+                  }
+                })
+              );
+            }
+
+            // Force update service workers
+            if ("serviceWorker" in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map((r) => r.update().catch(() => {})));
+            }
+          } catch {
+            // Ignore cleanup failures
+          }
+
           window.location.reload();
         }
       }
@@ -40,19 +65,30 @@ export function PwaRegister() {
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
-    // ── 2. Service Worker Registration & Auto-Update ────────────────────────
+    // ── 2. Service Worker Registration, Update & Cache Sanitization ─────────
     let cleanupLoadListener: (() => void) | undefined;
 
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       const handleRegister = async () => {
         try {
           const registration = await navigator.serviceWorker.register("/sw.js");
-          // Proactively check for service worker updates
-          registration.update().catch(() => {});
+          // Proactively check for service worker updates immediately
+          await registration.update();
         } catch (error) {
           console.error("Service Worker registration failed:", error);
         }
       };
+
+      // Clean obsolete caches on startup
+      if ("caches" in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((key) => {
+            if (key === "talk2me-cache-v1" || key === "talk2me-cache-v2") {
+              caches.delete(key).catch(() => {});
+            }
+          });
+        }).catch(() => {});
+      }
 
       if (document.readyState === "complete") {
         handleRegister();
