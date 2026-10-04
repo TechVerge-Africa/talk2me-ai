@@ -59,7 +59,8 @@ import {
   Layout,
   LayoutGrid,
   Square,
-  Radio
+  Radio,
+  Smile
 } from 'lucide-react';
 
 
@@ -91,6 +92,7 @@ import { GradientBackground } from '@/components/ui/gradient-background';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getTimeGreetingPrefix } from '@/lib/greetings';
 import { WorkspaceLoadingShell, useDebouncedLoader } from '@/packages/ui/workspace-loader';
+import { NotificationSettingsModal } from '@/components/notifications/notification-settings-modal';
 
 const WORKSPACES_CACHE_KEY = 't2_cached_workspaces_v2';
 
@@ -289,7 +291,14 @@ function DashboardContent() {
   const [meetingModalAccessLevel, setMeetingModalAccessLevel] = useState<'members_only' | 'open'>('members_only');
   const [meetingModalRequireApproval, setMeetingModalRequireApproval] = useState<boolean>(false);
   const [meetingModalAllowScreenShare, setMeetingModalAllowScreenShare] = useState<boolean>(true);
+  const [meetingModalSendReminders, setMeetingModalSendReminders] = useState<boolean>(true);
   const [isSubmittingMeetingModal, setIsSubmittingMeetingModal] = useState<boolean>(false);
+
+  // Multi-Channel Notifications & Urgent Message State
+  const [showNotificationSettings, setShowNotificationSettings] = useState<boolean>(false);
+  const [isMessageUrgent, setIsMessageUrgent] = useState<boolean>(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
+  const [showPlusMenu, setShowPlusMenu] = useState<boolean>(false);
 
   // Workspace Boards State
   const [workspaceBoardsList, setWorkspaceBoardsList] = useState<WorkspaceBoard[]>([]);
@@ -334,8 +343,9 @@ function DashboardContent() {
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
   const chatInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Floating chat input scroll-hide state
+  // Floating chat input & channel header scroll-hide state
   const [isChatInputVisible, setIsChatInputVisible] = useState<boolean>(true);
+  const [isChatHeaderVisible, setIsChatHeaderVisible] = useState<boolean>(true);
   const lastChatScrollTopRef = React.useRef<number>(0);
   const chatMessagesEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -457,6 +467,7 @@ function DashboardContent() {
       reader.onloadend = async () => {
         const base64Audio = (reader.result as string) || "";
 
+        let transcript = "";
         try {
           const formData = new FormData();
           formData.append("file", audioBlob, "voicenote.webm");
@@ -467,54 +478,55 @@ function DashboardContent() {
             body: formData,
           });
 
-          if (!res.ok) throw new Error(`STT error: ${res.status}`);
-
-          const data = await res.json();
-          const transcript = (data.text || "").trim();
-
-          if (transcript) {
-            const mins = Math.floor(durationSec / 60);
-            const secs = String(durationSec % 60).padStart(2, "0");
-            const durationStr = `${mins}:${secs}`;
-
-            // Format message with playable inline audio + transcript quote
-            const voiceMessageText = `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`;
-
-            if (user && currentWorkspaceData) {
-              const userMsg = await WorkspaceService.sendWorkspaceMessage({
-                workspaceId: currentWorkspaceData.workspace.id,
-                channelName: selectedChannel,
-                senderId: user.id,
-                senderName: userDisplayName,
-                content: voiceMessageText,
-              });
-
-              setWorkspacesData((prev) =>
-                prev.map((item) => {
-                  if (item.workspace.id !== currentWorkspaceData.workspace.id) return item;
-                  const currentMsgs = item.messages[selectedChannel] || [];
-                  return {
-                    ...item,
-                    messages: {
-                      ...item.messages,
-                      [selectedChannel]: [...currentMsgs, userMsg],
-                    },
-                  };
-                })
-              );
-
-              setTimeout(() => {
-                chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-              }, 50);
-            }
-          } else {
-            alert("No speech was detected in your voice note.");
+          if (res.ok) {
+            const data = await res.json();
+            transcript = (data.text || "").trim();
           }
         } catch (err) {
-          console.error("Dashboard voice note transcription error:", err);
-          alert("Failed to transcribe voice note. Please try again.");
+          console.warn("Dashboard voice note transcription notice:", err);
         } finally {
           setIsVoiceTranscribing(false);
+        }
+
+        try {
+          const mins = Math.floor(durationSec / 60);
+          const secs = String(durationSec % 60).padStart(2, "0");
+          const durationStr = `${mins}:${secs}`;
+
+          // Format message with playable inline audio + optional transcript quote
+          const voiceMessageText = transcript
+            ? `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`
+            : `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]`;
+
+          if (user && currentWorkspaceData) {
+            const userMsg = await WorkspaceService.sendWorkspaceMessage({
+              workspaceId: currentWorkspaceData.workspace.id,
+              channelName: selectedChannel,
+              senderId: user.id,
+              senderName: userDisplayName,
+              content: voiceMessageText,
+            });
+
+            setWorkspacesData((prev) =>
+              prev.map((item) => {
+                if (item.workspace.id !== currentWorkspaceData.workspace.id) return item;
+                const currentMsgs = item.messages[selectedChannel] || [];
+                return {
+                  ...item,
+                  messages: {
+                    ...item.messages,
+                    [selectedChannel]: [...currentMsgs, userMsg],
+                  },
+                };
+              })
+            );
+
+            setTimeout(() => {
+              chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, 50);
+          }
+        } catch (sendErr) {
+          console.error("Dashboard voice note send error:", sendErr);
         }
       };
     };
@@ -527,16 +539,25 @@ function DashboardContent() {
     const currentScrollTop = e.currentTarget.scrollTop;
     const delta = currentScrollTop - lastChatScrollTopRef.current;
 
-    // Only hide if scrolled down past top threshold (80px) and scrolling significantly (> 10px)
-    if (Math.abs(delta) > 10) {
-      if (delta > 0 && currentScrollTop > 80) {
-        setIsChatInputVisible(false);
+    // At top of chat, always show header and input
+    if (currentScrollTop <= 30) {
+      setIsChatHeaderVisible(true);
+      setIsChatInputVisible(true);
+    } else if (Math.abs(delta) > 8) {
+      if (delta > 0 && currentScrollTop > 50) {
+        // Scrolling DOWN: auto-hide header and input to give maximum reading space for messages
+        setIsChatHeaderVisible(false);
+        if (!chatInputText.trim()) {
+          setIsChatInputVisible(false);
+        }
       } else if (delta < 0) {
+        // Scrolling UP: reveal header and input bar immediately
+        setIsChatHeaderVisible(true);
         setIsChatInputVisible(true);
       }
     }
 
-    // Always reveal input when near bottom of chat history
+    // Always reveal input when near bottom of chat history so user can compose
     const { scrollHeight, clientHeight } = e.currentTarget;
     if (scrollHeight - currentScrollTop - clientHeight < 140) {
       setIsChatInputVisible(true);
@@ -547,6 +568,7 @@ function DashboardContent() {
 
   useEffect(() => {
     if (activeTab === 'chat') {
+      setIsChatHeaderVisible(true);
       setIsChatInputVisible(true);
       setTimeout(() => {
         chatMessagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -1235,6 +1257,8 @@ function DashboardContent() {
     }, 50);
 
     const senderName = userDisplayName;
+    const isUrgent = isMessageUrgent;
+    setIsMessageUrgent(false);
 
     try {
       // 1. Send User Message
@@ -1244,6 +1268,9 @@ function DashboardContent() {
         senderId: user.id,
         senderName,
         content: textToSend,
+        isImportant: isUrgent,
+        priority: isUrgent ? 'urgent' : 'normal',
+        workspaceName: currentWorkspaceData.workspace.name,
       });
 
       // Optimistically update UI
@@ -1415,7 +1442,8 @@ function DashboardContent() {
         activeWorkspaceId || undefined,
         isEphemeral,
         meetingModalAccessLevel,
-        meetingModalBoardId || workspaceBoardsList[0]?.id
+        meetingModalBoardId || workspaceBoardsList[0]?.id,
+        meetingModalSendReminders
       );
 
       setShowMeetingModal(false);
@@ -2450,7 +2478,7 @@ function DashboardContent() {
         <main
           onScroll={activeTab === 'chat' ? handleChannelChatScroll : undefined}
           className={`flex-1 overflow-y-auto h-full min-h-0 font-sans custom-scrollbar relative ${
-            activeTab === 'chat' ? 'p-0 pb-12' : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8'
+            activeTab === 'chat' ? 'p-0' : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8'
           }`}
         >
           {/* TAB 1: HOME */}
@@ -3326,8 +3354,14 @@ function DashboardContent() {
           {/* TAB 3: CHANNEL CHAT */}
           {activeTab === 'chat' && (
             <div className="min-h-full flex flex-col relative">
-              {/* Channel Header (Sticky top of full main page) */}
-              <div className="p-4 sm:px-6 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-white/95 dark:bg-[#0b0f17]/95 backdrop-blur-md sticky top-0 z-20 shadow-xs">
+              {/* Channel Header (Sticky top of full main page, auto-hides when scrolling down) */}
+              <div
+                className={`p-4 sm:px-6 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-white/95 dark:bg-[#0b0f17]/95 backdrop-blur-md sticky top-0 z-20 shadow-xs transition-all duration-300 ease-in-out transform ${
+                  isChatHeaderVisible
+                    ? 'translate-y-0 opacity-100 pointer-events-auto'
+                    : '-translate-y-full opacity-0 pointer-events-none'
+                }`}
+              >
                 <div className="flex items-center gap-2">
                   <Hash className="size-4 text-indigo-600 dark:text-cyan-400" />
                   <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
@@ -3351,6 +3385,14 @@ function DashboardContent() {
                       {ch.name}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setShowNotificationSettings(true)}
+                    title="Notification & SMS Settings"
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold border border-slate-300 dark:border-slate-700 bg-white/60 dark:bg-white/5 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-cyan-400 transition-all shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Bell className="size-3.5 text-indigo-500" />
+                    <span className="hidden md:inline">SMS & Alerts</span>
+                  </button>
                 </div>
               </div>
 
@@ -3386,6 +3428,14 @@ function DashboardContent() {
 
                         {/* Bubble wrapper with pin badge */}
                         <div className="relative max-w-md sm:max-w-xl lg:max-w-3xl group">
+                          {/* Important Announcement Indicator */}
+                          {msg.is_important && (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 mb-1.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-[11px] font-black uppercase tracking-wider shadow-xs">
+                              <AlertTriangle className="size-3.5 animate-pulse" />
+                              <span>Important Announcement (SMS & Email Alert Sent)</span>
+                            </div>
+                          )}
+
                           {/* Blue Pin Badge */}
                           <div className={`absolute -top-2 ${isMe ? '-left-2' : '-right-2'} z-10 size-6 rounded-full bg-sky-600 text-white flex items-center justify-center shadow-lg border-2 border-slate-50 dark:border-[#0b0f17]`}>
                             <Pin className="size-3 fill-current rotate-45" />
@@ -3394,7 +3444,9 @@ function DashboardContent() {
                           {/* Bubble Body */}
                           <div
                             className={`p-4 rounded-[20px] text-xs sm:text-sm leading-relaxed shadow-sm font-sans ${
-                              isMe
+                              msg.is_important
+                                ? 'bg-rose-50/90 text-rose-950 dark:bg-rose-950/40 dark:text-rose-100 font-medium border-2 border-rose-500/60 shadow-md ring-2 ring-rose-500/20'
+                                : isMe
                                 ? 'bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white font-medium border border-indigo-500/20'
                                 : isAi
                                 ? 'bg-cyan-50/90 text-slate-950 dark:bg-cyan-950/40 dark:text-cyan-50 font-medium border border-cyan-300/80 dark:border-cyan-500/30'
@@ -3417,15 +3469,100 @@ function DashboardContent() {
                 <div ref={chatMessagesEndRef} />
               </div>
 
-              {/* Floating Chat Form Field (Sticky at bottom of full page, auto-hides when scrolling down long chat) */}
+              {/* WhatsApp-Style Chat Input Bar (Anchored at bottom with small clean spacing to viewport, auto-hides on scroll down) */}
               <div
-                className={`sticky bottom-4 mx-4 sm:mx-6 lg:mx-8 z-30 transition-all duration-300 ease-out transform ${
+                className={`sticky bottom-2.5 sm:bottom-3.5 mx-3 sm:mx-6 lg:mx-8 z-30 transition-all duration-300 ease-out transform ${
                   isChatInputVisible
-                    ? 'translate-y-0 opacity-100 scale-100'
-                    : 'translate-y-16 opacity-0 pointer-events-none scale-95'
+                    ? 'translate-y-0 opacity-100 scale-100 pointer-events-auto'
+                    : 'translate-y-20 opacity-0 pointer-events-none scale-95'
                 }`}
               >
-                <div className="p-2 sm:p-2.5 rounded-2xl border border-slate-200/90 dark:border-slate-700/80 bg-white/95 dark:bg-[#121620]/95 backdrop-blur-xl shadow-2xl flex items-center gap-2 relative">
+                {/* Urgent Mode Notification Banner */}
+                {isMessageUrgent && (
+                  <div className="mb-2 px-4 py-1.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-bottom-2 duration-150 backdrop-blur-md">
+                    <span className="flex items-center gap-1.5 truncate">
+                      <AlertTriangle className="size-3.5 shrink-0 animate-pulse text-rose-500" />
+                      <span>Urgent Alert: SMS & Email notifications will be sent to all members.</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsMessageUrgent(false)}
+                      className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-semibold ml-2 cursor-pointer shrink-0"
+                    >
+                      Turn Off
+                    </button>
+                  </div>
+                )}
+
+                {/* Floating Emoji Picker Popover */}
+                {showEmojiPicker && (
+                  <div className="mb-2 p-2 rounded-2xl bg-white dark:bg-[#1f2732] border border-slate-200 dark:border-white/10 shadow-2xl flex items-center gap-1.5 overflow-x-auto no-scrollbar animate-in fade-in slide-in-from-bottom-2 duration-150">
+                    {['👋', '👍', '❤️', '🔥', '🚀', '💡', '⏰', '⚡', '✅', '🙌', '🎉', '👏', '👀', '💯', '🙏'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          setChatInputText((prev) => prev + emoji);
+                          setShowEmojiPicker(false);
+                          chatInputRef.current?.focus();
+                        }}
+                        className="size-8 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 flex items-center justify-center text-lg transition-transform hover:scale-125 cursor-pointer shrink-0"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Floating Plus Menu Popover */}
+                {showPlusMenu && (
+                  <div className="mb-2 p-1.5 rounded-2xl bg-white dark:bg-[#1f2732] border border-slate-200 dark:border-white/10 shadow-2xl flex flex-col gap-1 w-64 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChatInputText((prev) => (prev ? prev + ' @Talk2Me ' : '@Talk2Me '));
+                        setShowPlusMenu(false);
+                        chatInputRef.current?.focus();
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-cyan-400 flex items-center gap-2 transition-colors cursor-pointer text-left"
+                    >
+                      <Sparkles className="size-4 text-indigo-500" />
+                      <span>Ask Talk2Me AI</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMessageUrgent(true);
+                        setShowPlusMenu(false);
+                        chatInputRef.current?.focus();
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 transition-colors cursor-pointer text-left"
+                    >
+                      <AlertTriangle className="size-4 text-rose-500" />
+                      <span>Mark as Urgent (SMS & Email)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNotificationSettings(true);
+                        setShowPlusMenu(false);
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 flex items-center gap-2 transition-colors cursor-pointer text-left"
+                    >
+                      <Bell className="size-4 text-slate-500" />
+                      <span>SMS & Notification Settings</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* WhatsApp-Style Pill Input Bar */}
+                <div
+                  className={`p-1.5 sm:p-2 rounded-full border ${
+                    isMessageUrgent
+                      ? 'border-rose-500/70 bg-white dark:bg-[#1f2732] ring-2 ring-rose-500/30 shadow-xl shadow-rose-500/10'
+                      : 'border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#1f2732] shadow-xl shadow-slate-900/5'
+                  } backdrop-blur-xl flex items-center gap-1 sm:gap-2 relative transition-all duration-200`}
+                >
                   <MentionAutocomplete
                     inputValue={chatInputText}
                     onSelectMention={(newText) => setChatInputText(newText)}
@@ -3434,12 +3571,12 @@ function DashboardContent() {
                   />
 
                   {isVoiceTranscribing ? (
-                    <div className="flex-1 flex items-center gap-2 px-4 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 dark:text-cyan-300 text-xs sm:text-sm font-bold animate-pulse">
+                    <div className="flex-1 flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-600 dark:text-cyan-300 text-xs sm:text-sm font-bold animate-pulse">
                       <Loader2 className="size-4 animate-spin text-cyan-500" />
                       <span>Transcribing voice note with Talk2Me AI...</span>
                     </div>
                   ) : isVoiceRecording ? (
-                    <div className="flex-1 flex items-center justify-between gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl animate-in fade-in duration-150">
+                    <div className="flex-1 flex items-center justify-between gap-2 px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-full animate-in fade-in duration-150">
                       <div className="flex items-center gap-2">
                         <span className="relative flex size-3">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -3455,7 +3592,7 @@ function DashboardContent() {
                           type="button"
                           onClick={handleCancelVoiceRecording}
                           title="Cancel voice note"
-                          className="p-2 rounded-lg bg-slate-200 dark:bg-white/10 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
+                          className="p-1.5 rounded-full bg-slate-200 dark:bg-white/10 hover:bg-red-500 hover:text-white text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
                         >
                           <Trash2 className="size-4" />
                         </button>
@@ -3463,15 +3600,72 @@ function DashboardContent() {
                           type="button"
                           onClick={handleStopAndSendVoiceNote}
                           title="Send voice note"
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer"
                         >
-                          <Send className="size-4" />
-                          <span>Send Voice Note</span>
+                          <Send className="size-3.5" />
+                          <span>Send</span>
                         </button>
                       </div>
                     </div>
                   ) : (
                     <>
+                      {/* Plus Action Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPlusMenu((prev) => !prev);
+                          setShowEmojiPicker(false);
+                        }}
+                        title="Add actions or mention AI"
+                        className={`size-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                          showPlusMenu
+                            ? 'bg-slate-200 dark:bg-white/20 text-slate-900 dark:text-white'
+                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
+                        }`}
+                      >
+                        <Plus className="size-5" />
+                      </button>
+
+                      {/* Emoji / Sticker Face Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEmojiPicker((prev) => !prev);
+                          setShowPlusMenu(false);
+                        }}
+                        title="Emoji reactions"
+                        className={`size-9 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                          showEmojiPicker
+                            ? 'bg-slate-200 dark:bg-white/20 text-slate-900 dark:text-white'
+                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
+                        }`}
+                      >
+                        <Smile className="size-5" />
+                      </button>
+
+                      {/* Urgent Alert Switch Pill */}
+                      <button
+                        type="button"
+                        onClick={() => setIsMessageUrgent((prev) => !prev)}
+                        title={
+                          isMessageUrgent
+                            ? 'Urgent mode active: will send SMS & Email. Click to turn off.'
+                            : 'Mark as Urgent (sends SMS text & Email to members)'
+                        }
+                        className={`h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                          isMessageUrgent
+                            ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30 animate-pulse'
+                            : 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/10'
+                        }`}
+                      >
+                        <AlertTriangle className="size-4 shrink-0" />
+                        <span className={isMessageUrgent ? 'inline' : 'hidden sm:inline'}>
+                          {isMessageUrgent ? 'Urgent Alert' : 'Urgent'}
+                        </span>
+                        {isMessageUrgent && <X className="size-3 ml-0.5" />}
+                      </button>
+
+                      {/* Main Message Input (WhatsApp style) */}
                       <input
                         ref={chatInputRef}
                         type="text"
@@ -3479,26 +3673,31 @@ function DashboardContent() {
                         onChange={(e) => setChatInputText(e.target.value)}
                         onFocus={() => setIsChatInputVisible(true)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                        placeholder={`Send message to ${selectedChannel} or type @ for AI...`}
-                        className="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 outline-none focus:border-indigo-600 dark:focus:border-cyan-400 transition-all"
+                        placeholder="Type a message"
+                        className="flex-1 bg-transparent border-0 outline-none text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 px-2 py-1.5 focus:ring-0 focus:outline-none min-w-0"
                       />
 
                       {/* Dynamic Send / Voice Record Button */}
                       {chatInputText.trim() ? (
                         <button
                           onClick={handleSendChatMessage}
-                          className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-lg transition-all active:scale-95 cursor-pointer shrink-0 animate-in fade-in zoom-in-95 duration-150"
+                          title={isMessageUrgent ? 'Send Urgent Alert (SMS & Email)' : 'Send message'}
+                          className={`size-9 rounded-full flex items-center justify-center text-white transition-all shadow-md active:scale-95 cursor-pointer shrink-0 ${
+                            isMessageUrgent
+                              ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/30 ring-2 ring-rose-400/40'
+                              : 'bg-[#00a884] hover:bg-[#008f6f] shadow-emerald-600/20'
+                          }`}
                         >
-                          <Send className="size-4" /> Send
+                          <Send className="size-4" />
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={handleStartVoiceRecording}
                           title="Record Voice Note"
-                          className="p-3 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-cyan-400 border border-indigo-500/20 dark:border-cyan-500/30 transition-all active:scale-95 cursor-pointer shrink-0 animate-in fade-in zoom-in-95 duration-150"
+                          className="size-9 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer shrink-0"
                         >
-                          <Mic className="size-4 sm:size-5" />
+                          <Mic className="size-5" />
                         </button>
                       )}
                     </>
@@ -3511,10 +3710,11 @@ function DashboardContent() {
               {!isChatInputVisible && (
                 <button
                   onClick={() => {
+                    setIsChatHeaderVisible(true);
                     setIsChatInputVisible(true);
                     chatInputRef.current?.focus();
                   }}
-                  className="fixed bottom-6 right-6 lg:right-10 z-40 px-4 py-2.5 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-xl border border-indigo-400/30 flex items-center gap-2 animate-bounce cursor-pointer hover:bg-indigo-500 transition-all"
+                  className="fixed bottom-3 right-4 sm:right-6 lg:right-10 z-40 px-4 py-2 rounded-full bg-indigo-600 text-white text-xs font-bold shadow-xl border border-indigo-400/30 flex items-center gap-2 animate-bounce cursor-pointer hover:bg-indigo-500 transition-all"
                 >
                   <MessageSquare className="size-4" /> Type message...
                 </button>
@@ -4999,6 +5199,32 @@ function DashboardContent() {
                       }`} />
                     </button>
                   </div>
+
+                  {/* SMS & Email Meeting Reminder Option */}
+                  {meetingModalMode === 'scheduled' && (
+                    <div className="flex items-center justify-between gap-4 p-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50">
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          <Bell className="size-3.5 text-indigo-500" />
+                          Send SMS & Email Reminders
+                        </div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug">
+                          Alerts workspace members 15 mins prior & when meeting starts via preferred channels.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMeetingModalSendReminders(v => !v)}
+                        className={`relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                          meetingModalSendReminders ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'
+                        }`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                          meetingModalSendReminders ? 'translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
@@ -5110,6 +5336,12 @@ function DashboardContent() {
             </motion.div>
           </div>
         )}
+
+        {/* Notification & SMS Settings Modal */}
+        <NotificationSettingsModal
+          isOpen={showNotificationSettings}
+          onClose={() => setShowNotificationSettings(false)}
+        />
       </AnimatePresence>
     </div>
   );

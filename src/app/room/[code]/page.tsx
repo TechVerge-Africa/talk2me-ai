@@ -1655,6 +1655,7 @@ function RoomContent({
               capturedCount={meetingActionItems.length}
               isEphemeral={false}
               workspaceMeetingHref={currentWorkspaceId ? `/dashboard?ws=${currentWorkspaceId}&tab=meetings` : undefined}
+              isSpeaking={!!activeSpeaker}
               onOpenNotes={() => {
                 setActiveTab('notes');
                 setSidebarOpen(true);
@@ -2354,6 +2355,23 @@ function RoomPageInner() {
     }
   }, [token]);
 
+  // Hydration safety: ensure client-only network checks match server HTML on initial render
+  const [isMounted, setIsMounted] = useState(false);
+  const [isClientOffline, setIsClientOffline] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+    setIsClientOffline(typeof navigator !== 'undefined' && !navigator.onLine);
+    const onOnline = () => setIsClientOffline(false);
+    const onOffline = () => setIsClientOffline(true);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
   // NEW STATES
   const [meetingRecord, setMeetingRecord] = useState<Meeting | null>(null);
   const meetingRecordRef = useRef<Meeting | null>(meetingRecord);
@@ -2558,7 +2576,7 @@ function RoomPageInner() {
         // HCI: Never eject an active participant to the Invalid Meeting Room error page.
         // Only set error if the user has no token, has never joined, and is not already in the room.
         if (!hasEnteredRoomRef.current && !tokenRef.current && !meetingRecordRef.current) {
-          const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          const isOffline = isMounted && isClientOffline;
           if (!isOffline) {
             setError('Unable to verify meeting code. Please check your internet connection.');
           }
@@ -2641,8 +2659,8 @@ function RoomPageInner() {
     );
   }
 
-  if (isValidating || authLoading) {
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+  if (!isMounted || isValidating || authLoading) {
+    const isOffline = isMounted && isClientOffline;
     return (
       <NetworkDoorScene
         status={isOffline ? "disconnected" : "verifying"}
@@ -2683,7 +2701,7 @@ function RoomPageInner() {
   }
 
   if (!token) {
-    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isOffline = isMounted && isClientOffline;
     return (
       <NetworkDoorScene
         status={isOffline ? "disconnected" : "verifying"}

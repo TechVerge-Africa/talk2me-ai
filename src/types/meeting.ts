@@ -10,6 +10,7 @@ export interface Meeting {
   scheduled_at?: string;
   workspace_id?: string;
   board_id?: string;
+  send_reminders?: boolean;
   status: MeetingStatus;
   settings?: {
     require_approval: boolean;

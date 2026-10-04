@@ -51,7 +51,6 @@ export function useBackgroundResilience({
 
   const wakeLockRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const wasCamOnBeforeBackground = useRef(false);
   const originalTitleRef = useRef<string>('');
 
   const toggleMicRef = useRef(toggleMic);
@@ -206,30 +205,18 @@ export function useBackgroundResilience({
         const speakerTag = activeSpeakerName ? `(${activeSpeakerName}) ` : '';
         document.title = `${micIcon} ${speakerTag}Talk2Me #${code}`;
 
-        // Adaptive camera pause: if camera is active, temporarily pause capture
-        // to prevent mobile camera hardware error and conserve battery/CPU
-        if (localCamOn && room?.localParticipant) {
-          wasCamOnBeforeBackground.current = true;
-          room.localParticipant.setCameraEnabled(false).catch(() => {});
-        }
+        // Camera stays continuously active and publishing like Zoom / Google Meet
       } else {
         // Foreground return:
         requestWakeLock();
         document.title = originalTitleRef.current || `Talk2Me #${code}`;
 
-        // If camera was active before switching away, automatically restore it
-        if (wasCamOnBeforeBackground.current && room?.localParticipant) {
-          wasCamOnBeforeBackground.current = false;
-          room.localParticipant.setCameraEnabled(true).catch(() => {});
-          setReentryToast('Resumed camera • Audio stayed active while away');
-        } else {
-          setReentryToast('Audio stayed active while away');
-        }
+        setReentryToast('Meeting stayed active while away');
 
-        // Auto-dismiss re-entry toast after 4.5 seconds
+        // Auto-dismiss re-entry toast after 3.5 seconds
         const timer = setTimeout(() => {
           setReentryToast(null);
-        }, 4500);
+        }, 3500);
         return () => clearTimeout(timer);
       }
     };

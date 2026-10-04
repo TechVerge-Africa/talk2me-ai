@@ -150,6 +150,7 @@ export function ChatPanel({
       reader.onloadend = async () => {
         const base64Audio = (reader.result as string) || "";
 
+        let transcript = "";
         try {
           const formData = new FormData();
           formData.append("file", audioBlob, "voicenote.webm");
@@ -160,30 +161,29 @@ export function ChatPanel({
             body: formData,
           });
 
-          if (!res.ok) {
-            throw new Error(`STT failed with status ${res.status}`);
-          }
-
-          const data = await res.json();
-          const transcript = (data.text || "").trim();
-
-          if (transcript) {
-            const mins = Math.floor(durationSec / 60);
-            const secs = String(durationSec % 60).padStart(2, "0");
-            const durationStr = `${mins}:${secs}`;
-
-            // Format message with playable audio tag + transcript quote
-            const voiceNoteMessage = `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`;
-
-            onSendMessage(voiceNoteMessage, recipient === "everyone" ? undefined : recipient);
-          } else {
-            alert("No speech was detected in your voice note.");
+          if (res.ok) {
+            const data = await res.json();
+            transcript = (data.text || "").trim();
           }
         } catch (err) {
-          console.error("Voice note transcription error:", err);
-          alert("Failed to transcribe voice note. Please try again.");
+          console.warn("Meeting voice note transcription notice:", err);
         } finally {
           setIsTranscribing(false);
+        }
+
+        try {
+          const mins = Math.floor(durationSec / 60);
+          const secs = String(durationSec % 60).padStart(2, "0");
+          const durationStr = `${mins}:${secs}`;
+
+          // Format message with playable audio tag + optional transcript quote
+          const voiceNoteMessage = transcript
+            ? `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]\n> "${transcript}"`
+            : `🎙️ **Voice Note (${durationStr})**\n[audio:${base64Audio}]`;
+
+          onSendMessage(voiceNoteMessage, recipient === "everyone" ? undefined : recipient);
+        } catch (sendErr) {
+          console.error("Meeting voice note send error:", sendErr);
         }
       };
     };

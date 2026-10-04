@@ -426,7 +426,7 @@ describe('Talk2Me Adaptive Network Resilience Engine', () => {
     assert.equal(alicePolicy?.priority, 'normal');
   });
 
-  it('Scenario I: Background tab switching -> Preserves audio and disables video overhead without error', () => {
+  it('Scenario I: Background tab switching -> Preserves high-priority audio and continuous camera/video without cutoffs', () => {
     const controller = new AdaptationController();
     controller.reset('excellent', 0);
 
@@ -438,27 +438,28 @@ describe('Talk2Me Adaptive Network Resilience Engine', () => {
       isBackgrounded: true,
     };
 
-    // Low downlink (~25kbps for audio only), but healthy RTT and loss
     const policy = controller.evaluate({
       timestamp: 1000,
       quality: 'excellent',
       connectionState: 'connected',
-      estimatedDownlinkKbps: 25,
+      estimatedDownlinkKbps: 3500,
       rttMs: 40,
       packetLossRate: 0,
       stabilityScore: 98,
     }, backgroundContext);
 
-    // Audio priority is protected, video is paused to conserve battery/CPU
-    assert.equal(policy.videoEnabled, false);
-    assert.equal(policy.preferredVideoQuality, 'off');
+    // Audio priority is elevated to high to protect against OS background throttling,
+    // while video remains continuously enabled and streaming (Zoom/Meet standard)
+    assert.equal(policy.videoEnabled, true);
+    assert.equal(policy.preferredVideoQuality, 'high');
     assert.equal(policy.audioPriority, 'high');
     assert.equal(policy.captionsRecommended, false);
 
     const bobPolicy = policy.participantPolicies?.get('speaker-bob');
     assert.ok(bobPolicy);
-    assert.equal(bobPolicy?.videoEnabled, false);
-    assert.equal(bobPolicy?.reason, 'background');
+    // Active speaker video remains enabled to power Picture-in-Picture window
+    assert.equal(bobPolicy?.videoEnabled, true);
+    assert.equal(bobPolicy?.priority, 'high');
   });
 
   it('Scenario J: Foreground return -> Restores target video smoothly without oscillation', () => {
