@@ -4,46 +4,31 @@ import { useEffect } from "react";
 
 export function PwaRegister() {
   useEffect(() => {
-    // ── 1. Global ChunkLoadError & Service Worker Auto-Recovery ─────────────
-    // When a new deployment occurs or an older Service Worker rejects chunk/RSC
-    // requests, this listener purges old caches, force-updates the worker, and
-    // reloads the page to seamlessly recover the user session.
-    const handleChunkError = async (message?: string, errorName?: string) => {
+    // ── 1. Global ChunkLoadError Auto-Recovery ──────────────────────────────
+    const handleChunkError = (message?: string, errorName?: string) => {
       const isChunkOrFetchError =
         message?.includes("ChunkLoadError") ||
         message?.includes("Failed to load chunk") ||
-        message?.includes("Failed to fetch") ||
         errorName === "ChunkLoadError";
 
       if (isChunkOrFetchError) {
         const now = Date.now();
         const lastReload = Number(sessionStorage.getItem("chunk_reload_ts") || 0);
 
-        // Throttle auto-reload to at most once per 10 seconds to avoid infinite loops
         if (now - lastReload > 10000) {
           sessionStorage.setItem("chunk_reload_ts", String(now));
-          console.warn("[PwaRegister] Chunk / Fetch error detected. Purging old cache and refreshing...");
+          console.warn("[PwaRegister] ChunkLoadError detected. Purging caches and reloading...");
 
-          try {
-            // Delete old caches
-            if ("caches" in window) {
-              const keys = await caches.keys();
-              await Promise.all(
-                keys.map((key) => {
-                  if (key !== "talk2me-cache-v3") {
-                    return caches.delete(key);
-                  }
-                })
-              );
-            }
+          if ("caches" in window) {
+            caches.keys().then((keys) => {
+              keys.forEach((k) => caches.delete(k));
+            }).catch(() => {});
+          }
 
-            // Force update service workers
-            if ("serviceWorker" in navigator) {
-              const regs = await navigator.serviceWorker.getRegistrations();
-              await Promise.all(regs.map((r) => r.update().catch(() => {})));
-            }
-          } catch {
-            // Ignore cleanup failures
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.getRegistrations().then((regs) => {
+              regs.forEach((r) => r.unregister());
+            }).catch(() => {});
           }
 
           window.location.reload();
@@ -65,43 +50,30 @@ export function PwaRegister() {
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
 
-    // ── 2. Service Worker Registration, Update & Cache Sanitization ─────────
-    let cleanupLoadListener: (() => void) | undefined;
-
+    // ── 2. Force Clean Obsolete Service Workers & CacheStorage ──────────────
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      const handleRegister = async () => {
-        try {
-          const registration = await navigator.serviceWorker.register("/sw.js");
-          // Proactively check for service worker updates immediately
-          await registration.update();
-        } catch (error) {
-          console.error("Service Worker registration failed:", error);
+      navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+        for (const reg of registrations) {
+          console.log("[PwaRegister] Cleaning obsolete Service Worker registration...");
+          await reg.unregister();
         }
-      };
+      }).catch((err) => {
+        console.warn("[PwaRegister] Failed to unregister workers:", err);
+      });
 
-      // Clean obsolete caches on startup
       if ("caches" in window) {
         caches.keys().then((keys) => {
           keys.forEach((key) => {
-            if (key === "talk2me-cache-v1" || key === "talk2me-cache-v2") {
-              caches.delete(key).catch(() => {});
-            }
+            console.log("[PwaRegister] Deleting obsolete cache:", key);
+            caches.delete(key);
           });
         }).catch(() => {});
-      }
-
-      if (document.readyState === "complete") {
-        handleRegister();
-      } else {
-        window.addEventListener("load", handleRegister);
-        cleanupLoadListener = () => window.removeEventListener("load", handleRegister);
       }
     }
 
     return () => {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
-      if (cleanupLoadListener) cleanupLoadListener();
     };
   }, []);
 
