@@ -48,6 +48,24 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
+                // Immediate unregister of any legacy or stuck service worker
+                try {
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(regs) {
+                      for (var i = 0; i < regs.length; i++) {
+                        regs[i].unregister();
+                      }
+                    });
+                  }
+                  if ('caches' in window) {
+                    caches.keys().then(function(keys) {
+                      for (var j = 0; j < keys.length; j++) {
+                        caches.delete(keys[j]);
+                      }
+                    });
+                  }
+                } catch(e) {}
+
                 function reloadOnce() {
                   var last = sessionStorage.getItem('chunk_reload_ts');
                   var now = Date.now();
@@ -58,13 +76,13 @@ export default function RootLayout({
                 }
                 window.addEventListener('error', function(e) {
                   var msg = (e && e.message) || '';
-                  if (msg.indexOf('ChunkLoadError') !== -1 || msg.indexOf('Failed to load chunk') !== -1) {
+                  if (msg.indexOf('ChunkLoadError') !== -1 || msg.indexOf('Failed to load chunk') !== -1 || msg.indexOf('Failed to fetch') !== -1) {
                     reloadOnce();
                   }
                 });
                 window.addEventListener('unhandledrejection', function(e) {
                   var msg = (e && e.reason && (e.reason.message || e.reason.stack || String(e.reason))) || '';
-                  if (msg.indexOf('ChunkLoadError') !== -1 || msg.indexOf('Failed to load chunk') !== -1) {
+                  if (msg.indexOf('ChunkLoadError') !== -1 || msg.indexOf('Failed to load chunk') !== -1 || msg.indexOf('Failed to fetch') !== -1) {
                     reloadOnce();
                   }
                 });
